@@ -16,7 +16,7 @@ social account approvals exist.
 ## Run It Locally
 
 ```bash
-cd /Users/lalitprasadsingh/VS_code/PMPSimulator/content-automation-pipeline
+cd /Users/lalitprasadsingh/VS_code/content-automation-pipeline
 cp .env.example .env
 PYTHONPATH=src python3 -m content_pipeline run --date 2026-05-26
 ```
