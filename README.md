@@ -87,3 +87,13 @@ git push -u origin main
 
 The scheduled workflow is configured in `.github/workflows/daily-content.yml`.
 It runs safely in mock mode until provider secrets and publishing work are ready.
+
+## LinkedIn App Privacy Policy
+
+Static pages for LinkedIn developer app setup are available in `docs/` and can be
+published through GitHub Pages. Configure Pages to deploy from the `main` branch
+and `/docs` folder, then use:
+
+```text
+https://lalit9031.github.io/content-automation-pipeline/privacy-policy.html
+```
