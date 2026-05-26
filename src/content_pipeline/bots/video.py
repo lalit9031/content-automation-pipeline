@@ -9,7 +9,7 @@ from pathlib import Path
 
 import cairosvg
 
-from content_pipeline.models import ContentPackage
+from content_pipeline.models import ContentPackage, LongFormVideoScript
 from content_pipeline.storage import LocalDailyStorage
 
 
@@ -23,6 +23,7 @@ class VideoScene:
     body: str
     label: str
     duration: int
+    narration: str | None = None
 
 
 def scenes_for_package(package: ContentPackage) -> list[VideoScene]:
@@ -42,21 +43,71 @@ def render_landscape_preview(
     storage: LocalDailyStorage,
 ) -> str:
     scenes = scenes_for_package(package)
+    return _render_preview(
+        scenes,
+        package.date,
+        storage,
+        "landscape_preview_16x9",
+        scene_directory="scenes",
+        assembly_basename="landscape",
+    )
+
+
+def long_form_scenes(script: LongFormVideoScript) -> list[VideoScene]:
+    scenes: list[VideoScene] = []
+    total = len(script.scenes)
+    for index, scene in enumerate(script.scenes, start=1):
+        label = "OPENING" if index == 1 else "YOUR TURN" if index == total else "KEY IDEA"
+        scenes.append(
+            VideoScene(
+                scene.title,
+                scene.on_screen_text,
+                label,
+                scene.duration_seconds,
+                narration=scene.narration,
+            )
+        )
+    return scenes
+
+
+def render_long_form_preview(
+    script: LongFormVideoScript,
+    day: str,
+    storage: LocalDailyStorage,
+) -> str:
+    return _render_preview(
+        long_form_scenes(script),
+        day,
+        storage,
+        "longform_preview_16x9",
+    )
+
+
+def _render_preview(
+    scenes: list[VideoScene],
+    day: str,
+    storage: LocalDailyStorage,
+    basename: str,
+    scene_directory: str | None = None,
+    assembly_basename: str | None = None,
+) -> str:
+    scene_directory = scene_directory or f"{basename}_scenes"
+    assembly_basename = assembly_basename or basename
     png_paths: list[Path] = []
     for index, scene in enumerate(scenes, start=1):
-        basename = f"video/scenes/scene_{index:02d}"
+        scene_path = f"video/{scene_directory}/scene_{index:02d}"
         svg = scene_svg(scene, index, len(scenes))
-        storage.write_bytes(package.date, f"{basename}.svg", svg)
-        png_path = storage.daily_path(package.date, f"{basename}.png")
+        storage.write_bytes(day, f"{scene_path}.svg", svg)
+        png_path = storage.daily_path(day, f"{scene_path}.png")
         png_path.write_bytes(
             cairosvg.svg2png(bytestring=svg, output_width=WIDTH, output_height=HEIGHT)
         )
         png_paths.append(png_path)
-    output_path = storage.daily_path(package.date, "video/landscape_preview_16x9.mp4")
-    subtitle_path = storage.daily_path(package.date, "video/landscape_preview_16x9.srt")
+    output_path = storage.daily_path(day, f"video/{basename}.mp4")
+    subtitle_path = storage.daily_path(day, f"video/{basename}.srt")
     subtitle_path.write_text(subtitles_for_scenes(scenes), encoding="utf-8")
-    _assemble_video(scenes, png_paths, output_path)
-    return "video/landscape_preview_16x9.mp4"
+    _assemble_video(scenes, png_paths, output_path, assembly_basename)
+    return f"video/{basename}.mp4"
 
 
 def scene_svg(scene: VideoScene, index: int, total: int) -> bytes:
@@ -100,13 +151,15 @@ def _assemble_video(
     scenes: list[VideoScene],
     png_paths: list[Path],
     output_path: Path,
+    basename: str = "landscape",
 ) -> None:
     executable = shutil.which("ffmpeg")
     if not executable:
         raise RuntimeError("FFmpeg is required for video previews. Install it with: brew install ffmpeg")
-    clips_dir = output_path.parent / "clips"
+    clips_directory = "clips" if basename == "landscape" else f"{basename}_clips"
+    clips_dir = output_path.parent / clips_directory
     clips_dir.mkdir(parents=True, exist_ok=True)
-    concat_path = output_path.parent / "landscape_scenes.txt"
+    concat_path = output_path.parent / f"{basename}_scenes.txt"
     clip_paths: list[Path] = []
     for index, (scene, path) in enumerate(zip(scenes, png_paths, strict=True), start=1):
         clip_path = clips_dir / f"scene_{index:02d}.mp4"
@@ -174,7 +227,7 @@ def subtitles_for_scenes(scenes: list[VideoScene]) -> str:
             [
                 str(index),
                 f"{_timestamp(start)} --> {_timestamp(end)}",
-                scene.body,
+                scene.narration or scene.body,
                 "",
             ]
         )

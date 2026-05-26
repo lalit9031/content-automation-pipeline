@@ -142,6 +142,27 @@ output/daily/2026-05-26/video/landscape_preview_16x9.srt
 
 This silent preview is local-only; it is not uploaded to YouTube.
 
+### Render A 3-5 Minute Video Preview
+
+After generating `prompt.json`, create a fuller narrated YouTube outline and
+render a longer silent visual preview with narration stored in the SRT track:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m content_pipeline long-video-preview \
+  --date 2026-05-27 --minutes 4
+```
+
+Output:
+
+```text
+output/daily/2026-05-27/video/longform_script.json
+output/daily/2026-05-27/video/longform_preview_16x9.mp4
+output/daily/2026-05-27/video/longform_preview_16x9.srt
+```
+
+This mode requires the configured OpenAI provider to expand the short daily
+topic into 14 to 20 narrated scenes. It does not synthesize voice audio yet.
+
 ## Optional Canva Integration
 
 Canva can later supply richer animated templates and MP4 exports, but automated

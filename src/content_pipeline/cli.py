@@ -12,7 +12,8 @@ from content_pipeline.bots.linkedin import (
     published_post_receipt,
     record_published_post,
 )
-from content_pipeline.bots.video import render_landscape_preview
+from content_pipeline.bots.prompt import generate_long_form_video_script
+from content_pipeline.bots.video import render_landscape_preview, render_long_form_preview
 from content_pipeline.config import Settings
 from content_pipeline.models import ContentPackage
 from content_pipeline.pipeline import run_linkedin_mvp
@@ -26,6 +27,13 @@ def main() -> int:
     run_parser.add_argument("--date", default=date.today().isoformat(), help="Date in YYYY-MM-DD.")
     video_parser = subparsers.add_parser("video-preview", help="Render a landscape video preview.")
     video_parser.add_argument("--date", default=date.today().isoformat(), help="Date in YYYY-MM-DD.")
+    long_video_parser = subparsers.add_parser(
+        "long-video-preview", help="Generate and render a 3-5 minute landscape video preview."
+    )
+    long_video_parser.add_argument("--date", default=date.today().isoformat(), help="Date in YYYY-MM-DD.")
+    long_video_parser.add_argument(
+        "--minutes", type=int, choices=(3, 4, 5), default=4, help="Target video length."
+    )
     auth_parser = subparsers.add_parser("linkedin-auth", help="Authorize your LinkedIn profile.")
     post_parser = subparsers.add_parser("linkedin-post", help="Preview or publish an image post.")
     post_parser.add_argument("--date", default=date.today().isoformat(), help="Date in YYYY-MM-DD.")
@@ -75,6 +83,20 @@ def main() -> int:
             "Subtitle track generated: "
             f"{settings.output_dir / 'daily' / args.date / 'video/landscape_preview_16x9.srt'}"
         )
+        return 0
+    if args.command == "long-video-preview":
+        script = generate_long_form_video_script(package, settings, args.minutes)
+        storage.write_json(args.date, "video/longform_script.json", script.as_dict())
+        video_file = render_long_form_preview(script, args.date, storage)
+        print(
+            f"Long-form video preview generated: "
+            f"{settings.output_dir / 'daily' / args.date / video_file}"
+        )
+        print(
+            "Subtitle track generated: "
+            f"{settings.output_dir / 'daily' / args.date / 'video/longform_preview_16x9.srt'}"
+        )
+        print(f"Planned duration: {script.duration_seconds} seconds")
         return 0
     image_path = daily / "images" / "linkedin_infographic.png"
     if args.command == "linkedin-record":

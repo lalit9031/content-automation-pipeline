@@ -26,10 +26,10 @@ Canva dependency.
 1. Your Canva plan and organization entitlement: confirm Canva Enterprise or an
    Autofill development trial shown in the developer portal.
 2. A Canva Developer app Client ID. Keep any Client Secret private and place it
-   only in local `.env` when the adapter is implemented.
+   only in the local `.env` used by the adapter.
 3. A reusable Canva brand video template designed for text replacement.
-4. The template ID and the editable field keys, for example `headline`,
-   `hook`, `point_1`, `point_2`, `point_3`, and `cta`.
+4. The template ID and these text autofill field keys required by the adapter:
+   `headline`, `hook`, `point_1`, `point_2`, `point_3`, and `cta`.
 5. Brand assets: logo as PNG or SVG, color hex codes, preferred fonts, profile
    image if required, LinkedIn handle, and end-card call to action.
 6. Video direction: preferred style, sample references, landscape versus
@@ -38,15 +38,19 @@ Canva dependency.
 Do not send API client secrets or tokens in chat, screenshots, or Git. They
 belong in the ignored `.env` file on your computer.
 
-## Planned Adapter Flow
+## Implemented Adapter Flow
 
-Once entitlement and a template are available, the next code step is:
+When Canva variables and a template ID are configured, the optional adapter:
 
-1. Add Canva OAuth configuration and authorize the developer app.
-2. Map `prompt.json` video script fields to the template autofill fields.
-3. Create an Autofill design job and poll until the design is ready.
-4. Start an MP4 export job, poll its status, and download the result.
-5. Feed the downloaded video into FFmpeg for YouTube and vertical outputs.
+1. Uses the configured Canva OAuth refresh token to obtain an access token.
+2. Maps `prompt.json` video script fields to the template autofill fields.
+3. Creates an Autofill design job and polls until the design is ready.
+4. Starts an MP4 export job, polls its status, and downloads the result.
+5. Writes the MP4 to `video/canva_export.mp4` in the daily output directory.
+
+Canva refresh tokens are single-use. On each token refresh, the adapter saves
+the replacement `CANVA_REFRESH_TOKEN` back to the ignored local `.env` file so
+the next pipeline run can authenticate without repeating OAuth authorization.
 
 ## Official References
 

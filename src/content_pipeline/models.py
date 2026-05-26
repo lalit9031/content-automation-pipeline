@@ -24,6 +24,49 @@ class VideoScript:
 
 
 @dataclass(frozen=True)
+class LongFormScene:
+    title: str
+    on_screen_text: str
+    narration: str
+    duration_seconds: int
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "LongFormScene":
+        duration = data.get("duration_seconds")
+        if not isinstance(duration, int) or not 8 <= duration <= 20:
+            raise ValueError("long-form scene duration_seconds must be between 8 and 20")
+        return cls(
+            title=_required_text(data, "title"),
+            on_screen_text=_required_text(data, "on_screen_text"),
+            narration=_required_text(data, "narration"),
+            duration_seconds=duration,
+        )
+
+
+@dataclass(frozen=True)
+class LongFormVideoScript:
+    title: str
+    scenes: list[LongFormScene]
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "LongFormVideoScript":
+        raw_scenes = data.get("scenes", [])
+        if not isinstance(raw_scenes, list) or not raw_scenes:
+            raise ValueError("long-form video scenes must be a non-empty list")
+        return cls(
+            title=_required_text(data, "title"),
+            scenes=[LongFormScene.from_dict(scene) for scene in raw_scenes],
+        )
+
+    @property
+    def duration_seconds(self) -> int:
+        return sum(scene.duration_seconds for scene in self.scenes)
+
+    def as_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
 class InfographicPanel:
     title: str
     points: list[str]

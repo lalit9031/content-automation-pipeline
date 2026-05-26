@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 import tempfile
 import types
@@ -6,6 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from content_pipeline.bots.canva import CanvaAuth, render_canva_video
 from content_pipeline.bots.infographic import infographic_svg
 from content_pipeline.bots.linkedin import (
     LinkedInClient,
@@ -14,15 +16,16 @@ from content_pipeline.bots.linkedin import (
     published_post_receipt,
     record_published_post,
 )
-from content_pipeline.bots.prompt import OpenAIPromptProvider
+from content_pipeline.bots.prompt import OpenAIPromptProvider, _fit_long_form_duration
 from content_pipeline.bots.video import (
     _assemble_video,
+    long_form_scenes,
     scene_svg,
     scenes_for_package,
     subtitles_for_scenes,
 )
 from content_pipeline.config import Settings
-from content_pipeline.models import ContentPackage
+from content_pipeline.models import ContentPackage, LongFormVideoScript
 from content_pipeline.pipeline import run_linkedin_mvp
 from content_pipeline.storage import LocalDailyStorage
 
@@ -141,6 +144,60 @@ class PipelineTest(unittest.TestCase):
         self.assertIn("w_member_social", url)
         self.assertIn("openid+profile+email", url)
         self.assertIn("redirect_uri=http%3A%2F%2Flocalhost%3A8080%2Fcallback", url)
+
+    def test_canva_refresh_persists_rotated_single_use_token(self) -> None:
+        response = types.SimpleNamespace(
+            raise_for_status=lambda: None,
+            json=lambda: {
+                "access_token": "access-token",
+                "refresh_token": "new-refresh-token",
+                "expires_in": 14400,
+            },
+        )
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            dotenv_path = Path(temporary_dir) / ".env"
+            dotenv_path.write_text(
+                "CANVA_CLIENT_ID=client-id\nCANVA_REFRESH_TOKEN=old-refresh-token\n",
+                encoding="utf-8",
+            )
+            settings = Settings(
+                output_dir=Path(temporary_dir) / "output",
+                canva_client_id="client-id",
+                canva_client_secret="client-secret",
+                canva_refresh_token="old-refresh-token",
+                dotenv_path=dotenv_path,
+            )
+            with (
+                patch("content_pipeline.bots.canva.requests.post", return_value=response),
+                patch.dict(os.environ, {"CANVA_REFRESH_TOKEN": "old-refresh-token"}),
+            ):
+                self.assertEqual(CanvaAuth(settings).get_access_token(), "access-token")
+                self.assertEqual(os.environ["CANVA_REFRESH_TOKEN"], "new-refresh-token")
+
+            self.assertIn(
+                "CANVA_REFRESH_TOKEN=new-refresh-token",
+                dotenv_path.read_text(encoding="utf-8"),
+            )
+
+    def test_canva_render_reports_template_without_autofill_fields(self) -> None:
+        settings = Settings(
+            output_dir=Path("output"),
+            canva_client_id="client-id",
+            canva_client_secret="client-secret",
+            canva_refresh_token="refresh-token",
+            canva_brand_template_id="template-id",
+        )
+        with patch(
+            "content_pipeline.bots.canva.get_brand_template_dataset", return_value={}
+        ):
+            with self.assertRaisesRegex(
+                ValueError, "none of the expected text autofill fields"
+            ):
+                render_canva_video(
+                    types.SimpleNamespace(date="2026-05-27"),
+                    settings,
+                    LocalDailyStorage(Path("output")),
+                )
 
     def test_linkedin_post_payload_targets_member_image_post(self) -> None:
         package = ContentPackage.from_dict(
@@ -294,6 +351,57 @@ class PipelineTest(unittest.TestCase):
                         [path / "scene.png"],
                         path / "preview.mp4",
                     )
+
+    def test_long_form_video_uses_narration_and_planned_duration(self) -> None:
+        script = LongFormVideoScript.from_dict(
+            {
+                "title": "Long explainer",
+                "scenes": [
+                    {
+                        "title": "Opening",
+                        "on_screen_text": "Write criteria teams can test",
+                        "narration": "A complete spoken opening explaining why clarity matters.",
+                        "duration_seconds": 12,
+                    },
+                    {
+                        "title": "Close",
+                        "on_screen_text": "Review before commitment",
+                        "narration": "A spoken closing question for the audience.",
+                        "duration_seconds": 10,
+                    },
+                ],
+            }
+        )
+
+        scenes = long_form_scenes(script)
+        subtitles = subtitles_for_scenes(scenes)
+
+        self.assertEqual(script.duration_seconds, 22)
+        self.assertEqual(scenes[0].label, "OPENING")
+        self.assertEqual(scenes[-1].label, "YOUR TURN")
+        self.assertIn("A complete spoken opening", subtitles)
+        self.assertNotIn("Write criteria teams can test", subtitles)
+        self.assertIn("00:00:12,000 --> 00:00:22,000", subtitles)
+
+    def test_long_form_video_timing_is_clamped_to_requested_range(self) -> None:
+        script = LongFormVideoScript.from_dict(
+            {
+                "title": "Long explainer",
+                "scenes": [
+                    {
+                        "title": f"Scene {index}",
+                        "on_screen_text": "Visible copy",
+                        "narration": "Spoken copy",
+                        "duration_seconds": 20,
+                    }
+                    for index in range(16)
+                ],
+            }
+        )
+
+        adjusted = _fit_long_form_duration(script, 180, 300)
+
+        self.assertEqual(adjusted.duration_seconds, 300)
 
 
 if __name__ == "__main__":

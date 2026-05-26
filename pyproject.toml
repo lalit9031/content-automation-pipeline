@@ -9,6 +9,7 @@ description = "Daily content pipeline starter: prompt, imagery, and controlled p
 requires-python = ">=3.11"
 dependencies = [
   "cairosvg>=2.7.1",
+  "requests>=2.32.0",
 ]
 
 [project.optional-dependencies]

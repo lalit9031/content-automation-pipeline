@@ -24,6 +24,12 @@ class Settings:
     linkedin_redirect_uri: str = "http://localhost:8080/callback"
     linkedin_access_token: str = ""
     linkedin_member_urn: str = ""
+    canva_client_id: str = ""
+    canva_client_secret: str = ""
+    canva_redirect_uri: str = "http://127.0.0.1:8080/callback"
+    canva_refresh_token: str = ""
+    canva_brand_template_id: str = ""
+    dotenv_path: Path | None = None
 
     @classmethod
     def from_environment(cls, project_dir: Path | None = None) -> "Settings":
@@ -52,6 +58,14 @@ class Settings:
             ),
             linkedin_access_token=os.getenv("LINKEDIN_ACCESS_TOKEN", ""),
             linkedin_member_urn=os.getenv("LINKEDIN_MEMBER_URN", ""),
+            canva_client_id=os.getenv("CANVA_CLIENT_ID", ""),
+            canva_client_secret=os.getenv("CANVA_CLIENT_SECRET", ""),
+            canva_redirect_uri=os.getenv(
+                "CANVA_REDIRECT_URI", "http://127.0.0.1:8080/callback"
+            ),
+            canva_refresh_token=os.getenv("CANVA_REFRESH_TOKEN", ""),
+            canva_brand_template_id=os.getenv("CANVA_BRAND_TEMPLATE_ID", ""),
+            dotenv_path=project_dir / ".env",
         )
 
 

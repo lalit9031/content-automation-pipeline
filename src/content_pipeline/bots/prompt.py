@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import date
 from typing import Protocol
 
 from content_pipeline.config import Settings
-from content_pipeline.models import ContentPackage
+from content_pipeline.models import ContentPackage, LongFormVideoScript
 
 
 EDITORIAL_STYLE = (
@@ -30,6 +31,111 @@ EDITORIAL_STYLE = (
 
 class PromptProvider(Protocol):
     def generate(self, day: str) -> ContentPackage: ...
+
+
+def generate_long_form_video_script(
+    package: ContentPackage, settings: Settings, target_minutes: int = 4
+) -> LongFormVideoScript:
+    """Generate a narrated 3-5 minute video outline for an existing package."""
+    if not 3 <= target_minutes <= 5:
+        raise ValueError("Long-form video target must be between 3 and 5 minutes.")
+    if not settings.openai_api_key or not settings.openai_model:
+        raise ValueError("OPENAI_API_KEY and OPENAI_MODEL are required")
+    try:
+        from openai import OpenAI
+    except ImportError as exc:
+        raise RuntimeError("Install live dependencies with: pip install -e '.[live]'") from exc
+
+    minimum_seconds = 180
+    maximum_seconds = 300
+    response = OpenAI(api_key=settings.openai_api_key).responses.create(
+        model=settings.openai_model,
+        instructions=(
+            f"{EDITORIAL_STYLE} Write a narrated YouTube explainer. The finished video "
+            f"should target approximately {target_minutes} minutes and must run "
+            f"between {minimum_seconds} and {maximum_seconds} seconds. "
+            "Use practical, original teaching language and do not invent evidence."
+        ),
+        input=(
+            "Expand this existing daily topic into a long-form video script. Each scene "
+            "must have short readable on-screen copy and separate natural narration. "
+            "Use 14 to 20 scenes. Keep on_screen_text under 90 characters and narration "
+            "roughly appropriate for its duration at a calm speaking pace. Include an "
+            "opening hook, problem explanation, step-by-step guidance, concrete example, "
+            "mistakes to avoid, recap, and closing question.\n\n"
+            f"Existing package:\n{json.dumps(package.as_dict(), indent=2)}"
+        ),
+        text={
+            "format": {
+                "type": "json_schema",
+                "name": "long_form_video_script",
+                "strict": True,
+                "schema": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["title", "scenes"],
+                    "properties": {
+                        "title": {"type": "string"},
+                        "scenes": {
+                            "type": "array",
+                            "minItems": 14,
+                            "maxItems": 20,
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": False,
+                                "required": [
+                                    "title",
+                                    "on_screen_text",
+                                    "narration",
+                                    "duration_seconds",
+                                ],
+                                "properties": {
+                                    "title": {"type": "string"},
+                                    "on_screen_text": {"type": "string"},
+                                    "narration": {"type": "string"},
+                                    "duration_seconds": {
+                                        "type": "integer",
+                                        "minimum": 8,
+                                        "maximum": 20,
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            }
+        },
+    )
+    script = LongFormVideoScript.from_dict(json.loads(response.output_text))
+    return _fit_long_form_duration(script, minimum_seconds, maximum_seconds)
+
+
+def _fit_long_form_duration(
+    script: LongFormVideoScript, minimum_seconds: int, maximum_seconds: int
+) -> LongFormVideoScript:
+    """Adjust scene holds slightly when generated timing falls outside bounds."""
+    scenes = list(script.scenes)
+    while sum(scene.duration_seconds for scene in scenes) > maximum_seconds:
+        for index in range(len(scenes) - 1, -1, -1):
+            if scenes[index].duration_seconds > 8:
+                scenes[index] = replace(
+                    scenes[index],
+                    duration_seconds=scenes[index].duration_seconds - 1,
+                )
+                break
+        else:
+            raise ValueError("Generated long-form script cannot be shortened to 5 minutes.")
+    while sum(scene.duration_seconds for scene in scenes) < minimum_seconds:
+        for index in range(len(scenes)):
+            if scenes[index].duration_seconds < 20:
+                scenes[index] = replace(
+                    scenes[index],
+                    duration_seconds=scenes[index].duration_seconds + 1,
+                )
+                break
+        else:
+            raise ValueError("Generated long-form script cannot be extended to 3 minutes.")
+    return replace(script, scenes=scenes)
 
 
 class MockPromptProvider:
