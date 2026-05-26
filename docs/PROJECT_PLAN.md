@@ -53,6 +53,10 @@ Already started in code. Next work is member OAuth with `w_member_social`, image
 upload, post creation using the authenticated member as author, and failure
 receipts. Completion gate: one manually confirmed post on the owner's profile.
 
+Implemented control flow: `linkedin-auth` stores an authorized token only in the
+local ignored `.env`; `linkedin-post` previews by default and publishes only with
+an explicit `--publish` flag.
+
 ### Phase 2: Video Generation And YouTube
 
 Evaluate Canva Connect autofill/export against Runway or another video provider,

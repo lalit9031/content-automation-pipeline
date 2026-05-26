@@ -68,6 +68,37 @@ Google Application Default Credentials must also be configured for Vertex AI.
 LinkedIn remains deliberately non-posting until member OAuth with
 `w_member_social` and the media upload flow are wired and tested.
 
+## Connect Personal LinkedIn Posting
+
+After the LinkedIn app has **Share on LinkedIn** and **Sign In with LinkedIn
+using OpenID Connect** enabled, add the public Client ID and private Client
+Secret only to local `.env`:
+
+```dotenv
+LINKEDIN_CLIENT_ID=your_client_id
+LINKEDIN_CLIENT_SECRET=your_client_secret
+LINKEDIN_REDIRECT_URI=http://localhost:8080/callback
+```
+
+Authorize your profile in the browser. The resulting access token is stored in
+the ignored local `.env` file:
+
+```bash
+PYTHONPATH=src python3 -m content_pipeline linkedin-auth
+```
+
+Preview the generated image post:
+
+```bash
+PYTHONPATH=src python3 -m content_pipeline linkedin-post --date 2026-05-26
+```
+
+Only after reviewing the preview, publish it to the authorized personal profile:
+
+```bash
+PYTHONPATH=src python3 -m content_pipeline linkedin-post --date 2026-05-26 --publish
+```
+
 ## Architecture
 
 The supplied architecture diagram is kept at [assets/content_automation_pipeline.svg](assets/content_automation_pipeline.svg).

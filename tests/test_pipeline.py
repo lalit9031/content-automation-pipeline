@@ -6,8 +6,10 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from content_pipeline.bots.linkedin import LinkedInClient, linkedin_share_payload
 from content_pipeline.bots.prompt import OpenAIPromptProvider
 from content_pipeline.config import Settings
+from content_pipeline.models import ContentPackage
 from content_pipeline.pipeline import run_linkedin_mvp
 
 
@@ -65,6 +67,42 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(captured["model"], "gpt-5.4-mini")
         self.assertEqual(captured["text"]["format"]["type"], "json_schema")
         self.assertTrue(captured["text"]["format"]["strict"])
+
+    def test_linkedin_authorization_requests_personal_post_scope(self) -> None:
+        settings = Settings(
+            output_dir=Path("output"),
+            linkedin_client_id="public-client-id",
+            linkedin_redirect_uri="http://localhost:8080/callback",
+        )
+
+        url = LinkedInClient(settings).authorization_url("safe-state")
+
+        self.assertIn("w_member_social", url)
+        self.assertIn("openid+profile+email", url)
+        self.assertIn("redirect_uri=http%3A%2F%2Flocalhost%3A8080%2Fcallback", url)
+
+    def test_linkedin_post_payload_targets_member_image_post(self) -> None:
+        package = ContentPackage.from_dict(
+            {
+                "date": "2026-05-26",
+                "topic": "Topic",
+                "image_prompt": "Image prompt",
+                "video_script": {"hook": "Hook", "points": ["Point"], "cta": "CTA"},
+                "linkedin_caption": "Caption",
+                "hashtags": ["#AI", "#Automation"],
+                "seo_title": "Title",
+                "seo_description": "Description",
+            }
+        )
+
+        payload = linkedin_share_payload("urn:li:person:abc", package, "urn:li:digitalmediaAsset:1")
+
+        self.assertEqual(payload["author"], "urn:li:person:abc")
+        self.assertEqual(
+            payload["specificContent"]["com.linkedin.ugc.ShareContent"]["shareMediaCategory"],
+            "IMAGE",
+        )
+        self.assertIn("#AI", payload["specificContent"]["com.linkedin.ugc.ShareContent"]["shareCommentary"]["text"])
 
 
 if __name__ == "__main__":

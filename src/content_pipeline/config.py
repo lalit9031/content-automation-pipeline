@@ -19,6 +19,10 @@ class Settings:
     gcp_location: str = "us-central1"
     imagen_model: str = "imagen-4.0-generate-001"
     publish_linkedin: bool = False
+    linkedin_client_id: str = ""
+    linkedin_client_secret: str = ""
+    linkedin_redirect_uri: str = "http://localhost:8080/callback"
+    linkedin_access_token: str = ""
     linkedin_member_urn: str = ""
 
     @classmethod
@@ -41,6 +45,12 @@ class Settings:
             gcp_location=os.getenv("GCP_LOCATION", "us-central1"),
             imagen_model=os.getenv("IMAGEN_MODEL", "imagen-4.0-generate-001"),
             publish_linkedin=_as_bool(os.getenv("PUBLISH_LINKEDIN", "false")),
+            linkedin_client_id=os.getenv("LINKEDIN_CLIENT_ID", ""),
+            linkedin_client_secret=os.getenv("LINKEDIN_CLIENT_SECRET", ""),
+            linkedin_redirect_uri=os.getenv(
+                "LINKEDIN_REDIRECT_URI", "http://localhost:8080/callback"
+            ),
+            linkedin_access_token=os.getenv("LINKEDIN_ACCESS_TOKEN", ""),
             linkedin_member_urn=os.getenv("LINKEDIN_MEMBER_URN", ""),
         )
 
