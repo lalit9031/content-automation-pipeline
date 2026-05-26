@@ -53,6 +53,8 @@ def render_landscape_preview(
         )
         png_paths.append(png_path)
     output_path = storage.daily_path(package.date, "video/landscape_preview_16x9.mp4")
+    subtitle_path = storage.daily_path(package.date, "video/landscape_preview_16x9.srt")
+    subtitle_path.write_text(subtitles_for_scenes(scenes), encoding="utf-8")
     _assemble_video(scenes, png_paths, output_path)
     return "video/landscape_preview_16x9.mp4"
 
@@ -90,11 +92,44 @@ def _assemble_video(
     executable = shutil.which("ffmpeg")
     if not executable:
         raise RuntimeError("FFmpeg is required for video previews. Install it with: brew install ffmpeg")
+    clips_dir = output_path.parent / "clips"
+    clips_dir.mkdir(parents=True, exist_ok=True)
     concat_path = output_path.parent / "landscape_scenes.txt"
-    entries: list[str] = []
-    for scene, path in zip(scenes, png_paths, strict=True):
-        entries.extend([f"file '{path}'", f"duration {scene.duration}"])
-    entries.append(f"file '{png_paths[-1]}'")
+    clip_paths: list[Path] = []
+    for index, (scene, path) in enumerate(zip(scenes, png_paths, strict=True), start=1):
+        clip_path = clips_dir / f"scene_{index:02d}.mp4"
+        frames = scene.duration * 30
+        fade_out = max(0, scene.duration - 0.35)
+        subprocess.run(
+            [
+                executable,
+                "-y",
+                "-loop",
+                "1",
+                "-i",
+                str(path),
+                "-vf",
+                (
+                    f"scale=1280:720,zoompan=z='min(zoom+0.00025,1.025)':"
+                    f"d={frames}:s=1280x720:fps=30,"
+                    f"fade=t=in:st=0:d=0.35,fade=t=out:st={fade_out}:d=0.35,"
+                    "format=yuv420p"
+                ),
+                "-t",
+                str(scene.duration),
+                "-an",
+                "-c:v",
+                "libx264",
+                "-movflags",
+                "+faststart",
+                str(clip_path),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        clip_paths.append(clip_path)
+    entries = [f"file '{path}'" for path in clip_paths]
     concat_path.write_text("\n".join(entries) + "\n", encoding="utf-8")
     subprocess.run(
         [
@@ -106,13 +141,8 @@ def _assemble_video(
             "0",
             "-i",
             str(concat_path),
-            "-vf",
-            "scale=1280:720,format=yuv420p",
-            "-r",
-            "30",
-            "-an",
-            "-c:v",
-            "libx264",
+            "-c",
+            "copy",
             "-movflags",
             "+faststart",
             str(output_path),
@@ -121,6 +151,29 @@ def _assemble_video(
         capture_output=True,
         text=True,
     )
+
+
+def subtitles_for_scenes(scenes: list[VideoScene]) -> str:
+    subtitles: list[str] = []
+    start = 0
+    for index, scene in enumerate(scenes, start=1):
+        end = start + scene.duration
+        subtitles.extend(
+            [
+                str(index),
+                f"{_timestamp(start)} --> {_timestamp(end)}",
+                scene.body,
+                "",
+            ]
+        )
+        start = end
+    return "\n".join(subtitles)
+
+
+def _timestamp(seconds: int) -> str:
+    hours, remaining = divmod(seconds, 3600)
+    minutes, remaining = divmod(remaining, 60)
+    return f"{hours:02d}:{minutes:02d}:{remaining:02d},000"
 
 
 def _wrap(value: str, width: int, maximum: int) -> list[str]:

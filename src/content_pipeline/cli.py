@@ -71,6 +71,10 @@ def main() -> int:
     if args.command == "video-preview":
         video_file = render_landscape_preview(package, storage)
         print(f"Landscape video preview generated: {settings.output_dir / 'daily' / args.date / video_file}")
+        print(
+            "Subtitle track generated: "
+            f"{settings.output_dir / 'daily' / args.date / 'video/landscape_preview_16x9.srt'}"
+        )
         return 0
     image_path = daily / "images" / "linkedin_infographic.png"
     if args.command == "linkedin-record":

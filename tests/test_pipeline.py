@@ -15,7 +15,12 @@ from content_pipeline.bots.linkedin import (
     record_published_post,
 )
 from content_pipeline.bots.prompt import OpenAIPromptProvider
-from content_pipeline.bots.video import _assemble_video, scene_svg, scenes_for_package
+from content_pipeline.bots.video import (
+    _assemble_video,
+    scene_svg,
+    scenes_for_package,
+    subtitles_for_scenes,
+)
 from content_pipeline.config import Settings
 from content_pipeline.models import ContentPackage
 from content_pipeline.pipeline import run_linkedin_mvp
@@ -266,11 +271,15 @@ class PipelineTest(unittest.TestCase):
 
         scenes = scenes_for_package(package)
         svg = scene_svg(scenes[0], 1, len(scenes)).decode("utf-8")
+        subtitles = subtitles_for_scenes(scenes)
 
         self.assertEqual(len(scenes), 4)
         self.assertIn("Acceptance Criteria That Prevent", svg)
         self.assertIn("Why does rework happen?", svg)
         self.assertEqual(scenes[-1].label, "YOUR TURN")
+        self.assertIn("00:00:00,000 --> 00:00:04,000", subtitles)
+        self.assertIn("00:00:14,000 --> 00:00:18,000", subtitles)
+        self.assertIn("Why does rework happen?", subtitles)
 
     def test_video_assembly_requires_ffmpeg_when_unavailable(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_dir:

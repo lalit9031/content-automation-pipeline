@@ -120,7 +120,8 @@ PYTHONPATH=src python3 -m content_pipeline linkedin-record \
 ## Render A Video Preview
 
 Phase 2 begins with an exact-text, slide-based landscape preview generated from
-the `video_script` section in `prompt.json`. Install FFmpeg once:
+the `video_script` section in `prompt.json`. It applies subtle motion and fades
+to each branded scene and generates an SRT subtitle sidecar. Install FFmpeg once:
 
 ```bash
 brew install ffmpeg
@@ -136,9 +137,17 @@ Output:
 
 ```text
 output/daily/2026-05-26/video/landscape_preview_16x9.mp4
+output/daily/2026-05-26/video/landscape_preview_16x9.srt
 ```
 
-This video is local-only; it is not uploaded to YouTube.
+This silent preview is local-only; it is not uploaded to YouTube.
+
+## Optional Canva Integration
+
+Canva can later supply richer animated templates and MP4 exports, but automated
+Brand Template Autofill availability depends on the Canva organization plan.
+See [docs/CANVA_SETUP.md](docs/CANVA_SETUP.md) for the current access constraint
+and the exact account, template, and brand-kit details needed to wire it in.
 
 ## Architecture
 

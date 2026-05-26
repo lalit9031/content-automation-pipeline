@@ -13,8 +13,8 @@ controls around public posting.
 | 1 | Prompt Bot | Date and editorial rules | `prompt.json` | Implemented, mock + OpenAI/Claude adapters |
 | 2A | Image Bot | `image_prompt` | Supporting visual variants | Implemented, mock + Imagen adapter |
 | 2A-LI | Infographic Renderer | Structured infographic copy | Exact-text LinkedIn PNG | Implemented |
-| 2B | Video Bot | Script segments | Branded landscape scenes | In progress |
-| 3 | Merge Bot | Scene PNGs | Landscape preview MP4 | In progress |
+| 2B | Video Bot | Script segments | Branded landscape scenes and SRT | In progress |
+| 3 | Merge Bot | Scene PNGs | Motion-based landscape preview MP4 | In progress |
 | 4 | Publish Bots | Assets and metadata | Platform post IDs | LinkedIn personal post completed |
 
 ## Important Design Decisions
@@ -41,7 +41,9 @@ daily/YYYY-MM-DD/
   images/linkedin_infographic.svg
   images/linkedin_infographic.png
   video/scenes/scene_01.png ...
+  video/clips/scene_01.mp4 ...
   video/landscape_preview_16x9.mp4
+  video/landscape_preview_16x9.srt
   clips/clip_01_hook.mp4 ... clip_05_cta.mp4
   video/final_landscape_16x9.mp4
   video/short_youtube_9x16.mp4
@@ -70,9 +72,12 @@ blocks duplicate daily posts unless intentionally overridden.
 
 Started with a deterministic branded-slide renderer to preserve readable text and
 match the LinkedIn teaching format. It converts the generated video script into
-16:9 scenes and assembles a silent local preview with FFmpeg. Next additions are
-voiceover/captions, background-audio licensing rules, thumbnail selection, and
-YouTube resumable upload.
+16:9 scenes and assembles a silent local preview with subtle motion, fades, and
+an SRT subtitle track using FFmpeg. Canva is an optional richer template route,
+gated by access to Brand Template Autofill; current documentation places
+production Autofill access with Canva Enterprise members. Next additions are
+voiceover, background-audio licensing rules, thumbnail selection, and YouTube
+resumable upload.
 Completion gate: one private/unlisted full-length YouTube upload.
 
 ### Phase 3: Vertical Distribution
@@ -97,8 +102,9 @@ Completion gate: seven reliable daily scheduled runs before unattended posting.
   product for `w_member_social`, then authorize posting to your own profile.
 - Meta developer app: attach an Instagram professional account and obtain the
   content publishing permissions needed for Reels.
-- Video provider account: validate that Canva template autofill and MP4 export
-  satisfy the creative workflow before committing to it.
+- Video provider account: confirm Canva Enterprise or eligible Autofill
+  development access and supply an editable brand template before implementing
+  the optional Canva adapter.
 - Runtime: install FFmpeg on the worker image before Phase 2.
 
 ## Secrets For GitHub Actions
@@ -110,7 +116,8 @@ manual test.
 
 ## Your Next Actions
 
-1. Select the Phase 2 video-generation provider and create one test clip workflow.
-2. Install FFmpeg and implement landscape video assembly from generated scenes.
+1. Review the local motion preview and provide Canva access/template inputs from
+   [CANVA_SETUP.md](CANVA_SETUP.md) if richer designed animation is required.
+2. Add optional voiceover and licensed background-audio handling.
 3. Configure YouTube OAuth and upload the first result as private or unlisted.
 4. Keep LinkedIn publishing confirmation-gated during continued content calibration.
