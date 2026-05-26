@@ -13,8 +13,8 @@ controls around public posting.
 | 1 | Prompt Bot | Date and editorial rules | `prompt.json` | Implemented, mock + OpenAI/Claude adapters |
 | 2A | Image Bot | `image_prompt` | Supporting visual variants | Implemented, mock + Imagen adapter |
 | 2A-LI | Infographic Renderer | Structured infographic copy | Exact-text LinkedIn PNG | Implemented |
-| 2B | Video Bot | Script segments | Raw video clips | Planned |
-| 3 | Merge Bot | Images and clips | Landscape and vertical video | Planned |
+| 2B | Video Bot | Script segments | Branded landscape scenes | In progress |
+| 3 | Merge Bot | Scene PNGs | Landscape preview MP4 | In progress |
 | 4 | Publish Bots | Assets and metadata | Platform post IDs | LinkedIn personal post completed |
 
 ## Important Design Decisions
@@ -40,6 +40,8 @@ daily/YYYY-MM-DD/
   images/image_portrait.png|svg
   images/linkedin_infographic.svg
   images/linkedin_infographic.png
+  video/scenes/scene_01.png ...
+  video/landscape_preview_16x9.mp4
   clips/clip_01_hook.mp4 ... clip_05_cta.mp4
   video/final_landscape_16x9.mp4
   video/short_youtube_9x16.mp4
@@ -66,9 +68,11 @@ blocks duplicate daily posts unless intentionally overridden.
 
 ### Phase 2: Video Generation And YouTube
 
-Evaluate Canva Connect autofill/export against Runway or another video provider,
-then implement a provider-neutral `VideoBot`. Add FFmpeg normalization, concat,
-audio licensing rules, thumbnail selection, and YouTube resumable upload.
+Started with a deterministic branded-slide renderer to preserve readable text and
+match the LinkedIn teaching format. It converts the generated video script into
+16:9 scenes and assembles a silent local preview with FFmpeg. Next additions are
+voiceover/captions, background-audio licensing rules, thumbnail selection, and
+YouTube resumable upload.
 Completion gate: one private/unlisted full-length YouTube upload.
 
 ### Phase 3: Vertical Distribution

@@ -12,6 +12,7 @@ from content_pipeline.bots.linkedin import (
     published_post_receipt,
     record_published_post,
 )
+from content_pipeline.bots.video import render_landscape_preview
 from content_pipeline.config import Settings
 from content_pipeline.models import ContentPackage
 from content_pipeline.pipeline import run_linkedin_mvp
@@ -23,6 +24,8 @@ def main() -> int:
     subparsers = parser.add_subparsers(dest="command", required=True)
     run_parser = subparsers.add_parser("run", help="Generate the daily content package.")
     run_parser.add_argument("--date", default=date.today().isoformat(), help="Date in YYYY-MM-DD.")
+    video_parser = subparsers.add_parser("video-preview", help="Render a landscape video preview.")
+    video_parser.add_argument("--date", default=date.today().isoformat(), help="Date in YYYY-MM-DD.")
     auth_parser = subparsers.add_parser("linkedin-auth", help="Authorize your LinkedIn profile.")
     post_parser = subparsers.add_parser("linkedin-post", help="Preview or publish an image post.")
     post_parser.add_argument("--date", default=date.today().isoformat(), help="Date in YYYY-MM-DD.")
@@ -65,6 +68,10 @@ def main() -> int:
     package = ContentPackage.from_dict(
         json.loads((daily / "prompt.json").read_text(encoding="utf-8"))
     )
+    if args.command == "video-preview":
+        video_file = render_landscape_preview(package, storage)
+        print(f"Landscape video preview generated: {settings.output_dir / 'daily' / args.date / video_file}")
+        return 0
     image_path = daily / "images" / "linkedin_infographic.png"
     if args.command == "linkedin-record":
         receipt = record_published_post(

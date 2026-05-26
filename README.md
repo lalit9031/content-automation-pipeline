@@ -117,6 +117,29 @@ PYTHONPATH=src python3 -m content_pipeline linkedin-record \
   --date 2026-05-26 --post-id urn:li:share:POST_ID
 ```
 
+## Render A Video Preview
+
+Phase 2 begins with an exact-text, slide-based landscape preview generated from
+the `video_script` section in `prompt.json`. Install FFmpeg once:
+
+```bash
+brew install ffmpeg
+```
+
+Then render a local MP4:
+
+```bash
+PYTHONPATH=src python3 -m content_pipeline video-preview --date 2026-05-26
+```
+
+Output:
+
+```text
+output/daily/2026-05-26/video/landscape_preview_16x9.mp4
+```
+
+This video is local-only; it is not uploaded to YouTube.
+
 ## Architecture
 
 The supplied architecture diagram is kept at [assets/content_automation_pipeline.svg](assets/content_automation_pipeline.svg).

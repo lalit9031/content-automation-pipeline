@@ -15,6 +15,7 @@ from content_pipeline.bots.linkedin import (
     record_published_post,
 )
 from content_pipeline.bots.prompt import OpenAIPromptProvider
+from content_pipeline.bots.video import _assemble_video, scene_svg, scenes_for_package
 from content_pipeline.config import Settings
 from content_pipeline.models import ContentPackage
 from content_pipeline.pipeline import run_linkedin_mvp
@@ -234,6 +235,53 @@ class PipelineTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "already recorded"):
             assert_publish_allowed(receipt, force_republish=False)
         assert_publish_allowed(receipt, force_republish=True)
+
+    def test_video_scenes_use_structured_script_copy(self) -> None:
+        package = ContentPackage.from_dict(
+            {
+                "date": "2026-05-26",
+                "topic": "Acceptance Criteria That Prevent Rework",
+                "image_prompt": "Illustration",
+                "linkedin_infographic": {
+                    "headline": "Headline",
+                    "subtitle": "Subtitle",
+                    "left_panel": {"title": "Left", "points": ["A"]},
+                    "right_panel": {"title": "Right", "points": ["B"]},
+                    "takeaway_title": "Takeaway",
+                    "takeaway_points": ["C"],
+                    "workflow": ["Plan", "Done"],
+                    "discussion_prompt": "Discuss?",
+                },
+                "video_script": {
+                    "hook": "Why does rework happen?",
+                    "points": ["Clarify outcomes", "Make criteria testable"],
+                    "cta": "What does your team check?",
+                },
+                "linkedin_caption": "Caption",
+                "hashtags": ["#ProjectManagement"],
+                "seo_title": "Title",
+                "seo_description": "Description",
+            }
+        )
+
+        scenes = scenes_for_package(package)
+        svg = scene_svg(scenes[0], 1, len(scenes)).decode("utf-8")
+
+        self.assertEqual(len(scenes), 4)
+        self.assertIn("Acceptance Criteria That Prevent", svg)
+        self.assertIn("Why does rework happen?", svg)
+        self.assertEqual(scenes[-1].label, "YOUR TURN")
+
+    def test_video_assembly_requires_ffmpeg_when_unavailable(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            path = Path(temporary_dir)
+            with patch("content_pipeline.bots.video.shutil.which", return_value=None):
+                with self.assertRaisesRegex(RuntimeError, "FFmpeg is required"):
+                    _assemble_video(
+                        [types.SimpleNamespace(duration=3)],
+                        [path / "scene.png"],
+                        path / "preview.mp4",
+                    )
 
 
 if __name__ == "__main__":
