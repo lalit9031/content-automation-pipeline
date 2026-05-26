@@ -10,7 +10,7 @@ controls around public posting.
 
 | Stage | Bot | Input | Output | MVP status |
 | --- | --- | --- | --- | --- |
-| 1 | Prompt Bot | Date and editorial rules | `prompt.json` | Implemented, mock + Claude adapter |
+| 1 | Prompt Bot | Date and editorial rules | `prompt.json` | Implemented, mock + OpenAI/Claude adapters |
 | 2A | Image Bot | `image_prompt` | Three visual variants | Implemented, mock + Imagen adapter |
 | 2B | Video Bot | Script segments | Raw video clips | Planned |
 | 3 | Merge Bot | Images and clips | Landscape and vertical video | Planned |
@@ -76,7 +76,8 @@ Completion gate: seven reliable daily scheduled runs before unattended posting.
 
 - Google Cloud project: enable Vertex AI, configure service account, and later
   enable YouTube Data API OAuth credentials and a GCS bucket.
-- Anthropic account: create an API key and select a model available to the account.
+- OpenAI Platform account: create an API key for Prompt Bot; ChatGPT subscriptions
+  are separate from API billing and credentials.
 - LinkedIn organization: request the required Community Management/organization
   publishing access and keep a test page available.
 - Meta developer app: attach an Instagram professional account and obtain the
@@ -88,16 +89,15 @@ Completion gate: seven reliable daily scheduled runs before unattended posting.
 ## Secrets For GitHub Actions
 
 Do not commit keys. When each integration is enabled, add repository secrets for
-`ANTHROPIC_API_KEY`, Google Cloud authentication, LinkedIn tokens, YouTube OAuth,
+`OPENAI_API_KEY`, Google Cloud authentication, LinkedIn tokens, YouTube OAuth,
 Meta tokens, and video-provider credentials. Enable only the bot that has passed a
 manual test.
 
 ## Your Next Actions
 
-1. Create an empty GitHub repository called `content-automation-pipeline` and add
-   its remote URL to the local repository.
-2. Choose either Anthropic or OpenAI for Prompt Bot production; the starter
-   currently implements Anthropic because it matches the supplied design.
+1. Add repository secrets only after the relevant live provider has been tested
+   locally; keep scheduled publishing disabled during calibration.
+2. Create an OpenAI API key and enable the OpenAI Prompt Bot settings in `.env`.
 3. Set up the Google Cloud project and confirm access to an Imagen model.
 4. Create or identify the LinkedIn organization page used for the first test post.
 5. Decide whether the first milestone should require human approval before publish;

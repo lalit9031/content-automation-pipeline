@@ -45,6 +45,81 @@ class MockPromptProvider:
         )
 
 
+class OpenAIPromptProvider:
+    def __init__(self, settings: Settings) -> None:
+        if not settings.openai_api_key or not settings.openai_model:
+            raise ValueError("OPENAI_API_KEY and OPENAI_MODEL are required")
+        try:
+            from openai import OpenAI
+        except ImportError as exc:
+            raise RuntimeError("Install live dependencies with: pip install -e '.[live]'") from exc
+        self.client = OpenAI(api_key=settings.openai_api_key)
+        self.model = settings.openai_model
+
+    def generate(self, day: str) -> ContentPackage:
+        response = self.client.responses.create(
+            model=self.model,
+            instructions=(
+                "You are a content strategist. Create an accurate daily content "
+                "package for LinkedIn, YouTube and Instagram. Do not invent "
+                "statistics or describe a topic as trending without supplied evidence."
+            ),
+            input=(
+                f"Date: {day}. Produce one useful topic in AI, technology, "
+                "productivity, or entrepreneurship and its content package."
+            ),
+            text={
+                "format": {
+                    "type": "json_schema",
+                    "name": "daily_content_package",
+                    "strict": True,
+                    "schema": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": [
+                            "date",
+                            "topic",
+                            "image_prompt",
+                            "video_script",
+                            "linkedin_caption",
+                            "hashtags",
+                            "seo_title",
+                            "seo_description",
+                        ],
+                        "properties": {
+                            "date": {"type": "string"},
+                            "topic": {"type": "string"},
+                            "image_prompt": {"type": "string"},
+                            "video_script": {
+                                "type": "object",
+                                "additionalProperties": False,
+                                "required": ["hook", "points", "cta"],
+                                "properties": {
+                                    "hook": {"type": "string"},
+                                    "points": {
+                                        "type": "array",
+                                        "items": {"type": "string"},
+                                        "minItems": 1,
+                                    },
+                                    "cta": {"type": "string"},
+                                },
+                            },
+                            "linkedin_caption": {"type": "string"},
+                            "hashtags": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "minItems": 1,
+                            },
+                            "seo_title": {"type": "string"},
+                            "seo_description": {"type": "string"},
+                        },
+                    },
+                }
+            },
+        )
+        return ContentPackage.from_dict(json.loads(response.output_text))
+
+
 class AnthropicPromptProvider:
     def __init__(self, settings: Settings) -> None:
         if not settings.anthropic_api_key or not settings.anthropic_model:
@@ -84,6 +159,8 @@ class AnthropicPromptProvider:
 def prompt_provider(settings: Settings) -> PromptProvider:
     if settings.prompt_provider == "mock":
         return MockPromptProvider()
+    if settings.prompt_provider == "openai":
+        return OpenAIPromptProvider(settings)
     if settings.prompt_provider == "anthropic":
         return AnthropicPromptProvider(settings)
     raise ValueError(f"Unsupported PROMPT_PROVIDER: {settings.prompt_provider}")

@@ -50,12 +50,13 @@ source .venv/bin/activate
 pip install -e '.[live,dev]'
 ```
 
-Then update `.env`:
+Then update `.env`. OpenAI API access requires an API key; a ChatGPT
+subscription alone does not supply API credentials.
 
 ```dotenv
-PROMPT_PROVIDER=anthropic
-ANTHROPIC_API_KEY=your_key
-ANTHROPIC_MODEL=your_enabled_claude_model
+PROMPT_PROVIDER=openai
+OPENAI_API_KEY=your_openai_api_key
+OPENAI_MODEL=gpt-5.4-mini
 
 IMAGE_PROVIDER=imagen
 GCP_PROJECT_ID=your_google_cloud_project

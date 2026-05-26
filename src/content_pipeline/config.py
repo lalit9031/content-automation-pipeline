@@ -11,6 +11,8 @@ class Settings:
     mode: str = "mock"
     prompt_provider: str = "mock"
     image_provider: str = "mock"
+    openai_api_key: str = ""
+    openai_model: str = "gpt-5.4-mini"
     anthropic_api_key: str = ""
     anthropic_model: str = ""
     gcp_project_id: str = ""
@@ -30,6 +32,8 @@ class Settings:
             mode=os.getenv("PIPELINE_MODE", "mock").strip().lower(),
             prompt_provider=os.getenv("PROMPT_PROVIDER", "mock").strip().lower(),
             image_provider=os.getenv("IMAGE_PROVIDER", "mock").strip().lower(),
+            openai_api_key=os.getenv("OPENAI_API_KEY", ""),
+            openai_model=os.getenv("OPENAI_MODEL", "gpt-5.4-mini"),
             anthropic_api_key=os.getenv("ANTHROPIC_API_KEY", ""),
             anthropic_model=os.getenv("ANTHROPIC_MODEL", ""),
             gcp_project_id=os.getenv("GCP_PROJECT_ID", ""),
