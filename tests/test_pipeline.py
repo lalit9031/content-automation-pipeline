@@ -25,6 +25,8 @@ class PipelineTest(unittest.TestCase):
 
             payload = json.loads((daily / "publish" / "linkedin_payload.json").read_text())
             self.assertIn("#AI", payload["hashtags"])
+            self.assertEqual(payload["posting_target"], "personal_profile")
+            self.assertEqual(payload["required_scope"], "w_member_social")
 
     def test_openai_provider_requests_structured_daily_package(self) -> None:
         captured = {}

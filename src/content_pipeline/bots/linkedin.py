@@ -29,10 +29,13 @@ def prepare_linkedin_post(
 ) -> PublishReceipt:
     if settings.publish_linkedin:
         raise NotImplementedError(
-            "Live LinkedIn publishing is intentionally gated until organization "
-            "access and the image upload/post approval flow are configured."
+            "Live LinkedIn publishing is intentionally gated until member OAuth "
+            "with w_member_social and the image upload/post flow are configured."
         )
     post = {
+        "posting_target": "personal_profile",
+        "author": settings.linkedin_member_urn or "authenticated_member",
+        "required_scope": "w_member_social",
         "caption": package.linkedin_caption,
         "hashtags": package.hashtags,
         "image_file": image_file,
@@ -41,7 +44,7 @@ def prepare_linkedin_post(
     receipt = PublishReceipt(
         platform="linkedin",
         status="prepared",
-        message="Payload prepared locally; public posting is disabled.",
+        message="Personal profile payload prepared locally; public posting is disabled.",
     )
     storage.write_json(package.date, "publish/linkedin_receipt.json", receipt.as_dict())
     return receipt

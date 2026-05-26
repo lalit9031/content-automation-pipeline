@@ -7,7 +7,7 @@ The starter implementation covers the first shippable slice:
 
 - Bot 1 produces a validated `prompt.json`.
 - Bot 2A produces square, landscape, and portrait image artifacts.
-- The LinkedIn bot prepares a post payload and receipt without posting publicly.
+- The LinkedIn bot prepares a personal-profile image post payload and receipt without posting publicly.
 - All remaining video and publishing stages are mapped in [docs/PROJECT_PLAN.md](docs/PROJECT_PLAN.md).
 
 Mock mode is the default, so the pipeline is runnable before paid API access or
@@ -65,8 +65,8 @@ IMAGEN_MODEL=imagen-4.0-generate-001
 ```
 
 Google Application Default Credentials must also be configured for Vertex AI.
-LinkedIn remains deliberately non-posting until its approved organization access
-and media upload flow are wired and tested.
+LinkedIn remains deliberately non-posting until member OAuth with
+`w_member_social` and the media upload flow are wired and tested.
 
 ## Architecture
 

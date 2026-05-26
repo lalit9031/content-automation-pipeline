@@ -47,11 +47,11 @@ SVG images are mock-development placeholders; live Imagen runs write PNG files.
 
 ## Delivery Phases
 
-### Phase 1: LinkedIn Image Post
+### Phase 1: Personal LinkedIn Image Post
 
-Already started in code. Next work is GCS storage, reviewed LinkedIn organization
-authentication, image upload registration, post creation, and failure receipts.
-Completion gate: one manually approved live post from a generated package.
+Already started in code. Next work is member OAuth with `w_member_social`, image
+upload, post creation using the authenticated member as author, and failure
+receipts. Completion gate: one manually confirmed post on the owner's profile.
 
 ### Phase 2: Video Generation And YouTube
 
@@ -78,8 +78,8 @@ Completion gate: seven reliable daily scheduled runs before unattended posting.
   enable YouTube Data API OAuth credentials and a GCS bucket.
 - OpenAI Platform account: create an API key for Prompt Bot; ChatGPT subscriptions
   are separate from API billing and credentials.
-- LinkedIn organization: request the required Community Management/organization
-  publishing access and keep a test page available.
+- LinkedIn member account: create a developer app, add the Share on LinkedIn
+  product for `w_member_social`, then authorize posting to your own profile.
 - Meta developer app: attach an Instagram professional account and obtain the
   content publishing permissions needed for Reels.
 - Video provider account: validate that Canva template autofill and MP4 export
@@ -99,6 +99,6 @@ manual test.
    locally; keep scheduled publishing disabled during calibration.
 2. Create an OpenAI API key and enable the OpenAI Prompt Bot settings in `.env`.
 3. Set up the Google Cloud project and confirm access to an Imagen model.
-4. Create or identify the LinkedIn organization page used for the first test post.
+4. Create a LinkedIn developer app and enable personal-profile sharing access.
 5. Decide whether the first milestone should require human approval before publish;
    that is strongly recommended while prompt quality is being calibrated.
