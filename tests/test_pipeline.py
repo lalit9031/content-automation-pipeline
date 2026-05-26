@@ -274,8 +274,11 @@ class PipelineTest(unittest.TestCase):
         subtitles = subtitles_for_scenes(scenes)
 
         self.assertEqual(len(scenes), 4)
-        self.assertIn("Acceptance Criteria That Prevent", svg)
+        self.assertIn("Acceptance Criteria That", svg)
+        self.assertIn("Prevent Rework", svg)
         self.assertIn("Why does rework happen?", svg)
+        self.assertIn('id="grid"', svg)
+        self.assertIn("#ffae46", svg)
         self.assertEqual(scenes[-1].label, "YOUR TURN")
         self.assertIn("00:00:00,000 --> 00:00:04,000", subtitles)
         self.assertIn("00:00:14,000 --> 00:00:18,000", subtitles)

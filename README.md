@@ -148,6 +148,8 @@ Canva can later supply richer animated templates and MP4 exports, but automated
 Brand Template Autofill availability depends on the Canva organization plan.
 See [docs/CANVA_SETUP.md](docs/CANVA_SETUP.md) for the current access constraint
 and the exact account, template, and brand-kit details needed to wire it in.
+The instructional motion-graphics design target is recorded in
+[docs/VIDEO_STYLE_REFERENCE.md](docs/VIDEO_STYLE_REFERENCE.md).
 
 ## Architecture
 

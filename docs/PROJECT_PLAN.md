@@ -78,6 +78,12 @@ gated by access to Brand Template Autofill; current documentation places
 production Autofill access with Canva Enterprise members. Next additions are
 voiceover, background-audio licensing rules, thumbnail selection, and YouTube
 resumable upload.
+
+The selected presentation direction is a narrated educational motion graphic:
+dark violet grid and glow background, orange section tags, original icon/diagram
+illustrations, process and comparison scenes, and a clear CTA. See
+[VIDEO_STYLE_REFERENCE.md](VIDEO_STYLE_REFERENCE.md); the reference topic and
+assets are not copied.
 Completion gate: one private/unlisted full-length YouTube upload.
 
 ### Phase 3: Vertical Distribution
