@@ -11,7 +11,8 @@ controls around public posting.
 | Stage | Bot | Input | Output | MVP status |
 | --- | --- | --- | --- | --- |
 | 1 | Prompt Bot | Date and editorial rules | `prompt.json` | Implemented, mock + OpenAI/Claude adapters |
-| 2A | Image Bot | `image_prompt` | Three visual variants | Implemented, mock + Imagen adapter |
+| 2A | Image Bot | `image_prompt` | Supporting visual variants | Implemented, mock + Imagen adapter |
+| 2A-LI | Infographic Renderer | Structured infographic copy | Exact-text LinkedIn PNG | Implemented |
 | 2B | Video Bot | Script segments | Raw video clips | Planned |
 | 3 | Merge Bot | Images and clips | Landscape and vertical video | Planned |
 | 4 | Publish Bots | Assets and metadata | Platform post IDs | LinkedIn payload only; all live posts gated |
@@ -37,6 +38,8 @@ daily/YYYY-MM-DD/
   images/image_square.png|svg
   images/image_landscape.png|svg
   images/image_portrait.png|svg
+  images/linkedin_infographic.svg
+  images/linkedin_infographic.png
   clips/clip_01_hook.mp4 ... clip_05_cta.mp4
   video/final_landscape_16x9.mp4
   video/short_youtube_9x16.mp4
@@ -45,7 +48,9 @@ daily/YYYY-MM-DD/
   run_manifest.json
 ```
 
-SVG images are mock-development placeholders; live Imagen runs write PNG files.
+The LinkedIn infographic is rendered from structured text to SVG and PNG for
+reliable spelling and layout. Other SVG images are mock-development placeholders;
+live Imagen runs write supporting PNG files when needed.
 
 ## Delivery Phases
 

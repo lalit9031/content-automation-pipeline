@@ -12,6 +12,7 @@ dependencies = []
 [project.optional-dependencies]
 live = [
   "anthropic>=0.52.0",
+  "cairosvg>=2.7.1",
   "google-genai>=1.16.0",
   "openai>=1.82.0",
 ]

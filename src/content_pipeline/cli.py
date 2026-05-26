@@ -46,7 +46,7 @@ def main() -> int:
     package = ContentPackage.from_dict(
         json.loads((daily / "prompt.json").read_text(encoding="utf-8"))
     )
-    image_path = daily / "images" / "image_square.png"
+    image_path = daily / "images" / "linkedin_infographic.png"
     if not args.publish:
         print(f"Preview only: {image_path}")
         print(" ".join([package.linkedin_caption, *package.hashtags]))

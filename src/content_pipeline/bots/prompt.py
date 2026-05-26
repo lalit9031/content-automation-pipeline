@@ -20,13 +20,11 @@ EDITORIAL_STYLE = (
     "examples; close with a thoughtful question inviting comments. Keep the "
     "caption useful and detailed, not promotional, and provide 6 to 10 relevant "
     "hashtags. Never invent statistics or claim a topic is trending without "
-    "supplied evidence. The image must be a detailed professional LinkedIn "
-    "infographic, portrait 4:5 composition, with a bold readable title at top, "
-    "clearly separated colored panels, concise labels and bullets, process arrows "
-    "or side-by-side comparison when appropriate, simple business/tech icons, "
-    "clean white background with navy/blue/green/orange accents, and a discussion "
-    "prompt footer. Avoid photographs, generic dashboards, logos, watermarks, "
-    "tiny unreadable filler text, or decorative clutter."
+    "supplied evidence. The linkedin_infographic content is rendered by a controlled "
+    "portrait template with a headline, two panels, a takeaway, workflow, and "
+    "discussion footer; keep every item brief and readable. The image_prompt is "
+    "only for a supporting illustration and must contain no text, logos, or "
+    "watermarks."
 )
 
 
@@ -41,13 +39,36 @@ class MockPromptProvider:
                 "date": day,
                 "topic": "Definition of Done vs Acceptance Criteria in Agile delivery",
                 "image_prompt": (
-                    "Professional LinkedIn infographic, portrait 4:5 layout. Header: "
-                    "'BUILT THE RIGHT THING vs BUILT THE THING RIGHT?' Compare "
-                    "Acceptance Criteria and Definition of Done in two colored "
-                    "columns with checklist icons, one login-feature example, "
-                    "delivery-quality summary, and discussion footer. Clean white "
-                    "background, navy title, orange and green panels, readable text."
+                    "Clean supporting illustration of an Agile team reviewing a "
+                    "quality checklist, modern flat editorial style, no text."
                 ),
+                "linkedin_infographic": {
+                    "headline": "Built the right thing vs built the thing right?",
+                    "subtitle": "Acceptance Criteria (AC) vs Definition of Done (DoD)",
+                    "left_panel": {
+                        "title": "Acceptance Criteria",
+                        "points": [
+                            "Specific to one feature or story",
+                            "Defines what the user must be able to do",
+                            "Example: user can log in with Google",
+                        ],
+                    },
+                    "right_panel": {
+                        "title": "Definition of Done",
+                        "points": [
+                            "Quality standard for every story",
+                            "Covers tests, review and documentation",
+                            "Example: tested, secure and deployable",
+                        ],
+                    },
+                    "takeaway_title": "Use both before calling work complete",
+                    "takeaway_points": [
+                        "AC checks whether we built the right outcome",
+                        "DoD checks whether we built it responsibly",
+                    ],
+                    "workflow": ["Refine", "Build", "Test", "Review", "Done"],
+                    "discussion_prompt": "What is one check your team never skips?",
+                },
                 "video_script": {
                     "hook": "Is a story done when it meets acceptance criteria?",
                     "points": [
@@ -102,8 +123,13 @@ class OpenAIPromptProvider:
             input=(
                 f"Date: {day}. Produce one fresh teaching topic and complete content "
                 "package in the specified project-management and Agile-delivery style. "
-                "The image prompt must be self-contained for an image model to create "
-                "the infographic."
+                "The image_prompt is only for a supporting illustration with no text. "
+                "The linkedin_infographic field drives a deterministic template: keep "
+                "the headline under 58 characters, subtitle under 70 characters, "
+                "each panel to 3 concise points under 65 characters, takeaway to 2 "
+                "points under 70 characters, workflow to 4 or 5 labels of no more "
+                "than 2 words each (for example: Discover, Refine, Build, Review, "
+                "Done), and discussion_prompt under 70 characters."
             ),
             text={
                 "format": {
@@ -117,6 +143,7 @@ class OpenAIPromptProvider:
                             "date",
                             "topic",
                             "image_prompt",
+                            "linkedin_infographic",
                             "video_script",
                             "linkedin_caption",
                             "hashtags",
@@ -127,6 +154,62 @@ class OpenAIPromptProvider:
                             "date": {"type": "string"},
                             "topic": {"type": "string"},
                             "image_prompt": {"type": "string"},
+                            "linkedin_infographic": {
+                                "type": "object",
+                                "additionalProperties": False,
+                                "required": [
+                                    "headline",
+                                    "subtitle",
+                                    "left_panel",
+                                    "right_panel",
+                                    "takeaway_title",
+                                    "takeaway_points",
+                                    "workflow",
+                                    "discussion_prompt",
+                                ],
+                                "properties": {
+                                    "headline": {"type": "string"},
+                                    "subtitle": {"type": "string"},
+                                    "left_panel": {
+                                        "type": "object",
+                                        "additionalProperties": False,
+                                        "required": ["title", "points"],
+                                        "properties": {
+                                            "title": {"type": "string"},
+                                            "points": {
+                                                "type": "array",
+                                                "items": {"type": "string"},
+                                                "minItems": 1,
+                                            },
+                                        },
+                                    },
+                                    "right_panel": {
+                                        "type": "object",
+                                        "additionalProperties": False,
+                                        "required": ["title", "points"],
+                                        "properties": {
+                                            "title": {"type": "string"},
+                                            "points": {
+                                                "type": "array",
+                                                "items": {"type": "string"},
+                                                "minItems": 1,
+                                            },
+                                        },
+                                    },
+                                    "takeaway_title": {"type": "string"},
+                                    "takeaway_points": {
+                                        "type": "array",
+                                        "items": {"type": "string"},
+                                        "minItems": 1,
+                                    },
+                                    "workflow": {
+                                        "type": "array",
+                                        "items": {"type": "string"},
+                                        "minItems": 1,
+                                    },
+                                    "discussion_prompt": {"type": "string"},
+                                },
+                            },
                             "video_script": {
                                 "type": "object",
                                 "additionalProperties": False,
@@ -180,6 +263,9 @@ class AnthropicPromptProvider:
                     "role": "user",
                     "content": (
                         f"Date: {day}. Produce keys: date, topic, image_prompt, "
+                        "linkedin_infographic with headline, subtitle, left_panel "
+                        "(title/points), right_panel (title/points), takeaway_title, "
+                        "takeaway_points, workflow and discussion_prompt, "
                         "video_script with hook, points and cta, linkedin_caption, "
                         "hashtags, seo_title, seo_description. Choose a fresh useful "
                         "topic in the specified professional delivery niche."

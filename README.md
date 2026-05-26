@@ -6,7 +6,8 @@ YouTube, YouTube Shorts, and Instagram Reels.
 The starter implementation covers the first shippable slice:
 
 - Bot 1 produces a validated `prompt.json`.
-- Bot 2A produces square, landscape, and portrait image artifacts.
+- Bot 2A produces supporting visual variants for later video/social formats.
+- A template renderer produces an exact-text LinkedIn infographic PNG.
 - The LinkedIn bot prepares a personal-profile image post payload and receipt without posting publicly.
 - All remaining video and publishing stages are mapped in [docs/PROJECT_PLAN.md](docs/PROJECT_PLAN.md).
 
@@ -29,6 +30,8 @@ output/daily/2026-05-26/
   images/image_square.svg
   images/image_landscape.svg
   images/image_portrait.svg
+  images/linkedin_infographic.svg
+  images/linkedin_infographic.png
   publish/linkedin_payload.json
   publish/linkedin_receipt.json
   run_manifest.json
@@ -67,6 +70,12 @@ IMAGEN_MODEL=imagen-4.0-generate-001
 Google Application Default Credentials must also be configured for Vertex AI.
 LinkedIn remains deliberately non-posting until member OAuth with
 `w_member_social` and the media upload flow are wired and tested.
+
+For LinkedIn-only drafting, leave `IMAGE_PROVIDER=mock`: the deterministic
+infographic renderer creates the publishable LinkedIn PNG without paid Imagen
+generation. Enable Imagen only when supporting visual variants are needed. Run
+manifests identify active providers and report `mode: live` whenever OpenAI or
+Imagen is enabled.
 
 ## Connect Personal LinkedIn Posting
 
