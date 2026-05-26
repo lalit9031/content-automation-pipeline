@@ -7,11 +7,18 @@ from pathlib import Path
 from unittest.mock import patch
 
 from content_pipeline.bots.infographic import infographic_svg
-from content_pipeline.bots.linkedin import LinkedInClient, linkedin_share_payload
+from content_pipeline.bots.linkedin import (
+    LinkedInClient,
+    assert_publish_allowed,
+    linkedin_share_payload,
+    published_post_receipt,
+    record_published_post,
+)
 from content_pipeline.bots.prompt import OpenAIPromptProvider
 from content_pipeline.config import Settings
 from content_pipeline.models import ContentPackage
 from content_pipeline.pipeline import run_linkedin_mvp
+from content_pipeline.storage import LocalDailyStorage
 
 
 class PipelineTest(unittest.TestCase):
@@ -193,6 +200,40 @@ class PipelineTest(unittest.TestCase):
         self.assertIn("Feature outcome", svg)
         self.assertIn("Quality gate", svg)
         self.assertNotIn("IMAGE BOT PLACEHOLDER", svg)
+
+    def test_published_receipt_prevents_duplicate_post_by_default(self) -> None:
+        package = ContentPackage.from_dict(
+            {
+                "date": "2026-05-26",
+                "topic": "Topic",
+                "image_prompt": "Supporting illustration",
+                "linkedin_infographic": {
+                    "headline": "Headline",
+                    "subtitle": "Subtitle",
+                    "left_panel": {"title": "Left", "points": ["A"]},
+                    "right_panel": {"title": "Right", "points": ["B"]},
+                    "takeaway_title": "Takeaway",
+                    "takeaway_points": ["C"],
+                    "workflow": ["Plan", "Done"],
+                    "discussion_prompt": "Discuss?",
+                },
+                "video_script": {"hook": "Hook", "points": ["Point"], "cta": "CTA"},
+                "linkedin_caption": "Caption",
+                "hashtags": ["#ProjectManagement"],
+                "seo_title": "Title",
+                "seo_description": "Description",
+            }
+        )
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            storage = LocalDailyStorage(Path(temporary_dir) / "output")
+            record_published_post(package, "images/linkedin_infographic.png", "urn:li:share:1", storage)
+            receipt = published_post_receipt(storage, package.date)
+
+        self.assertEqual(receipt["status"], "published")
+        self.assertEqual(receipt["post_id"], "urn:li:share:1")
+        with self.assertRaisesRegex(RuntimeError, "already recorded"):
+            assert_publish_allowed(receipt, force_republish=False)
+        assert_publish_allowed(receipt, force_republish=True)
 
 
 if __name__ == "__main__":

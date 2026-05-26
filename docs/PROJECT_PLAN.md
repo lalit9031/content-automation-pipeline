@@ -15,7 +15,7 @@ controls around public posting.
 | 2A-LI | Infographic Renderer | Structured infographic copy | Exact-text LinkedIn PNG | Implemented |
 | 2B | Video Bot | Script segments | Raw video clips | Planned |
 | 3 | Merge Bot | Images and clips | Landscape and vertical video | Planned |
-| 4 | Publish Bots | Assets and metadata | Platform post IDs | LinkedIn payload only; all live posts gated |
+| 4 | Publish Bots | Assets and metadata | Platform post IDs | LinkedIn personal post completed |
 
 ## Important Design Decisions
 
@@ -54,15 +54,15 @@ live Imagen runs write supporting PNG files when needed.
 
 ## Delivery Phases
 
-### Phase 1: Personal LinkedIn Image Post
+### Phase 1: Personal LinkedIn Image Post - Complete
 
-Already started in code. Next work is member OAuth with `w_member_social`, image
-upload, post creation using the authenticated member as author, and failure
-receipts. Completion gate: one manually confirmed post on the owner's profile.
+Completed on May 26, 2026: member OAuth with `w_member_social`, exact-text image
+generation, preview/confirmation, and one live post on the owner's profile.
 
 Implemented control flow: `linkedin-auth` stores an authorized token only in the
 local ignored `.env`; `linkedin-post` previews by default and publishes only with
-an explicit `--publish` flag.
+an explicit `--publish` flag. Successful publication now writes a receipt and
+blocks duplicate daily posts unless intentionally overridden.
 
 ### Phase 2: Video Generation And YouTube
 
@@ -106,10 +106,7 @@ manual test.
 
 ## Your Next Actions
 
-1. Add repository secrets only after the relevant live provider has been tested
-   locally; keep scheduled publishing disabled during calibration.
-2. Create an OpenAI API key and enable the OpenAI Prompt Bot settings in `.env`.
-3. Set up the Google Cloud project and confirm access to an Imagen model.
-4. Create a LinkedIn developer app and enable personal-profile sharing access.
-5. Decide whether the first milestone should require human approval before publish;
-   that is strongly recommended while prompt quality is being calibrated.
+1. Select the Phase 2 video-generation provider and create one test clip workflow.
+2. Install FFmpeg and implement landscape video assembly from generated scenes.
+3. Configure YouTube OAuth and upload the first result as private or unlisted.
+4. Keep LinkedIn publishing confirmation-gated during continued content calibration.

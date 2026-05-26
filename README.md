@@ -108,6 +108,15 @@ Only after reviewing the preview, publish it to the authorized personal profile:
 PYTHONPATH=src python3 -m content_pipeline linkedin-post --date 2026-05-26 --publish
 ```
 
+Successful publications write `publish/linkedin_published.json`. A second publish
+for the same date is blocked unless `--force-republish` is provided deliberately.
+To register an existing post created before this guard was added:
+
+```bash
+PYTHONPATH=src python3 -m content_pipeline linkedin-record \
+  --date 2026-05-26 --post-id urn:li:share:POST_ID
+```
+
 ## Architecture
 
 The supplied architecture diagram is kept at [assets/content_automation_pipeline.svg](assets/content_automation_pipeline.svg).

@@ -21,6 +21,12 @@ class LocalDailyStorage:
         path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
         return path
 
+    def read_json(self, day: str, filename: str) -> Any | None:
+        path = self.output_dir / "daily" / day / filename
+        if not path.exists():
+            return None
+        return json.loads(path.read_text(encoding="utf-8"))
+
     def write_text(self, day: str, filename: str, value: str) -> Path:
         path = self.daily_path(day, filename)
         path.write_text(value, encoding="utf-8")

@@ -7,6 +7,7 @@ import urllib.parse
 import urllib.request
 import webbrowser
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
@@ -193,6 +194,42 @@ def publish_linkedin_image(
         package,
         asset_urn,
     )
+
+
+def published_post_receipt(
+    storage: LocalDailyStorage,
+    day: str,
+) -> dict[str, str] | None:
+    return storage.read_json(day, "publish/linkedin_published.json")
+
+
+def record_published_post(
+    package: ContentPackage,
+    image_file: str,
+    post_id: str,
+    storage: LocalDailyStorage,
+) -> dict[str, str]:
+    receipt = {
+        "platform": "linkedin",
+        "status": "published",
+        "topic": package.topic,
+        "image_file": image_file,
+        "post_id": post_id,
+        "published_at": datetime.now(timezone.utc).isoformat(),
+    }
+    storage.write_json(package.date, "publish/linkedin_published.json", receipt)
+    return receipt
+
+
+def assert_publish_allowed(
+    prior_post: dict[str, str] | None,
+    force_republish: bool,
+) -> None:
+    if prior_post and not force_republish:
+        raise RuntimeError(
+            "LinkedIn post already recorded for this date: "
+            f"{prior_post['post_id']}. Use --force-republish only intentionally."
+        )
 
 
 def prepare_linkedin_post(
