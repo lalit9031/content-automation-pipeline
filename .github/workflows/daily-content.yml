@@ -1,0 +1,38 @@
+name: Daily Content Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: Optional run date in YYYY-MM-DD
+        required: false
+        type: string
+  schedule:
+    - cron: "30 2 * * *" # 08:00 Asia/Kolkata (UTC has no daylight saving shift).
+
+jobs:
+  prepare-content:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      PIPELINE_MODE: mock
+      PROMPT_PROVIDER: mock
+      IMAGE_PROVIDER: mock
+      PUBLISH_LINKEDIN: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run safe daily package generation
+        run: |
+          RUN_DATE="${{ inputs.date }}"
+          if [ -z "$RUN_DATE" ]; then
+            RUN_DATE="$(date -u +%F)"
+          fi
+          PYTHONPATH=src python -m content_pipeline run --date "$RUN_DATE"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: daily-content-artifacts
+          path: output/daily/
