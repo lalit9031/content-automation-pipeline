@@ -8,6 +8,28 @@ from content_pipeline.config import Settings
 from content_pipeline.models import ContentPackage
 
 
+EDITORIAL_STYLE = (
+    "The creator is a senior project manager and Agile delivery leader. His "
+    "LinkedIn posts teach project managers, Scrum Masters, product managers, "
+    "business analysts, and software-delivery professionals. Prefer practical "
+    "topics such as Definition of Done, acceptance criteria, sprint planning, "
+    "stakeholder communication, risk, quality, AI in delivery, workflow design, "
+    "or lessons from real delivery situations. Write in an educational LinkedIn "
+    "style: begin with a short conversational hook or question; explain a common "
+    "problem; break down a framework, comparison, or workflow with concrete "
+    "examples; close with a thoughtful question inviting comments. Keep the "
+    "caption useful and detailed, not promotional, and provide 6 to 10 relevant "
+    "hashtags. Never invent statistics or claim a topic is trending without "
+    "supplied evidence. The image must be a detailed professional LinkedIn "
+    "infographic, portrait 4:5 composition, with a bold readable title at top, "
+    "clearly separated colored panels, concise labels and bullets, process arrows "
+    "or side-by-side comparison when appropriate, simple business/tech icons, "
+    "clean white background with navy/blue/green/orange accents, and a discussion "
+    "prompt footer. Avoid photographs, generic dashboards, logos, watermarks, "
+    "tiny unreadable filler text, or decorative clutter."
+)
+
+
 class PromptProvider(Protocol):
     def generate(self, day: str) -> ContentPackage: ...
 
@@ -17,29 +39,46 @@ class MockPromptProvider:
         return ContentPackage.from_dict(
             {
                 "date": day,
-                "topic": "How small teams can use AI workflows responsibly",
+                "topic": "Definition of Done vs Acceptance Criteria in Agile delivery",
                 "image_prompt": (
-                    "A creator planning an AI-assisted content workflow on a clean "
-                    "dashboard, warm daylight, professional photography, no text"
+                    "Professional LinkedIn infographic, portrait 4:5 layout. Header: "
+                    "'BUILT THE RIGHT THING vs BUILT THE THING RIGHT?' Compare "
+                    "Acceptance Criteria and Definition of Done in two colored "
+                    "columns with checklist icons, one login-feature example, "
+                    "delivery-quality summary, and discussion footer. Clean white "
+                    "background, navy title, orange and green panels, readable text."
                 ),
                 "video_script": {
-                    "hook": "AI workflows save time only when the guardrails are clear.",
+                    "hook": "Is a story done when it meets acceptance criteria?",
                     "points": [
-                        "Start with one repeatable task",
-                        "Review claims before publishing",
-                        "Measure useful engagement, not volume",
+                        "Acceptance criteria prove the requested outcome",
+                        "Definition of Done proves delivery quality",
+                        "Strong teams use both before calling work complete",
                     ],
-                    "cta": "Follow for practical AI workflow ideas.",
+                    "cta": "What is one item your Definition of Done never skips?",
                 },
                 "linkedin_caption": (
-                    "A content pipeline should amplify judgment, not remove it. "
-                    "Start small, review facts, then automate the repeatable parts."
+                    "Is it accepted, or is it actually done?\n\nAcceptance Criteria "
+                    "checks whether a feature solves the user's need. Definition of "
+                    "Done checks whether it is safe, tested, reviewed, and ready to "
+                    "ship.\n\nFor a login feature:\n- AC: the user can log in with "
+                    "the required account.\n- DoD: code reviewed, tests passed, "
+                    "security checks completed, and documentation updated.\n\nTeams "
+                    "avoid last-minute surprises when they use both. What is one "
+                    "check your team never skips before calling work done?"
                 ),
-                "hashtags": ["#AI", "#ContentStrategy", "#Automation"],
-                "seo_title": "Build a Responsible AI Content Workflow",
+                "hashtags": [
+                    "#ProjectManagement",
+                    "#ScrumMaster",
+                    "#AgileDelivery",
+                    "#SoftwareDevelopment",
+                    "#ProductManagement",
+                    "#QualityAssurance",
+                ],
+                "seo_title": "Acceptance Criteria vs Definition of Done",
                 "seo_description": (
-                    "A practical approach to using AI workflows for consistent "
-                    "content while preserving accuracy and review."
+                    "A practical Agile comparison showing how acceptance criteria "
+                    "and Definition of Done support predictable delivery."
                 ),
             }
         )
@@ -59,14 +98,12 @@ class OpenAIPromptProvider:
     def generate(self, day: str) -> ContentPackage:
         response = self.client.responses.create(
             model=self.model,
-            instructions=(
-                "You are a content strategist. Create an accurate daily content "
-                "package for LinkedIn, YouTube and Instagram. Do not invent "
-                "statistics or describe a topic as trending without supplied evidence."
-            ),
+            instructions=EDITORIAL_STYLE,
             input=(
-                f"Date: {day}. Produce one useful topic in AI, technology, "
-                "productivity, or entrepreneurship and its content package."
+                f"Date: {day}. Produce one fresh teaching topic and complete content "
+                "package in the specified project-management and Agile-delivery style. "
+                "The image prompt must be self-contained for an image model to create "
+                "the infographic."
             ),
             text={
                 "format": {
@@ -136,10 +173,7 @@ class AnthropicPromptProvider:
             model=self.model,
             max_tokens=1600,
             system=(
-                "You are a content strategist. Output only valid JSON. Create an "
-                "accurate daily content package for LinkedIn, YouTube and Instagram. "
-                "Do not invent statistics or describe a topic as trending without "
-                "evidence supplied in the prompt."
+                f"Output only valid JSON. {EDITORIAL_STYLE}"
             ),
             messages=[
                 {
@@ -147,8 +181,8 @@ class AnthropicPromptProvider:
                     "content": (
                         f"Date: {day}. Produce keys: date, topic, image_prompt, "
                         "video_script with hook, points and cta, linkedin_caption, "
-                        "hashtags, seo_title, seo_description. Choose a useful topic "
-                        "in AI, technology, productivity, or entrepreneurship."
+                        "hashtags, seo_title, seo_description. Choose a fresh useful "
+                        "topic in the specified professional delivery niche."
                     ),
                 }
             ],

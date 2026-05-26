@@ -26,7 +26,7 @@ class PipelineTest(unittest.TestCase):
             self.assertTrue((daily / "images" / "image_portrait.svg").exists())
 
             payload = json.loads((daily / "publish" / "linkedin_payload.json").read_text())
-            self.assertIn("#AI", payload["hashtags"])
+            self.assertIn("#ProjectManagement", payload["hashtags"])
             self.assertEqual(payload["posting_target"], "personal_profile")
             self.assertEqual(payload["required_scope"], "w_member_social")
 
@@ -67,6 +67,8 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(captured["model"], "gpt-5.4-mini")
         self.assertEqual(captured["text"]["format"]["type"], "json_schema")
         self.assertTrue(captured["text"]["format"]["strict"])
+        self.assertIn("Scrum Masters", captured["instructions"])
+        self.assertIn("infographic", captured["instructions"])
 
     def test_linkedin_authorization_requests_personal_post_scope(self) -> None:
         settings = Settings(

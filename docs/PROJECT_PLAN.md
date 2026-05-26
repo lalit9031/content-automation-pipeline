@@ -20,6 +20,8 @@ controls around public posting.
 
 - Start with local storage, then add Google Cloud Storage once the artifact contract
   is stable. Local output makes development and tests quick and inspectable.
+- Use the owner's established LinkedIn voice: educational posts for project and
+  Agile delivery professionals, paired with structured portrait infographics.
 - Do not label topics as trending solely from an LLM response. A future research
   input must provide sourced trend context before the Prompt Bot makes that claim.
 - Do not enable public posting by default. A failed post is recoverable; an
