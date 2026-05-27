@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import time
 from dataclasses import asdict, dataclass
 from datetime import date
@@ -157,6 +158,44 @@ def write_voice_selection(output_dir: Path, sample_filename: str) -> Path:
         "voice_source_mode": "built_in_ai_voice",
     }
     path.write_text(json.dumps(selection, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return path
+
+
+def record_character_design_approval(
+    output_dir: Path,
+    kanha_image: Path,
+    yashoda_image: Path,
+) -> Path:
+    for label, path in (("KANHA_V1", kanha_image), ("YASHODA_V1", yashoda_image)):
+        if not path.exists():
+            raise FileNotFoundError(f"{label} approval image is missing: {path}")
+    approval = {
+        "workflow_id": WORKFLOW_ID,
+        "identity_version": "v1",
+        "approved_on": date.today().isoformat(),
+        "approval_status": "creator_approved_for_private_motion_validation",
+        "approval_scope": (
+            "Original fictional character design only. No real-person likeness permission "
+            "is asserted and no public upload is approved."
+        ),
+        "characters": {
+            "KANHA_V1": {
+                "file": str(kanha_image),
+                "sha256": hashlib.sha256(kanha_image.read_bytes()).hexdigest(),
+            },
+            "YASHODA_V1": {
+                "file": str(yashoda_image),
+                "sha256": hashlib.sha256(yashoda_image.read_bytes()).hexdigest(),
+            },
+        },
+        "next_gate": (
+            "Generate an HTTPS-hosted fictional KANHA_V1 still through a configured "
+            "character-motion provider, then approve that precise hosted still before rendering motion."
+        ),
+    }
+    path = output_dir / WORKFLOW_ID / "character_design_approval.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(approval, indent=2) + "\n", encoding="utf-8")
     return path
 
 

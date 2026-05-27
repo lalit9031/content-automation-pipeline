@@ -76,6 +76,14 @@ The identity pack fixes recognizable design features for `KANHA_V1` and
 `YASHODA_V1` and supplies a review checklist for the two desired character
 motion clips. It does not claim Sora has generated those characters.
 
+After the concept images are accepted, store the exact approval fingerprint:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m content_pipeline krishna-character-approve \
+  --kanha-image output/bal_krishna_character_identity_validation/images/kanha_v1_concept_preview.png \
+  --yashoda-image output/bal_krishna_character_identity_validation/images/yashoda_v1_concept_preview.png
+```
+
 Generate real motion clips after checking the plan:
 
 ```bash

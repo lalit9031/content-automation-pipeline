@@ -21,6 +21,7 @@ from content_pipeline.bots.krishna_agents import (
     generate_luma_character_identities,
     generate_planned_images,
     initialize_agent_workspace,
+    record_character_design_approval,
     write_character_validation_pack,
     write_image_plan,
     write_voice_selection,
@@ -117,6 +118,13 @@ def main() -> int:
         help="Write the fictional character identity plan and motion review protocol.",
     )
     character_parser.add_argument("--destination", type=Path, default=Path("output"))
+    approval_parser = subparsers.add_parser(
+        "krishna-character-approve",
+        help="Record creator approval of the fictional Kanha and Yashoda concept previews.",
+    )
+    approval_parser.add_argument("--kanha-image", type=Path, required=True)
+    approval_parser.add_argument("--yashoda-image", type=Path, required=True)
+    approval_parser.add_argument("--destination", type=Path, default=Path("output"))
     luma_identities_parser = subparsers.add_parser(
         "krishna-luma-identity-generate",
         help="Generate fictional Kanha and Yashoda identity stills for creator review.",
@@ -227,6 +235,19 @@ def main() -> int:
             destination = project_dir / destination
         for path in write_character_validation_pack(destination):
             print(path)
+        return 0
+    if args.command == "krishna-character-approve":
+        destination = args.destination
+        if not destination.is_absolute():
+            destination = project_dir / destination
+        kanha_image = args.kanha_image if args.kanha_image.is_absolute() else project_dir / args.kanha_image
+        yashoda_image = (
+            args.yashoda_image if args.yashoda_image.is_absolute() else project_dir / args.yashoda_image
+        )
+        print(
+            "Character design approval recorded: "
+            f"{record_character_design_approval(destination, kanha_image, yashoda_image)}"
+        )
         return 0
     if args.command == "krishna-luma-identity-generate":
         plan_path = args.plan if args.plan.is_absolute() else project_dir / args.plan

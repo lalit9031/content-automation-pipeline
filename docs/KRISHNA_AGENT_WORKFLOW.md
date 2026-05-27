@@ -102,6 +102,19 @@ The reviewer checks identity consistency, natural movement, hand/eye/clothing
 quality, child safety and absence of copyrighted assets or real-person
 resemblance before a longer episode is attempted.
 
+After approving concept previews, write an approval receipt that binds the
+approved designs to the exact files:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m content_pipeline krishna-character-approve \
+  --kanha-image output/bal_krishna_character_identity_validation/images/kanha_v1_concept_preview.png \
+  --yashoda-image output/bal_krishna_character_identity_validation/images/yashoda_v1_concept_preview.png
+```
+
+This approves the fictional designs for private motion evaluation only. It
+does not approve public distribution or grant permission to use a real
+person's likeness.
+
 ## Motion, Assembly And Upload
 
 The real-motion validation and publication-gate commands remain documented in

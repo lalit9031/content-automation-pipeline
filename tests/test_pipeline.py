@@ -25,6 +25,7 @@ from content_pipeline.bots.krishna_agents import (
     generate_luma_character_identities,
     generate_planned_images,
     initialize_agent_workspace,
+    record_character_design_approval,
     voice_source_policy,
     write_voice_selection,
 )
@@ -565,6 +566,27 @@ class PipelineTest(unittest.TestCase):
                 motion_payload["keyframes"]["frame0"]["url"],
                 "https://cdn.example/kanha.jpg",
             )
+
+    def test_character_design_approval_records_exact_fictional_asset_hashes(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            output = Path(temporary_dir) / "output"
+            kanha = Path(temporary_dir) / "kanha.png"
+            yashoda = Path(temporary_dir) / "yashoda.png"
+            kanha.write_bytes(b"fictional-kanha")
+            yashoda.write_bytes(b"fictional-yashoda")
+
+            path = record_character_design_approval(output, kanha, yashoda)
+            approval = json.loads(path.read_text(encoding="utf-8"))
+
+            self.assertEqual(
+                approval["approval_status"],
+                "creator_approved_for_private_motion_validation",
+            )
+            self.assertNotEqual(
+                approval["characters"]["KANHA_V1"]["sha256"],
+                approval["characters"]["YASHODA_V1"]["sha256"],
+            )
+            self.assertIn("No real-person likeness", approval["approval_scope"])
 
     def test_youtube_policy_gate_blocks_missing_declarations(self) -> None:
         report = review_publication(
