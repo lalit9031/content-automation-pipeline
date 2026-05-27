@@ -187,7 +187,9 @@ one-agent-per-job design and safe voice-source policy, and
 provider-boundary, character-identity verification, policy-check and
 private-upload commands. The pilot narration selection is recorded as the
 built-in `marin` sample; character clips require a provider route that permits
-original fictional human-like characters.
+original fictional human-like characters. A gated Luma evaluation route can
+generate fictional identity stills and, after creator approval, one private
+five-second Kanha motion test.
 
 ## Architecture
 

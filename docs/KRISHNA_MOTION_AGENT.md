@@ -118,6 +118,34 @@ approved final-video provider yet. Runway Characters is not selected because
 its published additional policy prohibits characters intended to engage users
 under 18.
 
+Configure Luma locally when its API key is available:
+
+```dotenv
+LUMAAI_API_KEY=
+LUMA_IMAGE_MODEL=photon-1
+LUMA_VIDEO_MODEL=ray-2
+```
+
+Generate fictional identity stills for review:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m content_pipeline krishna-luma-identity-generate
+```
+
+Only after approving the generated `KANHA_V1` identity still, use the hosted
+`source_url` in the receipt to create and render the initial five-second clip:
+
+```bash
+MOTION_PROVIDER=luma_dream_machine \
+PYTHONPATH=src .venv/bin/python -m content_pipeline krishna-luma-kanha-motion-plan \
+  --approved-image-url "https://approved-fictional-kanha-image-url" \
+  --confirm-identity-approved
+
+MOTION_PROVIDER=luma_dream_machine \
+PYTHONPATH=src .venv/bin/python -m content_pipeline krishna-motion-generate \
+  --plan output/bal_krishna_luma_kanha_motion_validation/motion_plan.json
+```
+
 ## Publication Gate
 
 The separate Copyright Policy Agent prevents YouTube upload until a policy

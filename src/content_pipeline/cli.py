@@ -18,6 +18,7 @@ from content_pipeline.bots.krishna_agents import (
     ImagePlan,
     bal_krishna_character_design_plan,
     bal_krishna_image_plan,
+    generate_luma_character_identities,
     generate_planned_images,
     initialize_agent_workspace,
     write_character_validation_pack,
@@ -28,6 +29,7 @@ from content_pipeline.bots.motion import (
     MotionPlan,
     assemble_motion_preview,
     bal_krishna_environment_validation_plan,
+    bal_krishna_luma_kanha_validation_plan,
     bal_krishna_validation_plan,
     generate_motion_clips,
     write_motion_plan,
@@ -115,6 +117,26 @@ def main() -> int:
         help="Write the fictional character identity plan and motion review protocol.",
     )
     character_parser.add_argument("--destination", type=Path, default=Path("output"))
+    luma_identities_parser = subparsers.add_parser(
+        "krishna-luma-identity-generate",
+        help="Generate fictional Kanha and Yashoda identity stills for creator review.",
+    )
+    luma_identities_parser.add_argument(
+        "--plan",
+        type=Path,
+        default=Path("output/bal_krishna_character_identity_validation/image_plan.json"),
+    )
+    luma_motion_parser = subparsers.add_parser(
+        "krishna-luma-kanha-motion-plan",
+        help="Write a private Kanha image-to-video motion test after identity approval.",
+    )
+    luma_motion_parser.add_argument("--approved-image-url", required=True)
+    luma_motion_parser.add_argument(
+        "--confirm-identity-approved",
+        action="store_true",
+        help="Confirm the supplied URL is the reviewed fictional KANHA_V1 still.",
+    )
+    luma_motion_parser.add_argument("--destination", type=Path, default=Path("output"))
     motion_plan_parser = subparsers.add_parser(
         "krishna-motion-plan", help="Write the two-clip Sora motion validation plan."
     )
@@ -205,6 +227,23 @@ def main() -> int:
             destination = project_dir / destination
         for path in write_character_validation_pack(destination):
             print(path)
+        return 0
+    if args.command == "krishna-luma-identity-generate":
+        plan_path = args.plan if args.plan.is_absolute() else project_dir / args.plan
+        plan = ImagePlan.from_dict(json.loads(plan_path.read_text(encoding="utf-8")))
+        generated = generate_luma_character_identities(plan, settings, settings.output_dir)
+        print(json.dumps(generated, indent=2))
+        return 0
+    if args.command == "krishna-luma-kanha-motion-plan":
+        if not args.confirm_identity_approved:
+            raise ValueError(
+                "Review the fictional KANHA_V1 still first, then rerun with --confirm-identity-approved."
+            )
+        destination = args.destination
+        if not destination.is_absolute():
+            destination = project_dir / destination
+        plan = bal_krishna_luma_kanha_validation_plan(args.approved_image_url, settings.luma_video_model)
+        print(f"Motion validation plan generated: {write_motion_plan(plan, destination)}")
         return 0
     if args.command == "krishna-motion-plan":
         destination = args.destination

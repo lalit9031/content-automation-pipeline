@@ -22,13 +22,16 @@ from content_pipeline.bots.krishna_agents import (
     bal_krishna_character_design_plan,
     bal_krishna_image_plan,
     character_motion_validation_protocol,
+    generate_luma_character_identities,
     generate_planned_images,
     initialize_agent_workspace,
     voice_source_policy,
     write_voice_selection,
 )
 from content_pipeline.bots.motion import (
+    LumaMotionProvider,
     bal_krishna_environment_validation_plan,
+    bal_krishna_luma_kanha_validation_plan,
     bal_krishna_validation_plan,
 )
 from content_pipeline.bots.policy import (
@@ -498,6 +501,70 @@ class PipelineTest(unittest.TestCase):
         self.assertIn("Luma Dream Machine", protocol["provider_gate"]["next_character_route"])
         self.assertEqual(len(protocol["planned_character_test_clips"]), 2)
         self.assertIn("approved identity", protocol["human_review_checklist"][0])
+
+    def test_luma_kanha_motion_plan_requires_approved_https_identity_image(self) -> None:
+        with self.assertRaises(ValueError):
+            bal_krishna_luma_kanha_validation_plan("/tmp/a-child-photo.jpg")
+
+        plan = bal_krishna_luma_kanha_validation_plan("https://cdn.example/fictional-kanha-v1.jpg")
+
+        self.assertEqual(plan.provider, "luma_dream_machine")
+        self.assertEqual(plan.clips[0].duration_seconds, 5)
+        self.assertEqual(plan.clips[0].reference_image_url, "https://cdn.example/fictional-kanha-v1.jpg")
+        self.assertIn("approved fictional KANHA_V1", plan.provider_rules[0])
+
+    def test_luma_identity_and_motion_adapters_use_fictional_reference_url(self) -> None:
+        class Response:
+            def __init__(self, data: dict | None = None, content: bytes = b"") -> None:
+                self.data = data or {}
+                self.content = content
+
+            def raise_for_status(self) -> None:
+                return None
+
+            def json(self) -> dict:
+                return self.data
+
+        class Session:
+            def __init__(self) -> None:
+                self.posts: list[dict] = []
+                self.image_counter = 0
+
+            def post(self, url: str, **kwargs: object) -> Response:
+                self.posts.append({"url": url, **kwargs})
+                if url.endswith("/image"):
+                    self.image_counter += 1
+                    return Response({"id": f"identity-{self.image_counter}"})
+                return Response({"id": "motion-1"})
+
+            def get(self, url: str, **kwargs: object) -> Response:
+                if url.endswith("identity-1"):
+                    return Response({"state": "completed", "assets": {"image": "https://cdn.example/kanha.jpg"}})
+                if url.endswith("identity-2"):
+                    return Response({"state": "completed", "assets": {"image": "https://cdn.example/yashoda.jpg"}})
+                if url.endswith("motion-1"):
+                    return Response({"state": "completed", "assets": {"video": "https://cdn.example/kanha.mp4"}})
+                return Response(content=b"asset-bytes")
+
+        session = Session()
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            output = Path(temporary_dir)
+            settings = Settings(output_dir=output, luma_api_key="secret")
+            identities = generate_luma_character_identities(
+                bal_krishna_character_design_plan(), settings, output, session=session
+            )
+            plan = bal_krishna_luma_kanha_validation_plan(identities[0]["source_url"])
+            path = output / "clip.mp4"
+            LumaMotionProvider(settings, session=session).create_clip(plan.clips[0], plan, path)
+
+            self.assertTrue(path.exists())
+            self.assertEqual(identities[0]["status"], "awaiting_creator_approval")
+            self.assertNotIn("image_ref", session.posts[0]["json"])
+            motion_payload = session.posts[-1]["json"]
+            self.assertEqual(
+                motion_payload["keyframes"]["frame0"]["url"],
+                "https://cdn.example/kanha.jpg",
+            )
 
     def test_youtube_policy_gate_blocks_missing_declarations(self) -> None:
         report = review_publication(

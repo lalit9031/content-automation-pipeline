@@ -93,7 +93,7 @@ PYTHONPATH=src .venv/bin/python -m content_pipeline krishna-image-plan --mode ch
 
 The pack defines `KANHA_V1` and `YASHODA_V1` with stable hair, costume,
 accessories and color cues. After the generated identity stills are approved,
-the Motion Video Agent tests only two 6 to 8 second actions:
+the Motion Video Agent tests only two five-second private actions:
 
 - Kanha sees the hanging butter pot, blinks and smiles.
 - Yashoda gently hugs Kanha.
@@ -118,6 +118,38 @@ approved fictional identity stills. This is an inference from its documented
 API capabilities and content policy, not a promise that each generation will
 pass moderation. Runway Characters is not selected because its published
 additional policy disallows characters intended to engage users under 18.
+
+To begin that private evaluation, configure a Luma API key locally:
+
+```dotenv
+LUMAAI_API_KEY=
+LUMA_IMAGE_MODEL=photon-1
+LUMA_VIDEO_MODEL=ray-2
+```
+
+Generate original fictional identity stills for review:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m content_pipeline krishna-luma-identity-generate
+```
+
+After you approve the generated `KANHA_V1` still, use the `source_url` stored
+in `identity_generation_receipt.json` to create one five-second motion plan:
+
+```bash
+MOTION_PROVIDER=luma_dream_machine \
+PYTHONPATH=src .venv/bin/python -m content_pipeline krishna-luma-kanha-motion-plan \
+  --approved-image-url "https://approved-fictional-kanha-image-url" \
+  --confirm-identity-approved
+```
+
+Then generate only that private motion test:
+
+```bash
+MOTION_PROVIDER=luma_dream_machine \
+PYTHONPATH=src .venv/bin/python -m content_pipeline krishna-motion-generate \
+  --plan output/bal_krishna_luma_kanha_motion_validation/motion_plan.json
+```
 
 ## Shared Safety Rules
 

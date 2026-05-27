@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import asdict, dataclass
 from datetime import date
 from pathlib import Path
 from typing import Any
 
+import requests
+
 from content_pipeline.bots.audio import VOICE_VARIANTS
 from content_pipeline.bots.image import ImageProvider, ImageVariant
+from content_pipeline.config import Settings
 
 
 WORKFLOW_ID = "kanha_ki_nanhi_leela"
@@ -284,7 +288,7 @@ def character_motion_validation_protocol() -> dict[str, Any]:
         "planned_character_test_clips": [
             {
                 "id": "kanha_sees_butter_pot",
-                "length_seconds": "6-8",
+                "length_seconds": "5",
                 "required_motion": [
                     "Kanha looks from camera area toward the hanging pot.",
                     "Kanha blinks once and forms a playful smile.",
@@ -293,7 +297,7 @@ def character_motion_validation_protocol() -> dict[str, Any]:
             },
             {
                 "id": "yashoda_hugs_kanha",
-                "length_seconds": "6-8",
+                "length_seconds": "5",
                 "required_motion": [
                     "Yashoda bends gently and embraces Kanha.",
                     "Kanha smiles and relaxes into the hug.",
@@ -363,3 +367,72 @@ def generate_planned_images(
         path.write_bytes(provider.create(shot.prompt, variant))
         outputs.append(path)
     return outputs
+
+
+def generate_luma_character_identities(
+    plan: ImagePlan,
+    settings: Settings,
+    output_dir: Path,
+    session: requests.Session | None = None,
+) -> list[dict[str, str]]:
+    if plan.provider_mode != "fictional_character_design_stills_only":
+        raise ValueError("Luma identity generation requires the fictional character identity plan.")
+    if not settings.luma_api_key:
+        raise ValueError("LUMAAI_API_KEY is required to generate fictional character identity stills.")
+    client = session or requests.Session()
+    endpoint = "https://api.lumalabs.ai/dream-machine/v1/generations/image"
+    generation_endpoint = "https://api.lumalabs.ai/dream-machine/v1/generations"
+    headers = {
+        "Authorization": f"Bearer {settings.luma_api_key}",
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
+    project_dir = output_dir / plan.project_id
+    results: list[dict[str, str]] = []
+    for shot in plan.shots:
+        response = client.post(
+            endpoint,
+            headers=headers,
+            json={"prompt": shot.prompt, "model": settings.luma_image_model, "aspect_ratio": "9:16"},
+            timeout=60,
+        )
+        response.raise_for_status()
+        generation_id = response.json()["id"]
+        while True:
+            status = client.get(
+                f"{generation_endpoint}/{generation_id}",
+                headers=headers,
+                timeout=60,
+            )
+            status.raise_for_status()
+            generation = status.json()
+            state = generation.get("state")
+            if state == "completed":
+                break
+            if state == "failed":
+                raise RuntimeError(
+                    f"Luma identity generation failed for {shot.id}: "
+                    f"{generation.get('failure_reason', 'unknown error')}"
+                )
+            print(f"Waiting for Luma identity still {shot.id}: {state}")
+            time.sleep(3)
+        image_url = generation.get("assets", {}).get("image")
+        if not image_url:
+            raise RuntimeError(f"Luma identity generation completed without an image URL for {shot.id}.")
+        asset = client.get(image_url, timeout=120)
+        asset.raise_for_status()
+        path = project_dir / f"{shot.output_basename}.jpg"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(asset.content)
+        results.append(
+            {
+                "status": "awaiting_creator_approval",
+                "identity_id": shot.id,
+                "generation_id": generation_id,
+                "file": str(path),
+                "source_url": image_url,
+            }
+        )
+    receipt = project_dir / "identity_generation_receipt.json"
+    receipt.write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
+    return results

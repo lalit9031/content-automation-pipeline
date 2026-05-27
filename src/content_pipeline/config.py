@@ -31,6 +31,9 @@ class Settings:
     canva_brand_template_id: str = ""
     motion_provider: str = "openai_sora"
     motion_model: str = "sora-2"
+    luma_api_key: str = ""
+    luma_image_model: str = "photon-1"
+    luma_video_model: str = "ray-2"
     youtube_client_secrets_file: str = ""
     youtube_token_file: str = ""
     dotenv_path: Path | None = None
@@ -71,6 +74,9 @@ class Settings:
             canva_brand_template_id=os.getenv("CANVA_BRAND_TEMPLATE_ID", ""),
             motion_provider=os.getenv("MOTION_PROVIDER", "openai_sora").strip().lower(),
             motion_model=os.getenv("MOTION_MODEL", "sora-2"),
+            luma_api_key=os.getenv("LUMAAI_API_KEY", ""),
+            luma_image_model=os.getenv("LUMA_IMAGE_MODEL", "photon-1"),
+            luma_video_model=os.getenv("LUMA_VIDEO_MODEL", "ray-2"),
             youtube_client_secrets_file=os.getenv("YOUTUBE_CLIENT_SECRETS_FILE", ""),
             youtube_token_file=os.getenv("YOUTUBE_TOKEN_FILE", ""),
             dotenv_path=project_dir / ".env",

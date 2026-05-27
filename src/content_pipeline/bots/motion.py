@@ -8,6 +8,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+import requests
+
 from content_pipeline.config import Settings
 
 
@@ -18,6 +20,7 @@ class MotionClip:
     duration_seconds: int
     prompt: str
     output_file: str
+    reference_image_url: str | None = None
 
 
 @dataclass(frozen=True)
@@ -161,6 +164,42 @@ def bal_krishna_environment_validation_plan(model: str = "sora-2") -> MotionPlan
     )
 
 
+def bal_krishna_luma_kanha_validation_plan(reference_image_url: str, model: str = "ray-2") -> MotionPlan:
+    if not reference_image_url.startswith("https://"):
+        raise ValueError("Luma character motion requires an HTTPS URL for the approved fictional identity still.")
+    return MotionPlan(
+        project_id="bal_krishna_luma_kanha_motion_validation",
+        title="Kanha Ki Nanhi Leela - Kanha Character Motion Validation",
+        provider="luma_dream_machine",
+        model=model,
+        size="720p:9:16",
+        clips=[
+            MotionClip(
+                id="kanha_sees_butter_pot",
+                title="Approved KANHA_V1 sees the butter pot",
+                duration_seconds=5,
+                output_file="clips/scene_01_kanha_sees_butter_pot.mp4",
+                reference_image_url=reference_image_url,
+                prompt=(
+                    "Animate only the original fictional KANHA_V1 character shown in the "
+                    "starting image. Preserve his face, soft blue-toned skin, curly hair, "
+                    "single peacock feather, yellow dhoti and red waistband. He slowly "
+                    "turns his eyes toward the hanging butter pot, blinks once, then smiles "
+                    "gently. His peacock feather and marigold garlands move in a light "
+                    "breeze. Slow gentle camera push in. Child-friendly devotional mood; "
+                    "no text, watermark, frightening action or additional people."
+                ),
+            ),
+        ],
+        provider_rules=[
+            "The reference URL must be an approved fictional KANHA_V1 identity still, never a family photograph.",
+            "This is a private five-second validation clip only; do not upload publicly before human review.",
+            "Reject the clip if facial identity, costume, anatomy or child-safe tone changes materially.",
+            "No copyrighted characters, copyrighted music, real-person likeness or copied studio style.",
+        ],
+    )
+
+
 def write_motion_plan(plan: MotionPlan, output_dir: Path) -> Path:
     path = output_dir / plan.project_id / "motion_plan.json"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -200,10 +239,85 @@ class SoraMotionProvider:
         return {"clip_id": clip.id, "video_id": video.id, "file": str(destination)}
 
 
+class LumaMotionProvider:
+    base_url = "https://api.lumalabs.ai/dream-machine/v1/generations"
+
+    def __init__(self, settings: Settings, session: requests.Session | None = None) -> None:
+        if not settings.luma_api_key:
+            raise ValueError("LUMAAI_API_KEY is required for MOTION_PROVIDER=luma_dream_machine")
+        self.settings = settings
+        self.session = session or requests.Session()
+
+    @property
+    def headers(self) -> dict[str, str]:
+        return {
+            "Authorization": f"Bearer {self.settings.luma_api_key}",
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        }
+
+    def _await_generation(self, generation_id: str) -> dict[str, Any]:
+        while True:
+            response = self.session.get(
+                f"{self.base_url}/{generation_id}",
+                headers=self.headers,
+                timeout=60,
+            )
+            response.raise_for_status()
+            generation = response.json()
+            state = generation.get("state")
+            if state == "completed":
+                return generation
+            if state == "failed":
+                raise RuntimeError(
+                    f"Luma generation failed: {generation.get('failure_reason', 'unknown error')}"
+                )
+            print(f"Waiting for Luma generation {generation_id}: {state}")
+            time.sleep(3)
+
+    def create_clip(self, clip: MotionClip, plan: MotionPlan, destination: Path) -> dict[str, str]:
+        if not clip.reference_image_url:
+            raise ValueError("Luma character-motion clips require an approved fictional reference image URL.")
+        payload = {
+            "prompt": clip.prompt,
+            "model": plan.model,
+            "resolution": "720p",
+            "duration": f"{clip.duration_seconds}s",
+            "aspect_ratio": "9:16",
+            "keyframes": {
+                "frame0": {"type": "image", "url": clip.reference_image_url},
+            },
+        }
+        response = self.session.post(self.base_url, headers=self.headers, json=payload, timeout=60)
+        response.raise_for_status()
+        generation_id = response.json()["id"]
+        generation = self._await_generation(generation_id)
+        video_url = generation.get("assets", {}).get("video")
+        if not video_url:
+            raise RuntimeError("Luma generation completed without a video URL.")
+        content = self.session.get(video_url, timeout=120)
+        content.raise_for_status()
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(content.content)
+        return {
+            "clip_id": clip.id,
+            "video_id": generation_id,
+            "file": str(destination),
+            "reference_image_url": clip.reference_image_url,
+        }
+
+
 def generate_motion_clips(plan: MotionPlan, settings: Settings, output_dir: Path) -> list[dict[str, str]]:
-    if settings.motion_provider != "openai_sora":
-        raise ValueError("Set MOTION_PROVIDER=openai_sora to generate real motion clips.")
-    provider = SoraMotionProvider(settings)
+    if plan.provider == "openai_sora":
+        if settings.motion_provider != "openai_sora":
+            raise ValueError("Set MOTION_PROVIDER=openai_sora to generate Sora motion clips.")
+        provider: SoraMotionProvider | LumaMotionProvider = SoraMotionProvider(settings)
+    elif plan.provider == "luma_dream_machine":
+        if settings.motion_provider != "luma_dream_machine":
+            raise ValueError("Set MOTION_PROVIDER=luma_dream_machine to generate Luma motion clips.")
+        provider = LumaMotionProvider(settings)
+    else:
+        raise ValueError(f"Unsupported motion provider in plan: {plan.provider}")
     project_dir = output_dir / plan.project_id
     results = []
     for clip in plan.clips:
