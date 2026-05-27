@@ -21,6 +21,7 @@ class MotionClip:
     prompt: str
     output_file: str
     reference_image_url: str | None = None
+    reference_image_file: str | None = None
 
 
 @dataclass(frozen=True)
@@ -200,6 +201,36 @@ def bal_krishna_luma_kanha_validation_plan(reference_image_url: str, model: str 
     )
 
 
+def bal_krishna_local_kanha_validation_plan(reference_image_file: str) -> MotionPlan:
+    return MotionPlan(
+        project_id="bal_krishna_local_kanha_motion_validation",
+        title="Kanha Ki Nanhi Leela - Local 2.5D Kanha Validation",
+        provider="local_2_5d",
+        model="ffmpeg_ken_burns_v1",
+        size="720x1280",
+        clips=[
+            MotionClip(
+                id="kanha_butter_pot_camera_move",
+                title="Approved KANHA_V1 and butter pot camera movement",
+                duration_seconds=5,
+                output_file="clips/scene_01_kanha_camera_move.mp4",
+                reference_image_file=reference_image_file,
+                prompt=(
+                    "Local 2.5D motion validation using the approved KANHA_V1 still. "
+                    "Animate the camera gently toward Kanha and the hanging butter pot. "
+                    "This clip validates visual style and shot timing, not face acting."
+                ),
+            ),
+        ],
+        provider_rules=[
+            "Use only the SHA-256 approved fictional KANHA_V1 concept file.",
+            "This local render is a 2.5D moving-still validation, not generated blinking or lip movement.",
+            "No external video API, paid generation, real-person image or copyrighted music is used.",
+            "Public upload still requires full policy review and human final approval.",
+        ],
+    )
+
+
 def write_motion_plan(plan: MotionPlan, output_dir: Path) -> Path:
     path = output_dir / plan.project_id / "motion_plan.json"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -307,6 +338,56 @@ class LumaMotionProvider:
         }
 
 
+class LocalTwoPointFiveDMotionProvider:
+    def create_clip(self, clip: MotionClip, plan: MotionPlan, destination: Path) -> dict[str, str]:
+        executable = shutil.which("ffmpeg")
+        if not executable:
+            raise RuntimeError("FFmpeg is required to create local 2.5D motion clips.")
+        if not clip.reference_image_file:
+            raise ValueError("Local 2.5D clips require an approved fictional character image file.")
+        image_path = Path(clip.reference_image_file)
+        if not image_path.exists():
+            raise FileNotFoundError(f"Approved local identity image is missing: {image_path}")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        frames = clip.duration_seconds * 25
+        subprocess.run(
+            [
+                executable,
+                "-y",
+                "-loop",
+                "1",
+                "-i",
+                str(image_path),
+                "-vf",
+                (
+                    f"zoompan=z='min(zoom+0.0007,1.07)':"
+                    f"x='iw/2-(iw/zoom/2)+8*sin(on/18)':"
+                    f"y='ih/2-(ih/zoom/2)-on/10':"
+                    f"d={frames}:s=720x1280:fps=25,"
+                    "format=yuv420p"
+                ),
+                "-frames:v",
+                str(frames),
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                "-movflags",
+                "+faststart",
+                str(destination),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return {
+            "clip_id": clip.id,
+            "video_id": "local-render",
+            "file": str(destination),
+            "reference_image_file": str(image_path),
+        }
+
+
 def generate_motion_clips(plan: MotionPlan, settings: Settings, output_dir: Path) -> list[dict[str, str]]:
     if plan.provider == "openai_sora":
         if settings.motion_provider != "openai_sora":
@@ -316,6 +397,8 @@ def generate_motion_clips(plan: MotionPlan, settings: Settings, output_dir: Path
         if settings.motion_provider != "luma_dream_machine":
             raise ValueError("Set MOTION_PROVIDER=luma_dream_machine to generate Luma motion clips.")
         provider = LumaMotionProvider(settings)
+    elif plan.provider == "local_2_5d":
+        provider = LocalTwoPointFiveDMotionProvider()
     else:
         raise ValueError(f"Unsupported motion provider in plan: {plan.provider}")
     project_dir = output_dir / plan.project_id

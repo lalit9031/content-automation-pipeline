@@ -189,7 +189,8 @@ private-upload commands. The pilot narration selection is recorded as the
 built-in `marin` sample; character clips require a provider route that permits
 original fictional human-like characters. A gated Luma evaluation route can
 generate fictional identity stills and, after creator approval, one private
-five-second Kanha motion test.
+five-second Kanha motion test. For the pilot, a no-subscription local 2.5D
+route renders moving vertical shots from the approved fictional artwork.
 
 ## Architecture
 

@@ -19,6 +19,7 @@ from content_pipeline.bots.linkedin import (
 from content_pipeline.bots.image import MockImageProvider
 from content_pipeline.bots.krishna_agents import (
     agent_registry,
+    assert_character_design_approved,
     bal_krishna_character_design_plan,
     bal_krishna_image_plan,
     character_motion_validation_protocol,
@@ -33,6 +34,7 @@ from content_pipeline.bots.motion import (
     LumaMotionProvider,
     bal_krishna_environment_validation_plan,
     bal_krishna_luma_kanha_validation_plan,
+    bal_krishna_local_kanha_validation_plan,
     bal_krishna_validation_plan,
 )
 from content_pipeline.bots.policy import (
@@ -587,6 +589,19 @@ class PipelineTest(unittest.TestCase):
                 approval["characters"]["YASHODA_V1"]["sha256"],
             )
             self.assertIn("No real-person likeness", approval["approval_scope"])
+            assert_character_design_approved(path, "KANHA_V1", kanha)
+
+            kanha.write_bytes(b"changed-image")
+            with self.assertRaisesRegex(ValueError, "fingerprint"):
+                assert_character_design_approved(path, "KANHA_V1", kanha)
+
+    def test_local_kanha_plan_is_no_subscription_moving_still_validation(self) -> None:
+        plan = bal_krishna_local_kanha_validation_plan("/tmp/approved-fictional-kanha.png")
+
+        self.assertEqual(plan.provider, "local_2_5d")
+        self.assertEqual(plan.clips[0].duration_seconds, 5)
+        self.assertIn("not face acting", plan.clips[0].prompt)
+        self.assertIn("No external video API", plan.provider_rules[2])
 
     def test_youtube_policy_gate_blocks_missing_declarations(self) -> None:
         report = review_publication(

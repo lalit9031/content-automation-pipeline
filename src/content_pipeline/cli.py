@@ -16,6 +16,7 @@ from content_pipeline.bots.audio import generate_hindi_voice_samples
 from content_pipeline.bots.image import image_provider
 from content_pipeline.bots.krishna_agents import (
     ImagePlan,
+    assert_character_design_approved,
     bal_krishna_character_design_plan,
     bal_krishna_image_plan,
     generate_luma_character_identities,
@@ -31,6 +32,7 @@ from content_pipeline.bots.motion import (
     assemble_motion_preview,
     bal_krishna_environment_validation_plan,
     bal_krishna_luma_kanha_validation_plan,
+    bal_krishna_local_kanha_validation_plan,
     bal_krishna_validation_plan,
     generate_motion_clips,
     write_motion_plan,
@@ -145,6 +147,21 @@ def main() -> int:
         help="Confirm the supplied URL is the reviewed fictional KANHA_V1 still.",
     )
     luma_motion_parser.add_argument("--destination", type=Path, default=Path("output"))
+    local_motion_parser = subparsers.add_parser(
+        "krishna-local-kanha-motion-plan",
+        help="Write a no-subscription local 2.5D Kanha motion test from the approved design.",
+    )
+    local_motion_parser.add_argument(
+        "--approved-image",
+        type=Path,
+        default=Path("output/bal_krishna_character_identity_validation/images/kanha_v1_concept_preview.png"),
+    )
+    local_motion_parser.add_argument(
+        "--approval-receipt",
+        type=Path,
+        default=Path("output/kanha_ki_nanhi_leela/character_design_approval.json"),
+    )
+    local_motion_parser.add_argument("--destination", type=Path, default=Path("output"))
     motion_plan_parser = subparsers.add_parser(
         "krishna-motion-plan", help="Write the two-clip Sora motion validation plan."
     )
@@ -264,6 +281,20 @@ def main() -> int:
         if not destination.is_absolute():
             destination = project_dir / destination
         plan = bal_krishna_luma_kanha_validation_plan(args.approved_image_url, settings.luma_video_model)
+        print(f"Motion validation plan generated: {write_motion_plan(plan, destination)}")
+        return 0
+    if args.command == "krishna-local-kanha-motion-plan":
+        image_path = args.approved_image if args.approved_image.is_absolute() else project_dir / args.approved_image
+        receipt_path = (
+            args.approval_receipt
+            if args.approval_receipt.is_absolute()
+            else project_dir / args.approval_receipt
+        )
+        assert_character_design_approved(receipt_path, "KANHA_V1", image_path)
+        destination = args.destination
+        if not destination.is_absolute():
+            destination = project_dir / destination
+        plan = bal_krishna_local_kanha_validation_plan(str(image_path))
         print(f"Motion validation plan generated: {write_motion_plan(plan, destination)}")
         return 0
     if args.command == "krishna-motion-plan":

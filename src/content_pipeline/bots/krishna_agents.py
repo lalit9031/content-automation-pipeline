@@ -199,6 +199,26 @@ def record_character_design_approval(
     return path
 
 
+def assert_character_design_approved(
+    approval_path: Path,
+    character_id: str,
+    image_path: Path,
+) -> None:
+    if not approval_path.exists():
+        raise FileNotFoundError(f"Character approval receipt is missing: {approval_path}")
+    approval = json.loads(approval_path.read_text(encoding="utf-8"))
+    if approval.get("approval_status") != "creator_approved_for_private_motion_validation":
+        raise ValueError("Character design is not approved for private motion validation.")
+    expected = approval.get("characters", {}).get(character_id, {}).get("sha256")
+    if not expected:
+        raise ValueError(f"Character approval receipt has no fingerprint for {character_id}.")
+    if not image_path.exists():
+        raise FileNotFoundError(f"Approved character image is missing: {image_path}")
+    actual = hashlib.sha256(image_path.read_bytes()).hexdigest()
+    if actual != expected:
+        raise ValueError(f"Character image does not match the approved {character_id} fingerprint.")
+
+
 def bal_krishna_image_plan() -> ImagePlan:
     common = (
         "Original bright premium 3D Indian family-animation setting, vertical 9:16, "

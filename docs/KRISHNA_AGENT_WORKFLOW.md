@@ -115,6 +115,24 @@ This approves the fictional designs for private motion evaluation only. It
 does not approve public distribution or grant permission to use a real
 person's likeness.
 
+## No-Subscription Pilot Motion
+
+Luma is optional, not required for the pilot. The economical route renders a
+local 2.5D animated shot from the approved fictional image with FFmpeg:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m content_pipeline krishna-local-kanha-motion-plan
+PYTHONPATH=src .venv/bin/python -m content_pipeline krishna-motion-generate \
+  --plan output/bal_krishna_local_kanha_motion_validation/motion_plan.json
+```
+
+This produces a smooth five-second vertical camera-motion test using only the
+approved `KANHA_V1` PNG. It uses no paid generation API and no family
+photograph. It proves style, timing and video assembly; it does not claim
+Kanha blinks or changes expression. Later local shots can add separate
+foreground layers for swinging pots, drifting clouds, moving leaves, sparkles
+and captions.
+
 ## Motion, Assembly And Upload
 
 The real-motion validation and publication-gate commands remain documented in
@@ -126,7 +144,7 @@ provider decision. Under Sora's current documented restrictions, it is not the
 character-animation provider for Kanha or Yashoda; a future character provider
 must explicitly allow fictional human-like character consistency tests.
 
-The next candidate to evaluate is Luma Dream Machine image-to-video using only
+An optional higher-motion candidate is Luma Dream Machine image-to-video using only
 approved fictional identity stills. This is an inference from its documented
 API capabilities and content policy, not a promise that each generation will
 pass moderation. Runway Characters is not selected because its published

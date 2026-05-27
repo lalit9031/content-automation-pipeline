@@ -84,6 +84,22 @@ PYTHONPATH=src .venv/bin/python -m content_pipeline krishna-character-approve \
   --yashoda-image output/bal_krishna_character_identity_validation/images/yashoda_v1_concept_preview.png
 ```
 
+## Local Pilot Route
+
+The recommended zero-subscription pilot route uses the approved fictional
+Kanha concept image and local FFmpeg motion:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m content_pipeline krishna-local-kanha-motion-plan
+PYTHONPATH=src .venv/bin/python -m content_pipeline krishna-motion-generate \
+  --plan output/bal_krishna_local_kanha_motion_validation/motion_plan.json
+```
+
+It renders a five-second moving-still shot with a gentle camera move. This is
+useful for validating composition, pacing and the audience reaction before
+paying for generative character acting. It does not generate blinking,
+smiling, hand movement or a lip-synced performance.
+
 Generate real motion clips after checking the plan:
 
 ```bash
@@ -116,7 +132,7 @@ allows `dont_allow` or `allow_adult`; it does not provide a documented route
 for generating child-person scenes. The agent stores that decision in each
 motion plan.
 
-The next evaluated candidate is Luma Dream Machine image-to-video with
+An optional higher-motion candidate is Luma Dream Machine image-to-video with
 fictional, creator-approved character stills only. Its API documents
 image-to-video generation, and its policy prohibits sexual content involving
 minors and non-consensual real-person likeness use; it does not document a
