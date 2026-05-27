@@ -16,6 +16,14 @@ from content_pipeline.bots.linkedin import (
     published_post_receipt,
     record_published_post,
 )
+from content_pipeline.bots.image import MockImageProvider
+from content_pipeline.bots.krishna_agents import (
+    agent_registry,
+    bal_krishna_image_plan,
+    generate_planned_images,
+    initialize_agent_workspace,
+    voice_source_policy,
+)
 from content_pipeline.bots.motion import (
     bal_krishna_environment_validation_plan,
     bal_krishna_validation_plan,
@@ -430,6 +438,42 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(plan.project_id, "bal_krishna_environment_motion_validation")
         self.assertTrue(all("No people, no faces" in clip.prompt for clip in plan.clips))
         self.assertIn("peacock feather", plan.clips[1].prompt)
+
+    def test_krishna_agent_registry_keeps_jobs_separate(self) -> None:
+        agents = agent_registry()
+
+        self.assertEqual(
+            [agent.id for agent in agents],
+            [
+                "story_agent",
+                "voice_agent",
+                "image_agent",
+                "motion_video_agent",
+                "assembly_agent",
+                "copyright_policy_agent",
+                "youtube_publish_agent",
+            ],
+        )
+        requirements = " ".join(voice_source_policy()["later_custom_voice_requirements"])
+        self.assertIn("consent", requirements)
+
+    def test_krishna_agent_workspace_and_image_agent_write_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            output = Path(temporary_dir) / "output"
+            written = initialize_agent_workspace(output)
+            images = generate_planned_images(
+                bal_krishna_image_plan(),
+                MockImageProvider(),
+                output,
+            )
+
+            self.assertTrue(all(path.exists() for path in written))
+            self.assertEqual(len(images), 2)
+            self.assertTrue(all(path.suffix == ".svg" for path in images))
+            manifest = json.loads(written[0].read_text(encoding="utf-8"))
+            self.assertEqual(len(manifest["agent_order"]), 7)
+            self.assertIn("No copyrighted cartoon character", bal_krishna_image_plan().shots[0].prompt)
+            self.assertIn("IMAGE BOT PLACEHOLDER", images[0].read_text(encoding="utf-8"))
 
     def test_youtube_policy_gate_blocks_missing_declarations(self) -> None:
         report = review_publication(

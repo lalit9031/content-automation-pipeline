@@ -2,9 +2,11 @@
 
 ## Purpose
 
-This agent builds short validation clips for an original, child-friendly
+The Motion Video Agent builds short validation clips for an original, child-friendly
 animated Bal Krishna series before any full episode is rendered or uploaded.
-It intentionally separates three concerns:
+It belongs to the multi-agent workflow in
+[KRISHNA_AGENT_WORKFLOW.md](KRISHNA_AGENT_WORKFLOW.md), which intentionally
+separates:
 
 1. Hindi narration voice selection.
 2. Short real-motion scene generation and assembly.
@@ -16,7 +18,7 @@ to the motion-video API.
 
 ## Voice Selection
 
-Generate three short Hindi narration samples:
+The separate Voice Agent generates three short Hindi narration samples:
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m content_pipeline krishna-voice-samples
@@ -84,7 +86,8 @@ motion plan.
 
 ## Publication Gate
 
-No YouTube upload is allowed until a policy report passes. A review must confirm:
+The separate Copyright Policy Agent prevents YouTube upload until a policy
+report passes. A review must confirm:
 
 - Story, music and sound effects are original or properly licensed.
 - AI narration and AI-generated visuals are disclosed in the description.
@@ -115,7 +118,7 @@ The command fails with a blocked report if any confirmation is omitted.
 
 ## YouTube Upload
 
-YouTube upload is designed to start as `private` while the series is being
+The separate YouTube Publish Agent starts as `private` while the series is being
 tested. Install the optional YouTube adapter and configure an OAuth token file
 locally:
 

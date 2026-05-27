@@ -13,6 +13,14 @@ from content_pipeline.bots.linkedin import (
     record_published_post,
 )
 from content_pipeline.bots.audio import generate_hindi_voice_samples
+from content_pipeline.bots.image import image_provider
+from content_pipeline.bots.krishna_agents import (
+    ImagePlan,
+    bal_krishna_image_plan,
+    generate_planned_images,
+    initialize_agent_workspace,
+    write_image_plan,
+)
 from content_pipeline.bots.motion import (
     MotionPlan,
     assemble_motion_preview,
@@ -72,6 +80,18 @@ def main() -> int:
         type=Path,
         default=Path("output/bal_krishna_motion_validation/audio_samples"),
     )
+    agent_init_parser = subparsers.add_parser(
+        "krishna-agents-init", help="Create separate-agent workflow manifests and safe source rules."
+    )
+    agent_init_parser.add_argument("--destination", type=Path, default=Path("output"))
+    image_plan_parser = subparsers.add_parser(
+        "krishna-image-plan", help="Write the Image Agent validation shot plan."
+    )
+    image_plan_parser.add_argument("--destination", type=Path, default=Path("output"))
+    image_generate_parser = subparsers.add_parser(
+        "krishna-image-generate", help="Generate Image Agent assets from an approved plan."
+    )
+    image_generate_parser.add_argument("--plan", type=Path, required=True)
     motion_plan_parser = subparsers.add_parser(
         "krishna-motion-plan", help="Write the two-clip Sora motion validation plan."
     )
@@ -123,11 +143,30 @@ def main() -> int:
     args = parser.parse_args()
     project_dir = args.project_dir.resolve()
     settings = Settings.from_environment(project_dir)
+    if args.command == "krishna-agents-init":
+        destination = args.destination
+        if not destination.is_absolute():
+            destination = project_dir / destination
+        for path in initialize_agent_workspace(destination):
+            print(path)
+        return 0
     if args.command == "krishna-voice-samples":
         destination = args.destination
         if not destination.is_absolute():
             destination = project_dir / destination
         for path in generate_hindi_voice_samples(settings, destination):
+            print(path)
+        return 0
+    if args.command == "krishna-image-plan":
+        destination = args.destination
+        if not destination.is_absolute():
+            destination = project_dir / destination
+        print(f"Image validation plan generated: {write_image_plan(bal_krishna_image_plan(), destination)}")
+        return 0
+    if args.command == "krishna-image-generate":
+        plan_path = args.plan if args.plan.is_absolute() else project_dir / args.plan
+        plan = ImagePlan.from_dict(json.loads(plan_path.read_text(encoding="utf-8")))
+        for path in generate_planned_images(plan, image_provider(settings), settings.output_dir):
             print(path)
         return 0
     if args.command == "krishna-motion-plan":

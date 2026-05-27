@@ -181,8 +181,10 @@ passes. The desired child-character motion plan is retained for provider review
 after a live character request was rejected by moderation; it never sends
 family face photos as motion-video reference images.
 
-See [docs/KRISHNA_MOTION_AGENT.md](docs/KRISHNA_MOTION_AGENT.md) for commands,
-provider boundaries, policy checks, and private YouTube upload setup.
+See [docs/KRISHNA_AGENT_WORKFLOW.md](docs/KRISHNA_AGENT_WORKFLOW.md) for the
+one-agent-per-job design and safe voice-source policy, and
+[docs/KRISHNA_MOTION_AGENT.md](docs/KRISHNA_MOTION_AGENT.md) for motion,
+provider-boundary, policy-check and private-upload commands.
 
 ## Architecture
 
