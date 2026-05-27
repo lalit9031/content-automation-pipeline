@@ -19,10 +19,13 @@ from content_pipeline.bots.linkedin import (
 from content_pipeline.bots.image import MockImageProvider
 from content_pipeline.bots.krishna_agents import (
     agent_registry,
+    bal_krishna_character_design_plan,
     bal_krishna_image_plan,
+    character_motion_validation_protocol,
     generate_planned_images,
     initialize_agent_workspace,
     voice_source_policy,
+    write_voice_selection,
 )
 from content_pipeline.bots.motion import (
     bal_krishna_environment_validation_plan,
@@ -474,6 +477,27 @@ class PipelineTest(unittest.TestCase):
             self.assertEqual(len(manifest["agent_order"]), 7)
             self.assertIn("No copyrighted cartoon character", bal_krishna_image_plan().shots[0].prompt)
             self.assertIn("IMAGE BOT PLACEHOLDER", images[0].read_text(encoding="utf-8"))
+
+    def test_selected_krishna_voice_records_creator_approved_builtin_voice(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            path = write_voice_selection(Path(temporary_dir), "sample_01_marin_warm.mp3")
+            selection = json.loads(path.read_text(encoding="utf-8"))
+
+            self.assertEqual(selection["voice"], "marin")
+            self.assertEqual(selection["selection_status"], "creator_approved")
+            self.assertEqual(selection["voice_source_mode"], "built_in_ai_voice")
+            self.assertTrue(selection["disclosure_required"])
+
+    def test_character_identity_pack_requires_supported_motion_provider(self) -> None:
+        plan = bal_krishna_character_design_plan()
+        protocol = character_motion_validation_protocol()
+
+        self.assertEqual([shot.id for shot in plan.shots], ["kanha_v1_identity", "yashoda_v1_identity"])
+        self.assertIn("Entirely fictional design", plan.shots[0].prompt)
+        self.assertEqual(protocol["provider_gate"]["openai_sora_character_motion"], "blocked_for_this_route")
+        self.assertIn("Luma Dream Machine", protocol["provider_gate"]["next_character_route"])
+        self.assertEqual(len(protocol["planned_character_test_clips"]), 2)
+        self.assertIn("approved identity", protocol["human_review_checklist"][0])
 
     def test_youtube_policy_gate_blocks_missing_declarations(self) -> None:
         report = review_publication(

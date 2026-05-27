@@ -27,7 +27,9 @@ This writes:
 ```text
 output/kanha_ki_nanhi_leela/agent_manifest.json
 output/kanha_ki_nanhi_leela/voice_source_policy.json
+output/kanha_ki_nanhi_leela/character_motion_validation_protocol.json
 output/bal_krishna_image_validation/image_plan.json
+output/bal_krishna_character_identity_validation/image_plan.json
 ```
 
 ## Voice Agent
@@ -38,6 +40,16 @@ instructions:
 ```bash
 PYTHONPATH=src .venv/bin/python -m content_pipeline krishna-voice-samples
 ```
+
+Selected production narrator for the pilot:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m content_pipeline krishna-voice-select \
+  --sample sample_01_marin_warm.mp3
+```
+
+This records the built-in `marin` voice as creator-approved; the final video
+description must still disclose that its narration is AI-generated.
 
 When custom samples are considered later:
 
@@ -68,6 +80,28 @@ With the default `IMAGE_PROVIDER=mock`, this verifies the workflow using local
 SVG placeholders. Live assets can later use configured Imagen; any character
 artwork must remain fictional and pass human review.
 
+## Character Identity And Motion Review
+
+Character motion cannot be validated by simply describing "Krishna" in every
+prompt: Kanha and Yashoda need locked, reviewable identities. Initialize the
+character pack:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m content_pipeline krishna-character-validation-init
+PYTHONPATH=src .venv/bin/python -m content_pipeline krishna-image-plan --mode characters
+```
+
+The pack defines `KANHA_V1` and `YASHODA_V1` with stable hair, costume,
+accessories and color cues. After the generated identity stills are approved,
+the Motion Video Agent tests only two 6 to 8 second actions:
+
+- Kanha sees the hanging butter pot, blinks and smiles.
+- Yashoda gently hugs Kanha.
+
+The reviewer checks identity consistency, natural movement, hand/eye/clothing
+quality, child safety and absence of copyrighted assets or real-person
+resemblance before a longer episode is attempted.
+
 ## Motion, Assembly And Upload
 
 The real-motion validation and publication-gate commands remain documented in
@@ -75,7 +109,15 @@ The real-motion validation and publication-gate commands remain documented in
 successfully rendered motion for the environment scenes, while a fictional
 Kanha character scene was blocked by provider moderation. The agent respects
 that stop and does not attempt to animate family photographs or bypass the
-provider decision.
+provider decision. Under Sora's current documented restrictions, it is not the
+character-animation provider for Kanha or Yashoda; a future character provider
+must explicitly allow fictional human-like character consistency tests.
+
+The next candidate to evaluate is Luma Dream Machine image-to-video using only
+approved fictional identity stills. This is an inference from its documented
+API capabilities and content policy, not a promise that each generation will
+pass moderation. Runway Characters is not selected because its published
+additional policy disallows characters intended to engage users under 18.
 
 ## Shared Safety Rules
 
@@ -93,5 +135,8 @@ Reviewed May 28, 2026:
 
 - [OpenAI Text-to-Speech and custom voice consent](https://developers.openai.com/api/docs/guides/text-to-speech)
 - [OpenAI video generation with Sora](https://developers.openai.com/api/docs/guides/video-generation)
+- [Luma Dream Machine API](https://docs.lumalabs.ai/docs/api)
+- [Luma content policy](https://luma.ai/content-policy)
+- [Runway usage policy](https://help.runwayml.com/hc/en-us/articles/17944787368595-Runway-s-Usage-Policy)
 - [YouTube Made for Kids](https://support.google.com/youtube/answer/9528076)
 - [YouTube synthetic-content disclosure](https://support.google.com/youtube/answer/14328491)

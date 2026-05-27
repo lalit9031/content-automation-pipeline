@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass
+from datetime import date
 from pathlib import Path
 from typing import Any
 
+from content_pipeline.bots.audio import VOICE_VARIANTS
 from content_pipeline.bots.image import ImageProvider, ImageVariant
 
 
@@ -132,6 +134,28 @@ def voice_source_policy() -> dict[str, Any]:
     }
 
 
+def write_voice_selection(output_dir: Path, sample_filename: str) -> Path:
+    variants = {filename: voice for filename, voice, _ in VOICE_VARIANTS}
+    if sample_filename not in variants:
+        raise ValueError(f"Unknown Krishna voice sample: {sample_filename}")
+    path = output_dir / WORKFLOW_ID / "voice_selection.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    selection = {
+        "workflow_id": WORKFLOW_ID,
+        "selected_sample": sample_filename,
+        "voice": variants[sample_filename],
+        "model": "gpt-4o-mini-tts",
+        "selection_status": "creator_approved",
+        "selected_on": date.today().isoformat(),
+        "language": "Hindi",
+        "pronunciation_terms": ["यशोदा", "गोकुल", "कान्हा"],
+        "disclosure_required": "Narration is AI-generated.",
+        "voice_source_mode": "built_in_ai_voice",
+    }
+    path.write_text(json.dumps(selection, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return path
+
+
 def bal_krishna_image_plan() -> ImagePlan:
     common = (
         "Original bright premium 3D Indian family-animation setting, vertical 9:16, "
@@ -172,6 +196,134 @@ def bal_krishna_image_plan() -> ImagePlan:
     )
 
 
+def bal_krishna_character_design_plan() -> ImagePlan:
+    common = (
+        "Original stylized 3D Indian children's story illustration, vertical 9:16, "
+        "bright warm Gokul palette, rounded gentle expressions, child-safe devotional "
+        "mood. Entirely fictional design; no resemblance to any uploaded or real person. "
+        "Do not imitate any named animation studio or copyrighted cartoon character. "
+        "No text, logo or watermark. "
+    )
+    return ImagePlan(
+        project_id="bal_krishna_character_identity_validation",
+        provider_mode="fictional_character_design_stills_only",
+        shots=[
+            ImageShot(
+                id="kanha_v1_identity",
+                purpose="Approved reference still for Kanha's consistent design",
+                output_basename="images/kanha_v1_identity",
+                prompt=(
+                    f"{common} Character identity portrait for KANHA_V1: fictional toddler "
+                    "Kanha with soft blue-toned skin, large warm brown eyes, short curly "
+                    "dark hair, one small peacock feather, yellow dhoti with red waistband, "
+                    "tiny gold anklets and a shy playful smile. Full body standing safely "
+                    "in a sunny courtyard; butter pot visible in the background."
+                ),
+            ),
+            ImageShot(
+                id="yashoda_v1_identity",
+                purpose="Approved reference still for Yashoda's consistent design",
+                output_basename="images/yashoda_v1_identity",
+                prompt=(
+                    f"{common} Character identity portrait for YASHODA_V1: fictional "
+                    "mother Yashoda with a kind oval face, dark hair in a low bun with "
+                    "jasmine flowers, small red bindi, orange sari with magenta border "
+                    "and simple gold bangles. Full body standing in the same sunny Gokul "
+                    "courtyard, smiling gently."
+                ),
+            ),
+        ],
+        rules=[
+            "Identity images are fictional visual designs, not transformations of family photographs.",
+            "A human must approve KANHA_V1 and YASHODA_V1 before any character-motion provider test.",
+            "Do not send these human-like character references to Sora while its current restrictions block such uploads.",
+        ],
+    )
+
+
+def character_motion_validation_protocol() -> dict[str, Any]:
+    return {
+        "workflow_id": WORKFLOW_ID,
+        "identity_version": "v1",
+        "characters": {
+            "KANHA_V1": [
+                "soft blue-toned skin",
+                "short curly dark hair",
+                "one small peacock feather",
+                "yellow dhoti with red waistband",
+                "tiny gold anklets",
+            ],
+            "YASHODA_V1": [
+                "kind oval face",
+                "dark hair in a low bun with jasmine flowers",
+                "small red bindi",
+                "orange sari with magenta border",
+                "simple gold bangles",
+            ],
+        },
+        "provider_gate": {
+            "openai_sora_character_motion": "blocked_for_this_route",
+            "reason": (
+                "Current Sora restrictions reject real people, input images with human faces, "
+                "and human-likeness character uploads by default."
+            ),
+            "allowed_sora_validation": "Environment motion without people or faces.",
+            "next_character_route": (
+                "Evaluate Luma Dream Machine image-to-video with approved fictional character "
+                "stills; its documented policy does not prohibit gentle fictional child-story "
+                "animation, subject to moderation and private human review."
+            ),
+            "not_selected_runway_characters": (
+                "Runway's published Additional Character & Game Worlds Policies prohibit "
+                "characters intended to engage users under 18."
+            ),
+            "candidate_source": "https://docs.lumalabs.ai/docs/api",
+            "candidate_policy_source": "https://luma.ai/content-policy",
+            "runway_policy_source": "https://help.runwayml.com/hc/en-us/articles/17944787368595-Runway-s-Usage-Policy",
+        },
+        "planned_character_test_clips": [
+            {
+                "id": "kanha_sees_butter_pot",
+                "length_seconds": "6-8",
+                "required_motion": [
+                    "Kanha looks from camera area toward the hanging pot.",
+                    "Kanha blinks once and forms a playful smile.",
+                    "Peacock feather, tree leaves and garlands move gently.",
+                ],
+            },
+            {
+                "id": "yashoda_hugs_kanha",
+                "length_seconds": "6-8",
+                "required_motion": [
+                    "Yashoda bends gently and embraces Kanha.",
+                    "Kanha smiles and relaxes into the hug.",
+                    "Sari edge, leaves and sun rays move naturally.",
+                ],
+            },
+        ],
+        "human_review_checklist": [
+            "Character face and costume remain recognizably the approved identity throughout the clip.",
+            "Hands, eyes, clothing and accessories do not visibly deform.",
+            "Motion is smooth and matches the described action.",
+            "Scene is gentle and suitable for young children.",
+            "There is no resemblance to an identifiable real child or adult.",
+            "No copyrighted visual property, music, logo or watermark appears.",
+        ],
+        "approval_status": "awaiting_character_stills_and_supported_video_provider",
+    }
+
+
+def write_character_validation_pack(output_dir: Path) -> list[Path]:
+    image_plan_path = write_image_plan(bal_krishna_character_design_plan(), output_dir)
+    path = output_dir / WORKFLOW_ID / "character_motion_validation_protocol.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(character_motion_validation_protocol(), indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return [image_plan_path, path]
+
+
 def initialize_agent_workspace(output_dir: Path) -> list[Path]:
     root = output_dir / WORKFLOW_ID
     root.mkdir(parents=True, exist_ok=True)
@@ -187,7 +339,7 @@ def initialize_agent_workspace(output_dir: Path) -> list[Path]:
     voice_policy_path = root / "voice_source_policy.json"
     voice_policy_path.write_text(json.dumps(voice_source_policy(), indent=2) + "\n", encoding="utf-8")
     image_plan_path = write_image_plan(bal_krishna_image_plan(), output_dir)
-    return [manifest_path, voice_policy_path, image_plan_path]
+    return [manifest_path, voice_policy_path, image_plan_path, *write_character_validation_pack(output_dir)]
 
 
 def write_image_plan(plan: ImagePlan, output_dir: Path) -> Path:

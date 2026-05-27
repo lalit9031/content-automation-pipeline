@@ -28,6 +28,13 @@ The samples use `gpt-4o-mini-tts` with explicit Indian Hindi pronunciation for
 `यशोदा`, `गोकुल`, and `कान्हा`. OpenAI requires audiences to be told when this
 voice is AI-generated.
 
+For the pilot, the creator approved sample 1 (`marin`, warm):
+
+```bash
+PYTHONPATH=src .venv/bin/python -m content_pipeline krishna-voice-select \
+  --sample sample_01_marin_warm.mp3
+```
+
 ## Motion Validation
 
 The selected provider is OpenAI Sora because it supports programmatic dynamic
@@ -57,6 +64,18 @@ provider route:
 PYTHONPATH=src .venv/bin/python -m content_pipeline krishna-motion-plan --mode characters
 ```
 
+For Kanha and Yashoda, initialize stable fictional character identities before
+testing a provider that supports their animation:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m content_pipeline krishna-character-validation-init
+PYTHONPATH=src .venv/bin/python -m content_pipeline krishna-image-plan --mode characters
+```
+
+The identity pack fixes recognizable design features for `KANHA_V1` and
+`YASHODA_V1` and supplies a review checklist for the two desired character
+motion clips. It does not claim Sora has generated those characters.
+
 Generate real motion clips after checking the plan:
 
 ```bash
@@ -78,11 +97,26 @@ the story and character design are approved, final episodes can use
 
 ## Provider Boundary
 
-Vertex AI Veo is not used for the child-character clips. In the installed
+Sora is not used for the Kanha and Yashoda character clips under its current
+documented restrictions: real people cannot be generated, input images with
+human faces are rejected, and human-likeness character uploads are blocked by
+default. It remains useful for no-person environmental motion.
+
+Vertex AI Veo is also not used for the child-character clips. In the installed
 Google Gen AI SDK, the video-generation `person_generation` configuration
 allows `dont_allow` or `allow_adult`; it does not provide a documented route
 for generating child-person scenes. The agent stores that decision in each
 motion plan.
+
+The next evaluated candidate is Luma Dream Machine image-to-video with
+fictional, creator-approved character stills only. Its API documents
+image-to-video generation, and its policy prohibits sexual content involving
+minors and non-consensual real-person likeness use; it does not document a
+blanket prohibition on gentle fictional child-story animation. This is a
+candidate route subject to private testing and provider moderation, not an
+approved final-video provider yet. Runway Characters is not selected because
+its published additional policy prohibits characters intended to engage users
+under 18.
 
 ## Publication Gate
 
@@ -157,6 +191,9 @@ Reviewed on May 28, 2026. The policy gate requires a refresh after 30 days.
 
 - [OpenAI text-to-speech](https://developers.openai.com/api/docs/guides/text-to-speech)
 - [OpenAI video generation with Sora](https://developers.openai.com/api/docs/guides/video-generation)
+- [Luma Dream Machine API](https://docs.lumalabs.ai/docs/api)
+- [Luma content policy](https://luma.ai/content-policy)
+- [Runway usage policy](https://help.runwayml.com/hc/en-us/articles/17944787368595-Runway-s-Usage-Policy)
 - [YouTube Made for Kids guidance](https://support.google.com/youtube/answer/9528076)
 - [YouTube altered or synthetic content disclosure](https://support.google.com/youtube/answer/14328491)
 - [YouTube monetization policies](https://support.google.com/youtube/answer/1311392)

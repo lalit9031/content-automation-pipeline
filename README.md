@@ -184,7 +184,10 @@ family face photos as motion-video reference images.
 See [docs/KRISHNA_AGENT_WORKFLOW.md](docs/KRISHNA_AGENT_WORKFLOW.md) for the
 one-agent-per-job design and safe voice-source policy, and
 [docs/KRISHNA_MOTION_AGENT.md](docs/KRISHNA_MOTION_AGENT.md) for motion,
-provider-boundary, policy-check and private-upload commands.
+provider-boundary, character-identity verification, policy-check and
+private-upload commands. The pilot narration selection is recorded as the
+built-in `marin` sample; character clips require a provider route that permits
+original fictional human-like characters.
 
 ## Architecture
 

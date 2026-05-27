@@ -16,10 +16,13 @@ from content_pipeline.bots.audio import generate_hindi_voice_samples
 from content_pipeline.bots.image import image_provider
 from content_pipeline.bots.krishna_agents import (
     ImagePlan,
+    bal_krishna_character_design_plan,
     bal_krishna_image_plan,
     generate_planned_images,
     initialize_agent_workspace,
+    write_character_validation_pack,
     write_image_plan,
+    write_voice_selection,
 )
 from content_pipeline.bots.motion import (
     MotionPlan,
@@ -80,6 +83,15 @@ def main() -> int:
         type=Path,
         default=Path("output/bal_krishna_motion_validation/audio_samples"),
     )
+    voice_select_parser = subparsers.add_parser(
+        "krishna-voice-select", help="Record the creator-approved Hindi narration voice."
+    )
+    voice_select_parser.add_argument(
+        "--sample",
+        required=True,
+        choices=("sample_01_marin_warm.mp3", "sample_02_cedar_storyteller.mp3", "sample_03_coral_cheerful.mp3"),
+    )
+    voice_select_parser.add_argument("--destination", type=Path, default=Path("output"))
     agent_init_parser = subparsers.add_parser(
         "krishna-agents-init", help="Create separate-agent workflow manifests and safe source rules."
     )
@@ -88,10 +100,21 @@ def main() -> int:
         "krishna-image-plan", help="Write the Image Agent validation shot plan."
     )
     image_plan_parser.add_argument("--destination", type=Path, default=Path("output"))
+    image_plan_parser.add_argument(
+        "--mode",
+        choices=("environment", "characters"),
+        default="environment",
+        help="Generate environment still prompts or fictional character identity still prompts.",
+    )
     image_generate_parser = subparsers.add_parser(
         "krishna-image-generate", help="Generate Image Agent assets from an approved plan."
     )
     image_generate_parser.add_argument("--plan", type=Path, required=True)
+    character_parser = subparsers.add_parser(
+        "krishna-character-validation-init",
+        help="Write the fictional character identity plan and motion review protocol.",
+    )
+    character_parser.add_argument("--destination", type=Path, default=Path("output"))
     motion_plan_parser = subparsers.add_parser(
         "krishna-motion-plan", help="Write the two-clip Sora motion validation plan."
     )
@@ -157,16 +180,30 @@ def main() -> int:
         for path in generate_hindi_voice_samples(settings, destination):
             print(path)
         return 0
+    if args.command == "krishna-voice-select":
+        destination = args.destination
+        if not destination.is_absolute():
+            destination = project_dir / destination
+        print(f"Selected narration voice recorded: {write_voice_selection(destination, args.sample)}")
+        return 0
     if args.command == "krishna-image-plan":
         destination = args.destination
         if not destination.is_absolute():
             destination = project_dir / destination
-        print(f"Image validation plan generated: {write_image_plan(bal_krishna_image_plan(), destination)}")
+        plan = bal_krishna_image_plan() if args.mode == "environment" else bal_krishna_character_design_plan()
+        print(f"Image validation plan generated: {write_image_plan(plan, destination)}")
         return 0
     if args.command == "krishna-image-generate":
         plan_path = args.plan if args.plan.is_absolute() else project_dir / args.plan
         plan = ImagePlan.from_dict(json.loads(plan_path.read_text(encoding="utf-8")))
         for path in generate_planned_images(plan, image_provider(settings), settings.output_dir):
+            print(path)
+        return 0
+    if args.command == "krishna-character-validation-init":
+        destination = args.destination
+        if not destination.is_absolute():
+            destination = project_dir / destination
+        for path in write_character_validation_pack(destination):
             print(path)
         return 0
     if args.command == "krishna-motion-plan":
