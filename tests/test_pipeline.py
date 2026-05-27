@@ -16,6 +16,15 @@ from content_pipeline.bots.linkedin import (
     published_post_receipt,
     record_published_post,
 )
+from content_pipeline.bots.motion import (
+    bal_krishna_environment_validation_plan,
+    bal_krishna_validation_plan,
+)
+from content_pipeline.bots.policy import (
+    PublicationDeclarations,
+    assert_upload_approved,
+    review_publication,
+)
 from content_pipeline.bots.prompt import OpenAIPromptProvider, _fit_long_form_duration
 from content_pipeline.bots.video import (
     _assemble_video,
@@ -24,6 +33,7 @@ from content_pipeline.bots.video import (
     scenes_for_package,
     subtitles_for_scenes,
 )
+from content_pipeline.bots.youtube import upload_youtube_video
 from content_pipeline.config import Settings
 from content_pipeline.models import ContentPackage, LongFormVideoScript
 from content_pipeline.pipeline import run_linkedin_mvp
@@ -402,6 +412,84 @@ class PipelineTest(unittest.TestCase):
         adjusted = _fit_long_form_duration(script, 180, 300)
 
         self.assertEqual(adjusted.duration_seconds, 300)
+
+    def test_bal_krishna_motion_plan_uses_prompt_only_safe_validation_clips(self) -> None:
+        plan = bal_krishna_validation_plan()
+
+        self.assertEqual(plan.provider, "openai_sora")
+        self.assertEqual(plan.size, "720x1280")
+        self.assertEqual([clip.duration_seconds for clip in plan.clips], [8, 8])
+        self.assertIn("not a real child", plan.clips[0].prompt)
+        self.assertIn("No climbing", plan.clips[0].prompt)
+        self.assertTrue(any("do not upload family photos" in rule for rule in plan.provider_rules))
+        self.assertTrue(any("Vertex Veo is not selected" in rule for rule in plan.provider_rules))
+
+    def test_environment_motion_plan_contains_no_people_for_provider_validation(self) -> None:
+        plan = bal_krishna_environment_validation_plan()
+
+        self.assertEqual(plan.project_id, "bal_krishna_environment_motion_validation")
+        self.assertTrue(all("No people, no faces" in clip.prompt for clip in plan.clips))
+        self.assertIn("peacock feather", plan.clips[1].prompt)
+
+    def test_youtube_policy_gate_blocks_missing_declarations(self) -> None:
+        report = review_publication(
+            "Episode",
+            "video.mp4",
+            PublicationDeclarations(ai_audio_disclosed=True),
+        )
+
+        self.assertEqual(report["status"], "blocked")
+        self.assertIn("story_rights", report["blockers"])
+        with self.assertRaisesRegex(RuntimeError, "policy review"):
+            assert_upload_approved(report)
+
+    def test_youtube_policy_gate_approves_complete_review(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            video = Path(temporary_dir) / "video.mp4"
+            video.write_bytes(b"reviewed-video")
+            report = review_publication(
+                "Episode",
+                str(video),
+                PublicationDeclarations(
+                    original_or_licensed_story=True,
+                    original_or_licensed_music=True,
+                    ai_audio_disclosed=True,
+                    ai_visuals_disclosed=True,
+                    fictional_or_consented_likenesses=True,
+                    no_face_reference_supplied_to_video_api=True,
+                    made_for_kids_selected=True,
+                    no_copyrighted_characters_or_style_copy=True,
+                    human_final_review=True,
+                ),
+            )
+
+            self.assertEqual(report["status"], "approved_for_upload")
+            self.assertIsNotNone(report["video_sha256"])
+            assert_upload_approved(report)
+
+    def test_youtube_upload_rejects_file_changed_after_approval(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            video = Path(temporary_dir) / "video.mp4"
+            video.write_bytes(b"reviewed-video")
+            report = review_publication(
+                "Episode",
+                str(video),
+                PublicationDeclarations(
+                    original_or_licensed_story=True,
+                    original_or_licensed_music=True,
+                    ai_audio_disclosed=True,
+                    ai_visuals_disclosed=True,
+                    fictional_or_consented_likenesses=True,
+                    no_face_reference_supplied_to_video_api=True,
+                    made_for_kids_selected=True,
+                    no_copyrighted_characters_or_style_copy=True,
+                    human_final_review=True,
+                ),
+            )
+            video.write_bytes(b"changed-after-review")
+
+            with self.assertRaisesRegex(RuntimeError, "does not match"):
+                upload_youtube_video(video, "Episode", "Description", report, Settings(output_dir=Path("output")))
 
 
 if __name__ == "__main__":

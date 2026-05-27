@@ -29,6 +29,10 @@ class Settings:
     canva_redirect_uri: str = "http://127.0.0.1:8080/callback"
     canva_refresh_token: str = ""
     canva_brand_template_id: str = ""
+    motion_provider: str = "openai_sora"
+    motion_model: str = "sora-2"
+    youtube_client_secrets_file: str = ""
+    youtube_token_file: str = ""
     dotenv_path: Path | None = None
 
     @classmethod
@@ -65,6 +69,10 @@ class Settings:
             ),
             canva_refresh_token=os.getenv("CANVA_REFRESH_TOKEN", ""),
             canva_brand_template_id=os.getenv("CANVA_BRAND_TEMPLATE_ID", ""),
+            motion_provider=os.getenv("MOTION_PROVIDER", "openai_sora").strip().lower(),
+            motion_model=os.getenv("MOTION_MODEL", "sora-2"),
+            youtube_client_secrets_file=os.getenv("YOUTUBE_CLIENT_SECRETS_FILE", ""),
+            youtube_token_file=os.getenv("YOUTUBE_TOKEN_FILE", ""),
             dotenv_path=project_dir / ".env",
         )
 

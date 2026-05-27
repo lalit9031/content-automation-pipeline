@@ -18,6 +18,10 @@ live = [
   "google-genai>=1.16.0",
   "openai>=1.82.0",
 ]
+youtube = [
+  "google-api-python-client>=2.170.0",
+  "google-auth-oauthlib>=1.2.2",
+]
 dev = [
   "pytest>=8.0.0",
 ]

@@ -172,6 +172,18 @@ and the exact account, template, and brand-kit details needed to wire it in.
 The instructional motion-graphics design target is recorded in
 [docs/VIDEO_STYLE_REFERENCE.md](docs/VIDEO_STYLE_REFERENCE.md).
 
+## Bal Krishna Motion Validation Agent
+
+An experimental children's-story workflow now generates authentic Hindi voice
+samples, plans short real-motion environmental validation clips with Sora,
+assembles approved clips, and blocks YouTube upload until a dated policy report
+passes. The desired child-character motion plan is retained for provider review
+after a live character request was rejected by moderation; it never sends
+family face photos as motion-video reference images.
+
+See [docs/KRISHNA_MOTION_AGENT.md](docs/KRISHNA_MOTION_AGENT.md) for commands,
+provider boundaries, policy checks, and private YouTube upload setup.
+
 ## Architecture
 
 The supplied architecture diagram is kept at [assets/content_automation_pipeline.svg](assets/content_automation_pipeline.svg).
