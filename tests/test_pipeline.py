@@ -758,6 +758,22 @@ class PipelineTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Unknown character id"):
                 save_reference_media_upload(root, "unknown_v1", "clip.mp4", b"data")
 
+    def test_story_studio_dashboard_prefers_image_reference_over_video(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            output = Path(temporary_dir) / "output"
+            episode = create_story_episode("kid", episode_date="2026-05-28")
+            create_story_workspace(output, episode)
+            root = output / "story_studio" / "episodes" / episode.episode_id
+
+            references = root / "references" / "inbox"
+            (references / "momo_v1_reference.mp4").write_bytes(b"video")
+            (references / "momo_v1_reference.png").write_bytes(b"image")
+            create_story_workspace(output, episode)
+            dashboard = (root / "ui" / "index.html").read_text(encoding="utf-8")
+
+            self.assertIn("momo_v1_reference.png", dashboard)
+            self.assertNotIn('src="../references/inbox/momo_v1_reference.mp4"', dashboard)
+
     def test_story_studio_keeps_only_last_three_story_backups(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_dir:
             output = Path(temporary_dir) / "output"

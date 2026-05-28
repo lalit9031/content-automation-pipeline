@@ -1436,11 +1436,11 @@ def _reference_media_html(character: CharacterReference, root: Path) -> str:
 
 
 def _reference_media_path(character: CharacterReference, root: Path) -> Path | None:
-    for extension in REFERENCE_VIDEO_EXTENSIONS:
+    for extension in REFERENCE_IMAGE_EXTENSIONS:
         relative = Path("references") / "inbox" / f"{character.id}_reference{extension}"
         if (root / relative).exists():
             return root / relative
-    for extension in REFERENCE_IMAGE_EXTENSIONS:
+    for extension in REFERENCE_VIDEO_EXTENSIONS:
         relative = Path("references") / "inbox" / f"{character.id}_reference{extension}"
         if (root / relative).exists():
             return root / relative
