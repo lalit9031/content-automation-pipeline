@@ -117,11 +117,13 @@ def create_story_workspace(
 ) -> list[Path]:
     root = output_dir / "story_studio" / "episodes" / episode.episode_id
     inbox = root / "clips" / "inbox"
+    references = root / "references" / "inbox"
     video = root / "video"
     ui = root / "ui"
-    for directory in (inbox, video, ui):
+    for directory in (inbox, references, video, ui):
         directory.mkdir(parents=True, exist_ok=True)
     (inbox / ".gitkeep").write_text("", encoding="utf-8")
+    (references / ".gitkeep").write_text("", encoding="utf-8")
 
     paths = [
         _write_json(root / "episode.json", episode.as_dict()),
@@ -129,6 +131,7 @@ def create_story_workspace(
         _write_text(root / "story_script.md", _script_markdown(episode)),
         _write_json(root / "scene_prompts.json", _prompt_rows(episode)),
         _write_text(root / "clip_drop_guide.md", _clip_drop_guide(episode)),
+        _write_text(root / "reference_media_guide.md", _reference_media_guide(episode)),
         _write_text(root / "youtube_metadata.md", _metadata_markdown(episode)),
     ]
     for character in episode.characters:
@@ -700,6 +703,33 @@ def _clip_drop_guide(episode: StoryEpisode) -> str:
     return "\n".join(lines)
 
 
+def _reference_media_guide(episode: StoryEpisode) -> str:
+    lines = [
+        "# Character Reference Media Guide",
+        "",
+        "Use Gemini/OpenArt to create one strong reference video or image per character.",
+        "The dashboard displays these files when they are placed in `references/inbox/`.",
+        "",
+        "Preferred filenames:",
+        "",
+    ]
+    for character in episode.characters:
+        lines.extend(
+            [
+                f"- `{character.id}_reference.mp4` - best option for motion consistency",
+                f"- `{character.id}_reference.png` or `{character.id}_reference.jpg` - image fallback",
+            ]
+        )
+    lines.extend(
+        [
+            "",
+            "The old generated SVG sheets are draft prompts only. For production, use the Gemini/OpenArt reference media.",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
 def _metadata_markdown(episode: StoryEpisode) -> str:
     return "\n".join(
         [
@@ -723,7 +753,7 @@ def _dashboard_html(episode: StoryEpisode, root: Path, recent: list[dict[str, st
         for item in recent
     )
     cards = "\n".join(_scene_card(scene, index) for index, scene in enumerate(episode.scenes, start=1))
-    character_cards = "\n".join(_character_card(character) for character in episode.characters)
+    character_cards = "\n".join(_character_card(character, root) for character in episode.characters)
     notes = "\n".join(f"<li>{escape(note)}</li>" for note in episode.production_notes)
     safety = "\n".join(f"<li>{escape(rule)}</li>" for rule in episode.safety_rules)
     current_command = (
@@ -1161,9 +1191,10 @@ def _adult_dashboard_html(
 """
 
 
-def _character_card(character: CharacterReference) -> str:
+def _character_card(character: CharacterReference, root: Path) -> str:
     prompt_id = f"character_{character.id}"
     emoji = _char_emoji(character.id)
+    media_html = _reference_media_html(character, root)
     return f"""<article class="card char-card">
   <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
     <span style="font-size: 36px;">{emoji}</span>
@@ -1172,14 +1203,35 @@ def _character_card(character: CharacterReference) -> str:
       <span style="font-size: 13px; color: #888; font-weight: 600;">{escape(character.role)}</span>
     </div>
   </div>
-  <img class="character-img" src="../{escape(character.image_file)}" alt="{escape(character.name)} reference">
+  {media_html}
   <p style="font-size: 14px; margin: 10px 0;">{escape(character.description)}</p>
+  <p style="font-size: 12px; color: #64748b;"><strong>Reference slot:</strong> save Gemini/OpenArt media as <code>references/inbox/{escape(character.id)}_reference.mp4</code> or image fallback.</p>
   <details>
-    <summary class="char-summary">Meta AI Reference Prompt</summary>
+    <summary class="char-summary">Reference Prompt</summary>
     <textarea id="{prompt_id}" style="margin-top: 8px;">{escape(character.reference_prompt)}</textarea>
     <button onclick="copyText('{prompt_id}')" style="margin-top: 6px;"> Copy Prompt</button>
   </details>
 </article>"""
+
+
+def _reference_media_html(character: CharacterReference, root: Path) -> str:
+    for extension in (".mp4", ".webm", ".mov"):
+        relative = Path("references") / "inbox" / f"{character.id}_reference{extension}"
+        if (root / relative).exists():
+            return (
+                f'<video class="character-img" src="../{escape(str(relative))}" '
+                'controls muted loop playsinline></video>'
+            )
+    for extension in (".png", ".jpg", ".jpeg", ".svg"):
+        relative = Path("references") / "inbox" / f"{character.id}_reference{extension}"
+        if (root / relative).exists():
+            return f'<img class="character-img" src="../{escape(str(relative))}" alt="{escape(character.name)} reference">'
+    return (
+        '<div class="character-img" style="min-height: 180px; display: grid; place-items: center; '
+        'padding: 18px; text-align: center; color: #64748b;">'
+        f'<div><strong>{escape(character.name)} reference media not added yet</strong><br>'
+        f'<span>Put {escape(character.id)}_reference.mp4 in references/inbox/</span></div></div>'
+    )
 
 
 def _char_emoji(char_id: str) -> str:
