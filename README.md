@@ -260,6 +260,8 @@ PYTHONPATH=src .venv/bin/python -m content_pipeline story-studio-serve \
 Open `http://127.0.0.1:8765/ui/index.html`. Each character card has an upload
 button. Uploaded files are saved to `references/inbox/` and automatically
 renamed as `<character_id>_reference.mp4`, `<character_id>_reference.png`, etc.
+Use PNG/JPG as the default character reference for consistent faces, colors and
+body shape. Use MP4/MOV/WebM only when you want to provide motion style.
 
 After downloading clips into the episode's `clips/inbox/`, assemble:
 

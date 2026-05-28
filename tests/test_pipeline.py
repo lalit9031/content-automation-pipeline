@@ -692,6 +692,7 @@ class PipelineTest(unittest.TestCase):
             self.assertIn("selected_command", dashboard)
             self.assertIn("Production Status", dashboard)
             self.assertIn("Upload Reference", dashboard)
+            self.assertIn("Recommended: PNG/JPG image", dashboard)
             self.assertIn('enctype="multipart/form-data"', dashboard)
             self.assertIn("0/5 reference media files added", dashboard)
             self.assertIn("0/7 scene clips in clips/inbox", dashboard)

@@ -833,7 +833,9 @@ def _reference_media_guide(episode: StoryEpisode) -> str:
     lines = [
         "# Character Reference Media Guide",
         "",
-        "Use Gemini/OpenArt to create one strong reference video or image per character.",
+        "Use Gemini/OpenArt to create one strong reference image per character first.",
+        "A clean PNG/JPG character image is the best default for consistent faces, colors and body shape.",
+        "Use MP4/MOV/WebM only as an optional motion reference when a character action is hard to describe.",
         "The dashboard displays these files when they are placed in `references/inbox/`.",
         "",
         "Preferred filenames:",
@@ -842,14 +844,14 @@ def _reference_media_guide(episode: StoryEpisode) -> str:
     for character in episode.characters:
         lines.extend(
             [
-                f"- `{character.id}_reference.mp4` - best option for motion consistency",
-                f"- `{character.id}_reference.png` or `{character.id}_reference.jpg` - image fallback",
+                f"- `{character.id}_reference.png` or `{character.id}_reference.jpg` - recommended character look reference",
+                f"- `{character.id}_reference.mp4` - optional motion reference",
             ]
         )
     lines.extend(
         [
             "",
-            "The old generated SVG sheets are draft prompts only. For production, use the Gemini/OpenArt reference media.",
+            "The old generated SVG sheets are draft prompts only. For production, use a clean Gemini/OpenArt PNG/JPG character reference.",
             "",
         ]
     )
@@ -1395,7 +1397,7 @@ def _character_card(character: CharacterReference, root: Path) -> str:
   </div>
   {media_html}
   <p style="font-size: 14px; margin: 10px 0;">{escape(character.description)}</p>
-  <p style="font-size: 12px; color: #64748b;"><strong>Reference slot:</strong> save Gemini/OpenArt media as <code>references/inbox/{escape(character.id)}_reference.mp4</code> or image fallback.</p>
+  <p style="font-size: 12px; color: #64748b;"><strong>Reference slot:</strong> upload a clean PNG/JPG first for character consistency. Video is optional for motion style.</p>
   {upload_html}
   <details>
     <summary class="char-summary">Reference Prompt</summary>
@@ -1408,10 +1410,10 @@ def _character_card(character: CharacterReference, root: Path) -> str:
 def _reference_upload_form(character: CharacterReference) -> str:
     return f"""<form method="post" action="/upload-reference" enctype="multipart/form-data" style="margin: 10px 0; padding: 10px; border: 1px dashed #cbd5e1; border-radius: 12px; background: #f8fafc;">
     <input type="hidden" name="character_id" value="{escape(character.id)}">
-    <label style="display: block; font-size: 12px; font-weight: 700; margin-bottom: 6px;">Upload image/video for {escape(character.name)}</label>
-    <input type="file" name="media" accept="video/mp4,video/webm,video/quicktime,image/png,image/jpeg,image/svg+xml" required style="width: 100%; font-size: 12px;">
+    <label style="display: block; font-size: 12px; font-weight: 700; margin-bottom: 6px;">Upload character reference for {escape(character.name)}</label>
+    <input type="file" name="media" accept="image/png,image/jpeg,image/svg+xml,video/mp4,video/webm,video/quicktime" required style="width: 100%; font-size: 12px;">
     <button type="submit" style="margin-top: 8px;">Upload Reference</button>
-    <p style="font-size: 11px; color: #64748b; margin: 8px 0 0;">Use via <code>story-studio-serve</code>. File is auto-renamed to <code>{escape(character.id)}_reference.ext</code>.</p>
+    <p style="font-size: 11px; color: #64748b; margin: 8px 0 0;">Recommended: PNG/JPG image. Optional: MP4/MOV/WebM motion reference. File is auto-renamed to <code>{escape(character.id)}_reference.ext</code>.</p>
   </form>"""
 
 
@@ -1429,7 +1431,7 @@ def _reference_media_html(character: CharacterReference, root: Path) -> str:
         '<div class="character-img" style="min-height: 180px; display: grid; place-items: center; '
         'padding: 18px; text-align: center; color: #64748b;">'
         f'<div><strong>{escape(character.name)} reference media not added yet</strong><br>'
-        f'<span>Put {escape(character.id)}_reference.mp4 in references/inbox/</span></div></div>'
+        f'<span>Upload {escape(character.id)}_reference.png or .jpg first; video is optional.</span></div></div>'
     )
 
 
