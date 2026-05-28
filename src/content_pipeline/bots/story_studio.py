@@ -756,6 +756,7 @@ def _dashboard_html(episode: StoryEpisode, root: Path, recent: list[dict[str, st
     character_cards = "\n".join(_character_card(character, root) for character in episode.characters)
     notes = "\n".join(f"<li>{escape(note)}</li>" for note in episode.production_notes)
     safety = "\n".join(f"<li>{escape(rule)}</li>" for rule in episode.safety_rules)
+    status_html = _production_status_html(episode, root)
     current_command = (
         f"PYTHONPATH=src .venv/bin/python -m content_pipeline story-studio-create "
         f"--audience {episode.audience} --aspect {episode.aspect} --date 2026-05-28"
@@ -772,18 +773,55 @@ def _dashboard_html(episode: StoryEpisode, root: Path, recent: list[dict[str, st
     if is_kid:
         return _kid_dashboard_html(
             episode, root, recent, recent_options, cards, character_cards,
-            notes, safety, current_command, kid_command, adult_command,
+            notes, safety, status_html, current_command, kid_command, adult_command,
         )
     return _adult_dashboard_html(
         episode, root, recent, recent_options, cards, character_cards,
-        notes, safety, current_command, kid_command, adult_command,
+        notes, safety, status_html, current_command, kid_command, adult_command,
+    )
+
+
+def _production_status_html(episode: StoryEpisode, root: Path) -> str:
+    reference_ready = sum(1 for character in episode.characters if _reference_media_path(character, root))
+    clips_ready = sum(1 for scene in episode.scenes if (root / "clips" / "inbox" / scene.expected_clip_file).exists())
+    rows = [
+        _status_row("Story/script", (root / "story_script.md").exists(), "Script ready"),
+        _status_row("Scene prompts", (root / "scene_prompts.json").exists(), "Prompts ready"),
+        _status_row(
+            "Character references",
+            reference_ready == len(episode.characters),
+            f"{reference_ready}/{len(episode.characters)} reference media files added",
+        ),
+        _status_row(
+            "Manual/Gemini clips",
+            clips_ready == len(episode.scenes),
+            f"{clips_ready}/{len(episode.scenes)} scene clips in clips/inbox",
+        ),
+        _status_row("Final assembly", (root / "video" / "assembled_review.mp4").exists(), "Review MP4 exported"),
+    ]
+    fallback = (
+        "Automation plan: use Gemini/Veo API while quota is available. "
+        "If quota is exhausted, create the missing clips manually in Gemini/OpenArt using the scene prompts below, "
+        "then save them with the expected filenames."
+    )
+    return f"""<p style="margin-bottom: 10px;">{escape(fallback)}</p>
+<ul style="list-style: none; padding-left: 0;">{''.join(rows)}</ul>"""
+
+
+def _status_row(label: str, done: bool, detail: str) -> str:
+    marker = "Done" if done else "Needs manual"
+    color = "#059669" if done else "#d97706"
+    return (
+        f'<li style="margin-bottom: 8px;"><strong>{escape(label)}:</strong> '
+        f'<span style="color: {color}; font-weight: 700;">{marker}</span><br>'
+        f'<span style="font-size: 12px;">{escape(detail)}</span></li>'
     )
 
 
 def _kid_dashboard_html(
     episode: StoryEpisode, root: Path, recent: list[dict[str, str]],
     recent_options: str, cards: str, character_cards: str,
-    notes: str, safety: str, current_command: str,
+    notes: str, safety: str, status_html: str, current_command: str,
     kid_command: str, adult_command: str,
 ) -> str:
     """Professional production dashboard for kids content — clean, modern, SaaS-style."""
@@ -940,6 +978,10 @@ def _kid_dashboard_html(
             <select>{recent_options}</select>
           </div>
           <div class="card">
+            <h3>Production Status</h3>
+            {status_html}
+          </div>
+          <div class="card">
             <h3>Production Plan</h3>
             <ul>{notes}</ul>
             <h3 style="margin-top: 16px;">Safety Rules</h3>
@@ -989,7 +1031,7 @@ def _kid_dashboard_html(
 def _adult_dashboard_html(
     episode: StoryEpisode, root: Path, recent: list[dict[str, str]],
     recent_options: str, cards: str, character_cards: str,
-    notes: str, safety: str, current_command: str,
+    notes: str, safety: str, status_html: str, current_command: str,
     kid_command: str, adult_command: str,
 ) -> str:
     """Professional production dashboard for adult content — dark theme, same layout as kid dashboard."""
@@ -1145,6 +1187,10 @@ def _adult_dashboard_html(
             <select>{recent_options}</select>
           </div>
           <div class="card">
+            <h3>Production Status</h3>
+            {status_html}
+          </div>
+          <div class="card">
             <h3>Production Plan</h3>
             <ul>{notes}</ul>
             <h3 style="margin-top: 16px;">Safety Rules</h3>
@@ -1215,23 +1261,33 @@ def _character_card(character: CharacterReference, root: Path) -> str:
 
 
 def _reference_media_html(character: CharacterReference, root: Path) -> str:
-    for extension in (".mp4", ".webm", ".mov"):
-        relative = Path("references") / "inbox" / f"{character.id}_reference{extension}"
-        if (root / relative).exists():
+    media_path = _reference_media_path(character, root)
+    if media_path:
+        relative = media_path.relative_to(root)
+        if media_path.suffix.lower() in {".mp4", ".webm", ".mov"}:
             return (
                 f'<video class="character-img" src="../{escape(str(relative))}" '
                 'controls muted loop playsinline></video>'
             )
-    for extension in (".png", ".jpg", ".jpeg", ".svg"):
-        relative = Path("references") / "inbox" / f"{character.id}_reference{extension}"
-        if (root / relative).exists():
-            return f'<img class="character-img" src="../{escape(str(relative))}" alt="{escape(character.name)} reference">'
+        return f'<img class="character-img" src="../{escape(str(relative))}" alt="{escape(character.name)} reference">'
     return (
         '<div class="character-img" style="min-height: 180px; display: grid; place-items: center; '
         'padding: 18px; text-align: center; color: #64748b;">'
         f'<div><strong>{escape(character.name)} reference media not added yet</strong><br>'
         f'<span>Put {escape(character.id)}_reference.mp4 in references/inbox/</span></div></div>'
     )
+
+
+def _reference_media_path(character: CharacterReference, root: Path) -> Path | None:
+    for extension in (".mp4", ".webm", ".mov"):
+        relative = Path("references") / "inbox" / f"{character.id}_reference{extension}"
+        if (root / relative).exists():
+            return root / relative
+    for extension in (".png", ".jpg", ".jpeg", ".svg"):
+        relative = Path("references") / "inbox" / f"{character.id}_reference{extension}"
+        if (root / relative).exists():
+            return root / relative
+    return None
 
 
 def _char_emoji(char_id: str) -> str:
