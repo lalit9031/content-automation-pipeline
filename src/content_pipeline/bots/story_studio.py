@@ -532,6 +532,14 @@ def _dashboard_html(episode: StoryEpisode, root: Path, recent: list[dict[str, st
     cards = "\n".join(_scene_card(scene, index) for index, scene in enumerate(episode.scenes, start=1))
     notes = "\n".join(f"<li>{escape(note)}</li>" for note in episode.production_notes)
     safety = "\n".join(f"<li>{escape(rule)}</li>" for rule in episode.safety_rules)
+    kid_command = (
+        "PYTHONPATH=src .venv/bin/python -m content_pipeline story-studio-create "
+        "--audience kid --date 2026-05-28"
+    )
+    adult_command = (
+        "PYTHONPATH=src .venv/bin/python -m content_pipeline story-studio-create "
+        "--audience adult --aspect landscape --date 2026-05-28"
+    )
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -545,11 +553,14 @@ def _dashboard_html(episode: StoryEpisode, root: Path, recent: list[dict[str, st
     .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 18px; }}
     .card {{ background: #1f2937; border: 1px solid #475569; border-radius: 18px; padding: 18px; box-shadow: 0 14px 38px rgba(0,0,0,.25); }}
     .scene {{ border-left: 5px solid #fbbf24; }}
-    textarea, select {{ width: 100%; box-sizing: border-box; border-radius: 12px; border: 1px solid #64748b; padding: 12px; background: #020617; color: #fff7ed; }}
+    textarea, select, input {{ width: 100%; box-sizing: border-box; border-radius: 12px; border: 1px solid #64748b; padding: 12px; background: #020617; color: #fff7ed; }}
     textarea {{ min-height: 190px; }}
     button {{ background: #fbbf24; color: #111827; border: 0; border-radius: 999px; padding: 9px 14px; font-weight: 700; cursor: pointer; }}
     code {{ color: #fde68a; }}
     .pill {{ display: inline-block; margin: 3px 6px 3px 0; padding: 5px 10px; border-radius: 999px; background: #312e81; color: #e0e7ff; font-size: 13px; }}
+    .choice-row {{ display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 10px 0 14px; }}
+    .choice {{ border: 1px solid #64748b; border-radius: 14px; padding: 12px; background: #020617; }}
+    .choice strong {{ display: block; margin-bottom: 4px; color: #fef3c7; }}
     p, li {{ line-height: 1.55; color: #e5e7eb; }}
   </style>
 </head>
@@ -565,7 +576,32 @@ def _dashboard_html(episode: StoryEpisode, root: Path, recent: list[dict[str, st
     <section class="grid">
       <div class="card">
         <h2>Create Story</h2>
-        <p>Ask Codex: "Create a kid story about sharing" or "Create an adult sci-fi story." If you have no idea, ask it to create one by itself.</p>
+        <p>Choose the audience first, then ask Codex to create the story. The page is static, so selection is a planning helper; Codex/CLI creates the next workspace.</p>
+        <label>Audience</label>
+        <select id="audience">
+          <option value="kid" {"selected" if episode.audience == "kid" else ""}>Kid: 2-5 years, gentle motion in every scene</option>
+          <option value="adult" {"selected" if episode.audience == "adult" else ""}>Adult: sci-fi, war, king/queen, mystery, adventure</option>
+        </select>
+        <label style="display:block; margin-top: 12px;">Format</label>
+        <select id="aspect">
+          <option value="shorts" {"selected" if episode.aspect == "shorts" else ""}>Shorts/Reels: 9:16</option>
+          <option value="landscape" {"selected" if episode.aspect == "landscape" else ""}>Landscape YouTube: 16:9</option>
+        </select>
+        <div class="choice-row">
+          <div class="choice"><strong>Kid rule</strong>Motion video for every scene: smiles, blinking, toys, clouds, sparkles.</div>
+          <div class="choice"><strong>Adult rule</strong>2.5D for mood; motion video only for action, discovery or creative moments.</div>
+        </div>
+        <label>Optional idea</label>
+        <input id="idea" placeholder="Example: a baby elephant learns to share toys">
+        <p><strong>Ask Codex:</strong> "Create a story from this UI selection" or "Create a new story by yourself."</p>
+        <label>Kid command</label>
+        <textarea id="kid_command">{escape(kid_command)}</textarea>
+        <button onclick="copyText('kid_command')">Copy Kid Command</button>
+        <br><br>
+        <label>Adult command</label>
+        <textarea id="adult_command">{escape(adult_command)}</textarea>
+        <button onclick="copyText('adult_command')">Copy Adult Command</button>
+        <br><br>
         <label>Last 3 backup stories</label>
         <select>{recent_options}</select>
       </div>

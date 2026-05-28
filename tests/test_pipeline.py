@@ -677,6 +677,8 @@ class PipelineTest(unittest.TestCase):
             self.assertEqual(episode.audience, "kid")
             self.assertTrue(all(row["visual_mode"] == "motion_video" for row in prompts))
             self.assertIn("Last 3 backup stories", dashboard)
+            self.assertIn("Adult: sci-fi, war, king/queen", dashboard)
+            self.assertIn("Copy Adult Command", dashboard)
             self.assertIn("2-5 year olds", script)
             self.assertEqual(recent_stories(output)[0]["episode_id"], episode.episode_id)
 
