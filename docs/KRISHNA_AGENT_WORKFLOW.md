@@ -133,6 +133,63 @@ Kanha blinks or changes expression. Later local shots can add separate
 foreground layers for swinging pots, drifting clouds, moving leaves, sparkles
 and captions.
 
+## Manual OpenArt / Meta AI Daily Studio
+
+For one publishable video per day, the cleanest low-cost workflow is now a
+manual generation studio. The bot prepares everything except provider-side
+clip generation:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m content_pipeline krishna-daily-video-ui \
+  --date 2026-05-28
+```
+
+This creates an episode workspace:
+
+```text
+output/kanha_ki_nanhi_leela/episodes/2026-05-28_makhan_ki_matki/
+```
+
+Important files:
+
+- `ui/index.html` - local dashboard with clean story, scene prompts, copy buttons and policy notes.
+- `story_script.md` - Hindi narration and on-screen text.
+- `scene_prompts.json` - OpenArt and Meta AI prompt per scene.
+- `youtube_metadata.md` - title, description, disclosure and hashtags.
+- `clips/inbox/` - drop downloaded MP4 clips here.
+- `clip_drop_guide.md` - exact clip names expected by the assembler.
+
+Generate each scene manually in OpenArt or Meta AI, download each MP4 and rename
+the clips exactly:
+
+```text
+scene_01.mp4
+scene_02.mp4
+...
+scene_08.mp4
+```
+
+Place them in `clips/inbox/`, then assemble the review video:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m content_pipeline krishna-manual-video-assemble \
+  --workspace output/kanha_ki_nanhi_leela/episodes/2026-05-28_makhan_ki_matki
+```
+
+The assembler normalizes all clips to vertical `720x1280`, combines them, and
+writes:
+
+```text
+video/assembled_review.mp4
+video/subtitles_hi.srt
+```
+
+The policy agent and YouTube upload gate still run after human review. The bot
+does not automate OpenArt's website because OpenArt's terms prohibit automated
+access outside its official website/app. Meta AI may be tested, but its
+commercial-use status for the exact video feature should be reviewed before
+public monetized upload.
+
 ## Motion, Assembly And Upload
 
 The real-motion validation and publication-gate commands remain documented in

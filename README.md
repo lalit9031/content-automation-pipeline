@@ -192,6 +192,25 @@ generate fictional identity stills and, after creator approval, one private
 five-second Kanha motion test. For the pilot, a no-subscription local 2.5D
 route renders moving vertical shots from the approved fictional artwork.
 
+For daily OpenArt or Meta AI assisted production, generate a local episode UI:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m content_pipeline krishna-daily-video-ui \
+  --date 2026-05-28
+```
+
+Open the generated `ui/index.html`, copy each scene prompt into OpenArt or Meta
+AI manually, download the MP4s, rename them `scene_01.mp4` through
+`scene_08.mp4`, and place them in the episode's `clips/inbox/` folder. Then:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m content_pipeline krishna-manual-video-assemble \
+  --workspace output/kanha_ki_nanhi_leela/episodes/2026-05-28_makhan_ki_matki
+```
+
+This keeps provider use compliant: the bot prepares story, prompts, metadata
+and assembly, but does not automate OpenArt's website.
+
 ## Architecture
 
 The supplied architecture diagram is kept at [assets/content_automation_pipeline.svg](assets/content_automation_pipeline.svg).

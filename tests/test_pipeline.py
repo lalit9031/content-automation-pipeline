@@ -43,6 +43,11 @@ from content_pipeline.bots.policy import (
     review_publication,
 )
 from content_pipeline.bots.prompt import OpenAIPromptProvider, _fit_long_form_duration
+from content_pipeline.bots.krishna_studio import (
+    assemble_manual_episode,
+    butter_heist_short_episode,
+    create_daily_video_workspace,
+)
 from content_pipeline.bots.video import (
     _assemble_video,
     long_form_scenes,
@@ -602,6 +607,36 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(plan.clips[0].duration_seconds, 5)
         self.assertIn("not face acting", plan.clips[0].prompt)
         self.assertIn("No external video API", plan.provider_rules[2])
+
+    def test_manual_krishna_video_workspace_writes_dashboard_and_clip_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            output = Path(temporary_dir) / "output"
+            episode = butter_heist_short_episode("2026-05-28")
+            written = create_daily_video_workspace(output, episode)
+            root = output / "kanha_ki_nanhi_leela" / "episodes" / episode.episode_id
+
+            self.assertTrue(all(path.exists() for path in written))
+            self.assertTrue((root / "clips" / "inbox" / ".gitkeep").exists())
+            dashboard = (root / "ui" / "index.html").read_text(encoding="utf-8")
+            prompts = json.loads((root / "scene_prompts.json").read_text(encoding="utf-8"))
+            script = (root / "story_script.md").read_text(encoding="utf-8")
+
+            self.assertIn("Manual OpenArt / Meta AI Workflow", dashboard)
+            self.assertIn("कान्हा और माखन की मटकी", script)
+            self.assertEqual(len(prompts), 8)
+            self.assertEqual(prompts[0]["expected_clip_file"], "scene_01.mp4")
+            self.assertIn("Treat Meta AI commercial usage as unconfirmed", " ".join(episode.safety_rules))
+
+    def test_manual_episode_assembly_reports_missing_downloaded_clips(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            output = Path(temporary_dir) / "output"
+            episode = butter_heist_short_episode("2026-05-28")
+            create_daily_video_workspace(output, episode)
+            root = output / "kanha_ki_nanhi_leela" / "episodes" / episode.episode_id
+
+            with patch("content_pipeline.bots.krishna_studio.shutil.which", return_value="/usr/bin/ffmpeg"):
+                with self.assertRaisesRegex(FileNotFoundError, "scene_01.mp4"):
+                    assemble_manual_episode(root)
 
     def test_youtube_policy_gate_blocks_missing_declarations(self) -> None:
         report = review_publication(

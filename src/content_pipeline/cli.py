@@ -39,6 +39,11 @@ from content_pipeline.bots.motion import (
 )
 from content_pipeline.bots.policy import PublicationDeclarations, review_publication
 from content_pipeline.bots.prompt import generate_long_form_video_script
+from content_pipeline.bots.krishna_studio import (
+    assemble_manual_episode,
+    butter_heist_short_episode,
+    create_daily_video_workspace,
+)
 from content_pipeline.bots.video import render_landscape_preview, render_long_form_preview
 from content_pipeline.bots.youtube import authorize_youtube, upload_youtube_video
 from content_pipeline.config import Settings
@@ -182,6 +187,17 @@ def main() -> int:
         "krishna-motion-assemble", help="Assemble generated motion clips into one preview."
     )
     motion_assemble_parser.add_argument("--plan", type=Path, required=True)
+    manual_ui_parser = subparsers.add_parser(
+        "krishna-daily-video-ui",
+        help="Create a daily manual OpenArt/Meta AI episode dashboard and clip inbox.",
+    )
+    manual_ui_parser.add_argument("--date", default=date.today().isoformat(), help="Date in YYYY-MM-DD.")
+    manual_ui_parser.add_argument("--destination", type=Path, default=Path("output"))
+    manual_assemble_parser = subparsers.add_parser(
+        "krishna-manual-video-assemble",
+        help="Assemble downloaded OpenArt/Meta AI scene clips from an episode workspace.",
+    )
+    manual_assemble_parser.add_argument("--workspace", type=Path, required=True)
     policy_parser = subparsers.add_parser(
         "youtube-policy-check", help="Create the required publication approval report."
     )
@@ -317,6 +333,20 @@ def main() -> int:
             print(json.dumps(generated, indent=2))
         else:
             print(f"Motion preview generated: {assemble_motion_preview(plan, settings.output_dir)}")
+        return 0
+    if args.command == "krishna-daily-video-ui":
+        destination = args.destination
+        if not destination.is_absolute():
+            destination = project_dir / destination
+        episode = butter_heist_short_episode(args.date)
+        written = create_daily_video_workspace(destination, episode)
+        for path in written:
+            print(path)
+        print(f"Open the dashboard file in your browser: {written[-1]}")
+        return 0
+    if args.command == "krishna-manual-video-assemble":
+        workspace = args.workspace if args.workspace.is_absolute() else project_dir / args.workspace
+        print(f"Manual video assembled: {assemble_manual_episode(workspace)}")
         return 0
     if args.command == "youtube-policy-check":
         video = args.video if args.video.is_absolute() else project_dir / args.video
