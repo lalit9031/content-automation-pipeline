@@ -71,6 +71,7 @@ from content_pipeline.bots.story_studio import (
     assemble_story_episode,
     create_story_episode,
     create_story_workspace,
+    serve_story_studio,
 )
 from content_pipeline.bots.video import render_landscape_preview, render_long_form_preview
 from content_pipeline.bots.youtube import authorize_youtube, upload_youtube_video
@@ -263,6 +264,13 @@ def main() -> int:
         help="Write Gemini/Veo budget report for a Story Studio workspace.",
     )
     story_budget_parser.add_argument("--workspace", type=Path, required=True)
+    story_serve_parser = subparsers.add_parser(
+        "story-studio-serve",
+        help="Serve a Story Studio dashboard locally with character media uploads enabled.",
+    )
+    story_serve_parser.add_argument("--workspace", type=Path, required=True)
+    story_serve_parser.add_argument("--host", default="127.0.0.1")
+    story_serve_parser.add_argument("--port", type=int, default=8765)
     subparsers.add_parser("gemini-config-check", help="Check Gemini/Veo API configuration without generating video.")
     policy_parser = subparsers.add_parser(
         "youtube-policy-check", help="Create the required publication approval report."
@@ -530,6 +538,10 @@ def main() -> int:
     if args.command == "story-studio-budget-report":
         workspace = args.workspace if args.workspace.is_absolute() else project_dir / args.workspace
         print(f"Gemini budget report written: {write_gemini_budget_report(workspace, settings)}")
+        return 0
+    if args.command == "story-studio-serve":
+        workspace = args.workspace if args.workspace.is_absolute() else project_dir / args.workspace
+        serve_story_studio(workspace, host=args.host, port=args.port)
         return 0
     if args.command == "gemini-config-check":
         print(json.dumps(gemini_config_status(settings), indent=2))

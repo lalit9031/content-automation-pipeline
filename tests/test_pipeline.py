@@ -53,6 +53,7 @@ from content_pipeline.bots.story_studio import (
     create_story_episode,
     create_story_workspace,
     recent_stories,
+    save_reference_media_upload,
 )
 from content_pipeline.bots.gemini_video import (
     build_gemini_requests,
@@ -690,6 +691,8 @@ class PipelineTest(unittest.TestCase):
             self.assertIn("Character References", dashboard)
             self.assertIn("selected_command", dashboard)
             self.assertIn("Production Status", dashboard)
+            self.assertIn("Upload Reference", dashboard)
+            self.assertIn('enctype="multipart/form-data"', dashboard)
             self.assertIn("0/5 reference media files added", dashboard)
             self.assertIn("0/7 scene clips in clips/inbox", dashboard)
             self.assertTrue((root / "characters" / "golu_v1_reference.svg").exists())
@@ -721,6 +724,38 @@ class PipelineTest(unittest.TestCase):
             self.assertTrue((root / "characters" / "ira_v1_reference.svg").exists())
             self.assertIn("2_5d_image", {row["visual_mode"] for row in prompts})
             self.assertIn("motion_video", {row["visual_mode"] for row in prompts})
+
+    def test_story_studio_upload_saves_character_reference_with_expected_name(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            output = Path(temporary_dir) / "output"
+            episode = create_story_episode("kid", episode_date="2026-05-28")
+            create_story_workspace(output, episode)
+            root = output / "story_studio" / "episodes" / episode.episode_id
+
+            saved = save_reference_media_upload(root, "momo_v1", "manual Gemini Clip.MP4", b"video-bytes")
+            dashboard = (root / "ui" / "index.html").read_text(encoding="utf-8")
+
+            self.assertEqual(saved, (root / "references" / "inbox" / "momo_v1_reference.mp4").resolve())
+            self.assertEqual(saved.read_bytes(), b"video-bytes")
+            self.assertIn("1/5 reference media files added", dashboard)
+            self.assertIn("momo_v1_reference.mp4", dashboard)
+
+    def test_story_studio_upload_replaces_old_reference_and_validates_input(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            output = Path(temporary_dir) / "output"
+            episode = create_story_episode("kid", episode_date="2026-05-28")
+            create_story_workspace(output, episode)
+            root = output / "story_studio" / "episodes" / episode.episode_id
+
+            old = save_reference_media_upload(root, "golu_v1", "golu.png", b"image")
+            new = save_reference_media_upload(root, "golu_v1", "golu.mov", b"video")
+
+            self.assertFalse(old.exists())
+            self.assertTrue(new.exists())
+            with self.assertRaisesRegex(ValueError, "Unsupported reference media type"):
+                save_reference_media_upload(root, "golu_v1", "bad.exe", b"data")
+            with self.assertRaisesRegex(ValueError, "Unknown character id"):
+                save_reference_media_upload(root, "unknown_v1", "clip.mp4", b"data")
 
     def test_story_studio_keeps_only_last_three_story_backups(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_dir:

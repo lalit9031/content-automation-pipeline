@@ -249,6 +249,18 @@ Kids stories mark every scene as `motion_video`. Adult stories use mostly
 `2_5d_image` atmospheric scenes, with `motion_video` reserved for action,
 discovery or creative movement.
 
+To upload character reference images/videos from the UI, serve the dashboard
+locally instead of opening the HTML file directly:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m content_pipeline story-studio-serve \
+  --workspace output/story_studio/episodes/<episode_id>
+```
+
+Open `http://127.0.0.1:8765/ui/index.html`. Each character card has an upload
+button. Uploaded files are saved to `references/inbox/` and automatically
+renamed as `<character_id>_reference.mp4`, `<character_id>_reference.png`, etc.
+
 After downloading clips into the episode's `clips/inbox/`, assemble:
 
 ```bash

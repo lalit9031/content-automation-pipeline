@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from email.parser import BytesParser
+from email.policy import default as email_default_policy
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import json
 import shutil
 import subprocess
@@ -8,6 +11,11 @@ from datetime import date
 from html import escape
 from pathlib import Path
 from typing import Any
+
+REFERENCE_VIDEO_EXTENSIONS = (".mp4", ".webm", ".mov")
+REFERENCE_IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".svg")
+REFERENCE_MEDIA_EXTENSIONS = REFERENCE_VIDEO_EXTENSIONS + REFERENCE_IMAGE_EXTENSIONS
+MAX_REFERENCE_UPLOAD_BYTES = 250 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -167,6 +175,124 @@ def recent_stories(output_dir: Path) -> list[dict[str, str]]:
     if not path.exists():
         return []
     return list(json.loads(path.read_text(encoding="utf-8")).get("stories", []))[:3]
+
+
+def save_reference_media_upload(workspace_dir: Path, character_id: str, original_filename: str, data: bytes) -> Path:
+    workspace_dir = workspace_dir.resolve()
+    episode = StoryEpisode.from_dict(json.loads((workspace_dir / "episode.json").read_text(encoding="utf-8")))
+    character_ids = {character.id for character in episode.characters}
+    if character_id not in character_ids:
+        raise ValueError(f"Unknown character id: {character_id}")
+    if not data:
+        raise ValueError("Uploaded file is empty.")
+    if len(data) > MAX_REFERENCE_UPLOAD_BYTES:
+        raise ValueError("Uploaded file is larger than the 250 MB local limit.")
+    extension = Path(original_filename).suffix.lower()
+    if extension not in REFERENCE_MEDIA_EXTENSIONS:
+        allowed = ", ".join(REFERENCE_MEDIA_EXTENSIONS)
+        raise ValueError(f"Unsupported reference media type. Use one of: {allowed}")
+
+    references = workspace_dir / "references" / "inbox"
+    references.mkdir(parents=True, exist_ok=True)
+    target = references / f"{character_id}_reference{extension}"
+    for old_extension in REFERENCE_MEDIA_EXTENSIONS:
+        old_path = references / f"{character_id}_reference{old_extension}"
+        if old_path != target and old_path.exists():
+            old_path.unlink()
+    target.write_bytes(data)
+    refresh_story_dashboard(workspace_dir)
+    return target
+
+
+def refresh_story_dashboard(workspace_dir: Path) -> Path:
+    workspace_dir = workspace_dir.resolve()
+    episode = StoryEpisode.from_dict(json.loads((workspace_dir / "episode.json").read_text(encoding="utf-8")))
+    output_dir = _story_output_dir(workspace_dir)
+    ui_path = workspace_dir / "ui" / "index.html"
+    return _write_text(ui_path, _dashboard_html(episode, workspace_dir, recent_stories(output_dir)))
+
+
+def serve_story_studio(workspace_dir: Path, host: str = "127.0.0.1", port: int = 8765) -> None:
+    workspace_dir = workspace_dir.resolve()
+    if not (workspace_dir / "episode.json").exists():
+        raise FileNotFoundError(f"Story Studio workspace not found: {workspace_dir}")
+    refresh_story_dashboard(workspace_dir)
+
+    class StoryStudioHandler(SimpleHTTPRequestHandler):
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            super().__init__(*args, directory=str(workspace_dir), **kwargs)
+
+        def do_GET(self) -> None:  # noqa: N802 - stdlib handler API
+            if self.path in {"/", ""}:
+                self.send_response(302)
+                self.send_header("Location", "/ui/index.html")
+                self.end_headers()
+                return
+            super().do_GET()
+
+        def do_POST(self) -> None:  # noqa: N802 - stdlib handler API
+            if self.path != "/upload-reference":
+                self.send_error(404, "Unknown endpoint")
+                return
+            try:
+                character_id, filename, payload = _parse_reference_upload(self)
+                save_reference_media_upload(workspace_dir, character_id, filename, payload)
+            except ValueError as exc:
+                self.send_error(400, str(exc))
+                return
+            self.send_response(303)
+            self.send_header("Location", "/ui/index.html")
+            self.end_headers()
+
+    server = ThreadingHTTPServer((host, port), StoryStudioHandler)
+    print(f"Story Studio upload UI: http://{host}:{port}/ui/index.html")
+    print("Press Ctrl+C to stop.")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+
+
+def _parse_reference_upload(handler: SimpleHTTPRequestHandler) -> tuple[str, str, bytes]:
+    content_type = handler.headers.get("Content-Type", "")
+    if "multipart/form-data" not in content_type:
+        raise ValueError("Upload must use multipart/form-data.")
+    content_length = int(handler.headers.get("Content-Length", "0"))
+    if content_length <= 0:
+        raise ValueError("Upload body is empty.")
+    if content_length > MAX_REFERENCE_UPLOAD_BYTES + 1024 * 1024:
+        raise ValueError("Upload request is too large.")
+    body = handler.rfile.read(content_length)
+    message = BytesParser(policy=email_default_policy).parsebytes(
+        f"Content-Type: {content_type}\r\n\r\n".encode("utf-8") + body
+    )
+    character_id = ""
+    filename = ""
+    payload = b""
+    for part in message.iter_parts():
+        disposition = part.get("Content-Disposition", "")
+        if "form-data" not in disposition:
+            continue
+        name = part.get_param("name", header="content-disposition")
+        if name == "character_id":
+            character_id = part.get_content().strip()
+        elif name == "media":
+            filename = part.get_filename() or ""
+            payload = part.get_payload(decode=True) or b""
+    if not character_id:
+        raise ValueError("Missing character id.")
+    if not filename:
+        raise ValueError("Missing media file.")
+    return character_id, filename, payload
+
+
+def _story_output_dir(workspace_dir: Path) -> Path:
+    for parent in workspace_dir.parents:
+        if parent.name == "story_studio":
+            return parent.parent
+    return workspace_dir.parent
 
 
 def assemble_story_episode(workspace_dir: Path) -> Path:
@@ -1258,6 +1384,7 @@ def _character_card(character: CharacterReference, root: Path) -> str:
     prompt_id = f"character_{character.id}"
     emoji = _char_emoji(character.id)
     media_html = _reference_media_html(character, root)
+    upload_html = _reference_upload_form(character)
     return f"""<article class="card char-card">
   <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
     <span style="font-size: 36px;">{emoji}</span>
@@ -1269,6 +1396,7 @@ def _character_card(character: CharacterReference, root: Path) -> str:
   {media_html}
   <p style="font-size: 14px; margin: 10px 0;">{escape(character.description)}</p>
   <p style="font-size: 12px; color: #64748b;"><strong>Reference slot:</strong> save Gemini/OpenArt media as <code>references/inbox/{escape(character.id)}_reference.mp4</code> or image fallback.</p>
+  {upload_html}
   <details>
     <summary class="char-summary">Reference Prompt</summary>
     <textarea id="{prompt_id}" style="margin-top: 8px;">{escape(character.reference_prompt)}</textarea>
@@ -1277,11 +1405,21 @@ def _character_card(character: CharacterReference, root: Path) -> str:
 </article>"""
 
 
+def _reference_upload_form(character: CharacterReference) -> str:
+    return f"""<form method="post" action="/upload-reference" enctype="multipart/form-data" style="margin: 10px 0; padding: 10px; border: 1px dashed #cbd5e1; border-radius: 12px; background: #f8fafc;">
+    <input type="hidden" name="character_id" value="{escape(character.id)}">
+    <label style="display: block; font-size: 12px; font-weight: 700; margin-bottom: 6px;">Upload image/video for {escape(character.name)}</label>
+    <input type="file" name="media" accept="video/mp4,video/webm,video/quicktime,image/png,image/jpeg,image/svg+xml" required style="width: 100%; font-size: 12px;">
+    <button type="submit" style="margin-top: 8px;">Upload Reference</button>
+    <p style="font-size: 11px; color: #64748b; margin: 8px 0 0;">Use via <code>story-studio-serve</code>. File is auto-renamed to <code>{escape(character.id)}_reference.ext</code>.</p>
+  </form>"""
+
+
 def _reference_media_html(character: CharacterReference, root: Path) -> str:
     media_path = _reference_media_path(character, root)
     if media_path:
         relative = media_path.relative_to(root)
-        if media_path.suffix.lower() in {".mp4", ".webm", ".mov"}:
+        if media_path.suffix.lower() in REFERENCE_VIDEO_EXTENSIONS:
             return (
                 f'<video class="character-img" src="../{escape(str(relative))}" '
                 'controls muted loop playsinline></video>'
@@ -1296,11 +1434,11 @@ def _reference_media_html(character: CharacterReference, root: Path) -> str:
 
 
 def _reference_media_path(character: CharacterReference, root: Path) -> Path | None:
-    for extension in (".mp4", ".webm", ".mov"):
+    for extension in REFERENCE_VIDEO_EXTENSIONS:
         relative = Path("references") / "inbox" / f"{character.id}_reference{extension}"
         if (root / relative).exists():
             return root / relative
-    for extension in (".png", ".jpg", ".jpeg", ".svg"):
+    for extension in REFERENCE_IMAGE_EXTENSIONS:
         relative = Path("references") / "inbox" / f"{character.id}_reference{extension}"
         if (root / relative).exists():
             return root / relative
