@@ -672,6 +672,7 @@ class PipelineTest(unittest.TestCase):
             prompts = json.loads((root / "scene_prompts.json").read_text(encoding="utf-8"))
             dashboard = (root / "ui" / "index.html").read_text(encoding="utf-8")
             script = (root / "story_script.md").read_text(encoding="utf-8")
+            characters = json.loads((root / "characters" / "character_references.json").read_text(encoding="utf-8"))
 
             self.assertTrue(all(path.exists() for path in written))
             self.assertEqual(episode.audience, "kid")
@@ -679,6 +680,11 @@ class PipelineTest(unittest.TestCase):
             self.assertIn("Last 3 backup stories", dashboard)
             self.assertIn("Adult: sci-fi, war, king/queen", dashboard)
             self.assertIn("Copy Adult Command", dashboard)
+            self.assertIn("Character References", dashboard)
+            self.assertIn("selected_command", dashboard)
+            self.assertTrue((root / "characters" / "golu_v1_reference.svg").exists())
+            self.assertEqual(characters[0]["id"], "golu_v1")
+            self.assertIn("Use the approved character reference designs", prompts[0]["openart_prompt"])
             self.assertIn("2-5 year olds", script)
             self.assertEqual(recent_stories(output)[0]["episode_id"], episode.episode_id)
 
@@ -694,10 +700,14 @@ class PipelineTest(unittest.TestCase):
             create_story_workspace(output, episode)
             root = output / "story_studio" / "episodes" / episode.episode_id
             prompts = json.loads((root / "scene_prompts.json").read_text(encoding="utf-8"))
+            dashboard = (root / "ui" / "index.html").read_text(encoding="utf-8")
 
             self.assertEqual(episode.width, 1280)
             self.assertEqual(episode.height, 720)
             self.assertEqual(prompts[0]["size"], "1280x720")
+            self.assertIn("Landscape 16:9", prompts[0]["openart_prompt"])
+            self.assertIn("--audience adult --aspect landscape", dashboard)
+            self.assertTrue((root / "characters" / "ira_v1_reference.svg").exists())
             self.assertIn("2_5d_image", {row["visual_mode"] for row in prompts})
             self.assertIn("motion_video", {row["visual_mode"] for row in prompts})
 

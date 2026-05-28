@@ -11,6 +11,16 @@ from typing import Any
 
 
 @dataclass(frozen=True)
+class CharacterReference:
+    id: str
+    name: str
+    role: str
+    description: str
+    reference_prompt: str
+    image_file: str
+
+
+@dataclass(frozen=True)
 class StoryScene:
     id: str
     title: str
@@ -34,6 +44,7 @@ class StoryEpisode:
     logline: str
     target_duration_seconds: int
     story_source: str
+    characters: list[CharacterReference]
     scenes: list[StoryScene]
     production_notes: list[str]
     safety_rules: list[str]
@@ -52,6 +63,7 @@ class StoryEpisode:
             "logline": self.logline,
             "target_duration_seconds": self.target_duration_seconds,
             "story_source": self.story_source,
+            "characters": [asdict(character) for character in self.characters],
             "scenes": [asdict(scene) for scene in self.scenes],
             "production_notes": self.production_notes,
             "safety_rules": self.safety_rules,
@@ -72,6 +84,7 @@ class StoryEpisode:
             logline=data["logline"],
             target_duration_seconds=int(data["target_duration_seconds"]),
             story_source=data["story_source"],
+            characters=[CharacterReference(**character) for character in data.get("characters", [])],
             scenes=[StoryScene(**scene) for scene in data["scenes"]],
             production_notes=list(data["production_notes"]),
             safety_rules=list(data["safety_rules"]),
@@ -112,11 +125,14 @@ def create_story_workspace(
 
     paths = [
         _write_json(root / "episode.json", episode.as_dict()),
+        _write_json(root / "characters" / "character_references.json", [asdict(character) for character in episode.characters]),
         _write_text(root / "story_script.md", _script_markdown(episode)),
         _write_json(root / "scene_prompts.json", _prompt_rows(episode)),
         _write_text(root / "clip_drop_guide.md", _clip_drop_guide(episode)),
         _write_text(root / "youtube_metadata.md", _metadata_markdown(episode)),
     ]
+    for character in episode.characters:
+        paths.append(_write_text(root / character.image_file, _character_svg(character)))
     bank = update_story_bank(output_dir, episode)
     paths.append(bank)
     recent = recent_stories(output_dir)
@@ -237,6 +253,33 @@ def _kid_episode(day: str, idea: str | None, aspect: str, width: int, height: in
         "warm nursery colors, simple expressive faces, gentle motion, no scary visuals, no violence, "
         "no copyrighted characters, no text, logo or watermark."
     )
+    characters = [
+        CharacterReference(
+            "golu_v1",
+            "Golu",
+            "main character",
+            "A round baby elephant with soft blue-gray skin, big kind eyes, tiny yellow scarf, small red toy-car badge, cheerful toddler expressions.",
+            (
+                "Create a clean character reference sheet for Golu V1, a round baby elephant for an original "
+                "2-5 kids cartoon: soft blue-gray skin, big kind eyes, tiny yellow scarf, small red toy-car badge, "
+                "front view, side view, happy face, thoughtful face, simple shapes, no text, no logo."
+            ),
+            "characters/golu_v1_reference.svg",
+        ),
+        CharacterReference(
+            "mimi_v1",
+            "Mimi",
+            "friend",
+            "A tiny yellow bird with orange feet, small teal bow, round friendly eyes, soft preschool cartoon proportions.",
+            (
+                "Create a clean character reference sheet for Mimi V1, a tiny yellow bird friend for an original "
+                "2-5 kids cartoon: orange feet, small teal bow, round friendly eyes, happy pose, curious pose, "
+                "simple soft shapes, no text, no logo."
+            ),
+            "characters/mimi_v1_reference.svg",
+        ),
+    ]
+    character_lock = _character_lock(characters)
     scenes = [
         StoryScene(
             "scene_01",
@@ -245,8 +288,8 @@ def _kid_episode(day: str, idea: str | None, aspect: str, width: int, height: in
             "Golu had a red car, a yellow ball, and a tiny train. He loved them all very much.",
             "Golu's toys",
             "motion_video",
-            f"{style} Cute baby elephant Golu sits near a colorful toy box, red car, yellow ball and tiny train wiggle gently, happy playroom, camera slowly pushes in.",
-            f"{style} 7 second animated scene: cute baby elephant with toy box, toys move gently, cheerful playroom.",
+            f"{style} {character_lock} Cute baby elephant Golu sits near a colorful toy box, red car, yellow ball and tiny train wiggle gently, happy playroom, camera slowly pushes in.",
+            f"{style} {character_lock} 7 second animated scene: cute baby elephant with toy box, toys move gently, cheerful playroom.",
             "scene_01.mp4",
         ),
         StoryScene(
@@ -256,8 +299,8 @@ def _kid_episode(day: str, idea: str | None, aspect: str, width: int, height: in
             "Mimi came and asked, Golu, can I play too? Golu hugged his toys and said, Mine.",
             "Can I play too?",
             "motion_video",
-            f"{style} Small friendly bird Mimi asks to play, Golu gently hugs his toys, no anger, just toddler emotion, soft funny expressions.",
-            f"{style} 8 second animated scene: little bird asks to play, baby elephant holds toys, gentle toddler emotion.",
+            f"{style} {character_lock} Small friendly bird Mimi asks to play, Golu gently hugs his toys, no anger, just toddler emotion, soft funny expressions.",
+            f"{style} {character_lock} 8 second animated scene: little bird asks to play, baby elephant holds toys, gentle toddler emotion.",
             "scene_02.mp4",
         ),
         StoryScene(
@@ -267,8 +310,8 @@ def _kid_episode(day: str, idea: str | None, aspect: str, width: int, height: in
             "Golu played alone. The car went vroom, the ball went bounce, but Golu did not laugh.",
             "Alone is not so fun",
             "motion_video",
-            f"{style} Golu plays alone with toy car and ball, toys move but the room feels quiet, Golu looks thoughtful, still safe and soft.",
-            f"{style} 8 second animated scene: baby elephant plays alone, toy car moves, ball bounces, quiet feeling.",
+            f"{style} {character_lock} Golu plays alone with toy car and ball, toys move but the room feels quiet, Golu looks thoughtful, still safe and soft.",
+            f"{style} {character_lock} 8 second animated scene: baby elephant plays alone, toy car moves, ball bounces, quiet feeling.",
             "scene_03.mp4",
         ),
         StoryScene(
@@ -278,8 +321,8 @@ def _kid_episode(day: str, idea: str | None, aspect: str, width: int, height: in
             "Then Golu had a small idea. Maybe toys become happier when friends play together.",
             "A kind idea",
             "motion_video",
-            f"{style} Golu's face brightens with a kind idea, soft sparkle, Mimi waits nearby, toy train gently rolls between them.",
-            f"{style} 8 second animated scene: baby elephant smiles with an idea, toy train rolls, friend waits nearby.",
+            f"{style} {character_lock} Golu's face brightens with a kind idea, soft sparkle, Mimi waits nearby, toy train gently rolls between them.",
+            f"{style} {character_lock} 8 second animated scene: baby elephant smiles with an idea, toy train rolls, friend waits nearby.",
             "scene_04.mp4",
         ),
         StoryScene(
@@ -289,8 +332,8 @@ def _kid_episode(day: str, idea: str | None, aspect: str, width: int, height: in
             "Golu gave Mimi the yellow ball. Mimi smiled. Golu smiled too.",
             "Sharing time",
             "motion_video",
-            f"{style} Golu gently gives yellow ball to Mimi, both smile, ball bounces once, warm happy motion.",
-            f"{style} 9 second animated scene: baby elephant shares yellow ball with little bird, both smile, ball bounces.",
+            f"{style} {character_lock} Golu gently gives yellow ball to Mimi, both smile, ball bounces once, warm happy motion.",
+            f"{style} {character_lock} 9 second animated scene: baby elephant shares yellow ball with little bird, both smile, ball bounces.",
             "scene_05.mp4",
         ),
         StoryScene(
@@ -300,8 +343,8 @@ def _kid_episode(day: str, idea: str | None, aspect: str, width: int, height: in
             "Now the car went vroom, the ball went bounce, and the room was full of giggles.",
             "Sharing makes play happy",
             "motion_video",
-            f"{style} Golu and Mimi play together, red car rolls safely, yellow ball bounces softly, colorful toy room full of smiles.",
-            f"{style} 9 second animated scene: friends play together with toy car and ball, happy giggles, safe motion.",
+            f"{style} {character_lock} Golu and Mimi play together, red car rolls safely, yellow ball bounces softly, colorful toy room full of smiles.",
+            f"{style} {character_lock} 9 second animated scene: friends play together with toy car and ball, happy giggles, safe motion.",
             "scene_06.mp4",
         ),
         StoryScene(
@@ -311,8 +354,8 @@ def _kid_episode(day: str, idea: str | None, aspect: str, width: int, height: in
             "Golu learned: toys are fun, but sharing makes playtime happier.",
             "Moral: Share with love",
             "motion_video",
-            f"{style} Closing shot: Golu and Mimi wave together beside toy box, soft confetti shapes drift, warm bedtime-story ending.",
-            f"{style} 7 second closing animation: baby elephant and bird wave, toys neatly placed, warm happy ending.",
+            f"{style} {character_lock} Closing shot: Golu and Mimi wave together beside toy box, soft confetti shapes drift, warm bedtime-story ending.",
+            f"{style} {character_lock} 7 second closing animation: baby elephant and bird wave, toys neatly placed, warm happy ending.",
             "scene_07.mp4",
         ),
     ]
@@ -326,6 +369,7 @@ def _kid_episode(day: str, idea: str | None, aspect: str, width: int, height: in
         logline="A gentle 2-5 story about sharing toys and feeling happy together.",
         target_duration_seconds=sum(scene.duration_seconds for scene in scenes),
         story_source=source,
+        characters=characters,
         scenes=scenes,
         production_notes=[
             "For kids, use motion on every scene: blinking, smiles, toy movement, camera drift, leaves/clouds/sparkles.",
@@ -356,6 +400,21 @@ def _adult_episode(day: str, idea: str | None, aspect: str, width: int, height: 
         f"{aspect_label}, cinematic original adult science-fiction adventure, dramatic lighting, "
         "high-detail 2.5D illustrated frames, mature tone, no copyrighted franchise, no logo, no watermark."
     )
+    characters = [
+        CharacterReference(
+            "ira_v1",
+            "Commander Ira",
+            "main character",
+            "A determined adult space explorer in a matte white suit with cobalt trim, amber visor, triangular mission patch and compact shoulder light.",
+            (
+                "Create a cinematic character reference sheet for Commander Ira V1, an original adult sci-fi explorer: "
+                "matte white suit, cobalt trim, amber visor, triangular mission patch, compact shoulder light, "
+                "front view, side view, helmet close-up, no text, no logo."
+            ),
+            "characters/ira_v1_reference.svg",
+        ),
+    ]
+    character_lock = _character_lock(characters)
     scenes = [
         StoryScene(
             "scene_01",
@@ -364,8 +423,8 @@ def _adult_episode(day: str, idea: str | None, aspect: str, width: int, height: 
             "Commander Ira crossed the frozen moon alone, following a signal that should have died ten years ago.",
             "A dead signal wakes",
             "2_5d_image",
-            f"{style} Wide shot of lone astronaut crossing blue-white frozen moon under a giant planet, subtle snow drift, 2.5D parallax image.",
-            f"{style} 8 second cinematic shot: astronaut on frozen moon, slow camera move, snow drifting.",
+            f"{style} {character_lock} Wide shot of Commander Ira crossing blue-white frozen moon under a giant planet, subtle snow drift, 2.5D parallax image.",
+            f"{style} {character_lock} 8 second cinematic shot: Commander Ira on frozen moon, slow camera move, snow drifting.",
             "scene_01.mp4",
         ),
         StoryScene(
@@ -375,8 +434,8 @@ def _adult_episode(day: str, idea: str | None, aspect: str, width: int, height: 
             "The ice split beneath her boots. Below it, an ancient city blinked with impossible green light.",
             "The city below",
             "motion_video",
-            f"{style} Action scene: ice crack opens safely in front of astronaut, glowing underground alien city visible below, cinematic motion, no gore.",
-            f"{style} 8 second action scene: ice opens, green alien city glows below, astronaut steps back safely.",
+            f"{style} {character_lock} Action scene: ice crack opens safely in front of Commander Ira, glowing underground alien city visible below, cinematic motion, no gore.",
+            f"{style} {character_lock} 8 second action scene: ice opens, green alien city glows below, Commander Ira steps back safely.",
             "scene_02.mp4",
         ),
         StoryScene(
@@ -386,8 +445,8 @@ def _adult_episode(day: str, idea: str | None, aspect: str, width: int, height: 
             "Her ship warned her to return. The signal whispered her name. Ira chose the unknown.",
             "Return or descend?",
             "2_5d_image",
-            f"{style} Close cinematic shot of astronaut helmet reflecting green underground city and distant ship warning lights, tense 2.5D parallax.",
-            f"{style} 10 second shot: helmet reflection, green city, warning lights, slow dramatic push in.",
+            f"{style} {character_lock} Close cinematic shot of Commander Ira's amber helmet reflecting green underground city and distant ship warning lights, tense 2.5D parallax.",
+            f"{style} {character_lock} 10 second shot: amber helmet reflection, green city, warning lights, slow dramatic push in.",
             "scene_03.mp4",
         ),
         StoryScene(
@@ -397,8 +456,8 @@ def _adult_episode(day: str, idea: str | None, aspect: str, width: int, height: 
             "She jumped into the blue dark, and gravity folded around her like a closing door.",
             "Into the unknown",
             "motion_video",
-            f"{style} Creative motion scene: astronaut descends through glowing ice tunnel, light particles swirl, controlled fall, awe not horror.",
-            f"{style} 9 second motion scene: astronaut falling through glowing ice tunnel, particles swirl, cinematic.",
+            f"{style} {character_lock} Creative motion scene: Commander Ira descends through glowing ice tunnel, light particles swirl, controlled fall, awe not horror.",
+            f"{style} {character_lock} 9 second motion scene: Commander Ira falling through glowing ice tunnel, particles swirl, cinematic.",
             "scene_04.mp4",
         ),
         StoryScene(
@@ -408,8 +467,8 @@ def _adult_episode(day: str, idea: str | None, aspect: str, width: int, height: 
             "At the city's heart, she found no enemy. Only a map, and a warning: Earth was not alone.",
             "Earth was not alone",
             "2_5d_image",
-            f"{style} Ancient alien chamber with star map hologram, astronaut standing small before huge glowing symbols, 2.5D parallax.",
-            f"{style} 10 second cinematic shot: alien chamber, star map hologram, astronaut discovers warning.",
+            f"{style} {character_lock} Ancient alien chamber with star map hologram, Commander Ira standing small before huge glowing symbols, 2.5D parallax.",
+            f"{style} {character_lock} 10 second cinematic shot: alien chamber, star map hologram, Commander Ira discovers warning.",
             "scene_05.mp4",
         ),
     ]
@@ -423,6 +482,7 @@ def _adult_episode(day: str, idea: str | None, aspect: str, width: int, height: 
         logline="A cinematic science-fiction micro story about a lonely explorer and a hidden warning.",
         target_duration_seconds=sum(scene.duration_seconds for scene in scenes),
         story_source=source,
+        characters=characters,
         scenes=scenes,
         production_notes=[
             "For adult stories, use 2.5D images for atmosphere and save full motion video for action or discovery scenes.",
@@ -461,6 +521,13 @@ def _prompt_rows(episode: StoryEpisode) -> list[dict[str, Any]]:
     ]
 
 
+def _character_lock(characters: list[CharacterReference]) -> str:
+    descriptions = " ".join(
+        f"Keep {character.name} consistent as {character.description}" for character in characters
+    )
+    return f"Use the approved character reference designs. {descriptions}"
+
+
 def _script_markdown(episode: StoryEpisode) -> str:
     lines = [
         f"# {episode.title}",
@@ -472,9 +539,26 @@ def _script_markdown(episode: StoryEpisode) -> str:
         "",
         episode.logline,
         "",
-        "## Story",
+        "## Character References",
         "",
     ]
+    for character in episode.characters:
+        lines.extend(
+            [
+                f"### {character.name}",
+                "",
+                character.description,
+                "",
+                f"Reference file: `{character.image_file}`",
+                "",
+                f"Reference prompt: {character.reference_prompt}",
+                "",
+            ]
+        )
+    lines.extend([
+        "## Story",
+        "",
+    ])
     for index, scene in enumerate(episode.scenes, start=1):
         lines.extend(
             [
@@ -530,11 +614,16 @@ def _dashboard_html(episode: StoryEpisode, root: Path, recent: list[dict[str, st
         for item in recent
     )
     cards = "\n".join(_scene_card(scene, index) for index, scene in enumerate(episode.scenes, start=1))
+    character_cards = "\n".join(_character_card(character) for character in episode.characters)
     notes = "\n".join(f"<li>{escape(note)}</li>" for note in episode.production_notes)
     safety = "\n".join(f"<li>{escape(rule)}</li>" for rule in episode.safety_rules)
+    current_command = (
+        f"PYTHONPATH=src .venv/bin/python -m content_pipeline story-studio-create "
+        f"--audience {episode.audience} --aspect {episode.aspect} --date 2026-05-28"
+    )
     kid_command = (
         "PYTHONPATH=src .venv/bin/python -m content_pipeline story-studio-create "
-        "--audience kid --date 2026-05-28"
+        "--audience kid --aspect shorts --date 2026-05-28"
     )
     adult_command = (
         "PYTHONPATH=src .venv/bin/python -m content_pipeline story-studio-create "
@@ -560,6 +649,7 @@ def _dashboard_html(episode: StoryEpisode, root: Path, recent: list[dict[str, st
     .pill {{ display: inline-block; margin: 3px 6px 3px 0; padding: 5px 10px; border-radius: 999px; background: #312e81; color: #e0e7ff; font-size: 13px; }}
     .choice-row {{ display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 10px 0 14px; }}
     .choice {{ border: 1px solid #64748b; border-radius: 14px; padding: 12px; background: #020617; }}
+    .character-img {{ width: 100%; border-radius: 14px; background: #020617; border: 1px solid #64748b; }}
     .choice strong {{ display: block; margin-bottom: 4px; color: #fef3c7; }}
     p, li {{ line-height: 1.55; color: #e5e7eb; }}
   </style>
@@ -576,7 +666,7 @@ def _dashboard_html(episode: StoryEpisode, root: Path, recent: list[dict[str, st
     <section class="grid">
       <div class="card">
         <h2>Create Story</h2>
-        <p>Choose the audience first, then ask Codex to create the story. The page is static, so selection is a planning helper; Codex/CLI creates the next workspace.</p>
+        <p>Choose the audience and format, then copy the updated command. The current scene prompts below belong to <strong>{escape(episode.aspect)}</strong>; create a new workspace to switch formats cleanly.</p>
         <label>Audience</label>
         <select id="audience">
           <option value="kid" {"selected" if episode.audience == "kid" else ""}>Kid: 2-5 years, gentle motion in every scene</option>
@@ -594,6 +684,10 @@ def _dashboard_html(episode: StoryEpisode, root: Path, recent: list[dict[str, st
         <label>Optional idea</label>
         <input id="idea" placeholder="Example: a baby elephant learns to share toys">
         <p><strong>Ask Codex:</strong> "Create a story from this UI selection" or "Create a new story by yourself."</p>
+        <label>Selected command</label>
+        <textarea id="selected_command">{escape(current_command)}</textarea>
+        <button onclick="copyText('selected_command')">Copy Selected Command</button>
+        <br><br>
         <label>Kid command</label>
         <textarea id="kid_command">{escape(kid_command)}</textarea>
         <button onclick="copyText('kid_command')">Copy Kid Command</button>
@@ -608,6 +702,8 @@ def _dashboard_html(episode: StoryEpisode, root: Path, recent: list[dict[str, st
       <div class="card"><h2>Production Plan</h2><ul>{notes}</ul></div>
       <div class="card"><h2>Policy Notes</h2><ul>{safety}</ul></div>
     </section>
+    <h2 style="margin-top: 30px;">Character References</h2>
+    <section class="grid">{character_cards}</section>
     <h2 style="margin-top: 30px;">Scene Prompts</h2>
     <section class="grid">{cards}</section>
   </main>
@@ -617,10 +713,36 @@ def _dashboard_html(episode: StoryEpisode, root: Path, recent: list[dict[str, st
       el.select();
       navigator.clipboard.writeText(el.value);
     }}
+    function refreshSelectedCommand() {{
+      const audience = document.getElementById('audience').value;
+      const aspect = document.getElementById('aspect').value;
+      const idea = document.getElementById('idea').value.trim();
+      let command = `PYTHONPATH=src .venv/bin/python -m content_pipeline story-studio-create --audience ${{audience}} --aspect ${{aspect}} --date 2026-05-28`;
+      if (idea) {{
+        command += ` --idea "${{idea.replaceAll('"', '\\"')}}"`;
+      }}
+      document.getElementById('selected_command').value = command;
+    }}
+    document.getElementById('audience').addEventListener('change', refreshSelectedCommand);
+    document.getElementById('aspect').addEventListener('change', refreshSelectedCommand);
+    document.getElementById('idea').addEventListener('input', refreshSelectedCommand);
   </script>
 </body>
 </html>
 """
+
+
+def _character_card(character: CharacterReference) -> str:
+    prompt_id = f"character_{character.id}"
+    return f"""<article class="card">
+  <h3>{escape(character.name)}</h3>
+  <p><strong>{escape(character.role)}</strong></p>
+  <img class="character-img" src="../{escape(character.image_file)}" alt="{escape(character.name)} reference">
+  <p>{escape(character.description)}</p>
+  <label>Reference image prompt</label>
+  <textarea id="{prompt_id}">{escape(character.reference_prompt)}</textarea>
+  <button onclick="copyText('{prompt_id}')">Copy Character Prompt</button>
+</article>"""
 
 
 def _scene_card(scene: StoryScene, index: int) -> str:
@@ -649,6 +771,41 @@ def _subtitle_srt(episode: StoryEpisode) -> str:
         lines.extend([str(index), f"{_timestamp(start)} --> {_timestamp(end)}", scene.narration, ""])
         start = end
     return "\n".join(lines)
+
+
+def _character_svg(character: CharacterReference) -> str:
+    color = "#60a5fa" if "elephant" in character.description.lower() else "#facc15"
+    accent = "#f97316" if "bird" in character.description.lower() else "#22d3ee"
+    title = escape(character.name)
+    role = escape(character.role)
+    description = escape(character.description)
+    return f"""<svg xmlns="http://www.w3.org/2000/svg" width="960" height="1280" viewBox="0 0 960 1280">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#111827"/>
+      <stop offset="1" stop-color="#312e81"/>
+    </linearGradient>
+  </defs>
+  <rect width="960" height="1280" fill="url(#bg)"/>
+  <rect x="64" y="64" width="832" height="1152" rx="44" fill="#f8fafc" opacity="0.96"/>
+  <text x="96" y="142" fill="#111827" font-family="Arial, sans-serif" font-size="54" font-weight="700">{title}</text>
+  <text x="96" y="196" fill="#475569" font-family="Arial, sans-serif" font-size="28">{role}</text>
+  <circle cx="480" cy="430" r="190" fill="{color}"/>
+  <circle cx="410" cy="394" r="26" fill="#111827"/>
+  <circle cx="550" cy="394" r="26" fill="#111827"/>
+  <circle cx="402" cy="386" r="8" fill="#ffffff"/>
+  <circle cx="542" cy="386" r="8" fill="#ffffff"/>
+  <path d="M405 505 Q480 565 555 505" fill="none" stroke="#111827" stroke-width="16" stroke-linecap="round"/>
+  <rect x="310" y="635" width="340" height="310" rx="80" fill="{color}"/>
+  <rect x="346" y="680" width="268" height="54" rx="27" fill="{accent}"/>
+  <circle cx="315" cy="470" r="74" fill="{color}" opacity="0.92"/>
+  <circle cx="645" cy="470" r="74" fill="{color}" opacity="0.92"/>
+  <text x="96" y="1044" fill="#111827" font-family="Arial, sans-serif" font-size="26" font-weight="700">Consistency Notes</text>
+  <foreignObject x="96" y="1070" width="768" height="110">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="font-family: Arial, sans-serif; font-size: 24px; line-height: 1.35; color: #334155;">{description}</div>
+  </foreignObject>
+</svg>
+"""
 
 
 def _timestamp(seconds: int) -> str:
