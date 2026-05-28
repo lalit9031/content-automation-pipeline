@@ -54,6 +54,12 @@ from content_pipeline.bots.story_studio import (
     create_story_workspace,
     recent_stories,
 )
+from content_pipeline.bots.gemini_video import (
+    build_gemini_requests,
+    gemini_config_status,
+    generate_missing_gemini_clips,
+    write_gemini_dry_run,
+)
 from content_pipeline.bots.video import (
     _assemble_video,
     long_form_scenes,
@@ -736,6 +742,35 @@ class PipelineTest(unittest.TestCase):
             with patch("content_pipeline.bots.story_studio.shutil.which", return_value="/usr/bin/ffmpeg"):
                 with self.assertRaisesRegex(FileNotFoundError, "scene_01.mp4"):
                     assemble_story_episode(root)
+
+    def test_gemini_dry_run_writes_scene_generation_requests(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            output = Path(temporary_dir) / "output"
+            episode = create_story_episode("kid", episode_date="2026-05-28")
+            create_story_workspace(output, episode)
+            root = output / "story_studio" / "episodes" / episode.episode_id
+
+            requests = build_gemini_requests(root)
+            dry_run = write_gemini_dry_run(root)
+
+            self.assertEqual(len(requests), len(episode.scenes))
+            self.assertEqual(requests[0].output_file, "scene_01.mp4")
+            self.assertTrue(dry_run.exists())
+            self.assertIn("meta_prompt", (root / "episode.json").read_text(encoding="utf-8"))
+
+    def test_gemini_generation_requires_api_key_unless_dry_run(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            output = Path(temporary_dir) / "output"
+            episode = create_story_episode("kid", episode_date="2026-05-28")
+            create_story_workspace(output, episode)
+            root = output / "story_studio" / "episodes" / episode.episode_id
+
+            result = generate_missing_gemini_clips(root, Settings(output_dir=output), dry_run=True)
+
+            self.assertEqual(result[0]["status"], "dry_run")
+            self.assertFalse(gemini_config_status(Settings(output_dir=output))["configured"])
+            with self.assertRaisesRegex(ValueError, "GEMINI_API_KEY"):
+                generate_missing_gemini_clips(root, Settings(output_dir=output))
 
     def test_youtube_policy_gate_blocks_missing_declarations(self) -> None:
         report = review_publication(

@@ -34,6 +34,9 @@ class Settings:
     luma_api_key: str = ""
     luma_image_model: str = "photon-1"
     luma_video_model: str = "ray-2"
+    gemini_api_key: str = ""
+    gemini_video_model: str = "veo-3.0-generate-preview"
+    gemini_video_poll_seconds: int = 10
     youtube_client_secrets_file: str = ""
     youtube_token_file: str = ""
     instagram_access_token: str = ""
@@ -81,6 +84,9 @@ class Settings:
             luma_api_key=os.getenv("LUMAAI_API_KEY", ""),
             luma_image_model=os.getenv("LUMA_IMAGE_MODEL", "photon-1"),
             luma_video_model=os.getenv("LUMA_VIDEO_MODEL", "ray-2"),
+            gemini_api_key=os.getenv("GEMINI_API_KEY", "") or os.getenv("GOOGLE_API_KEY", ""),
+            gemini_video_model=os.getenv("GEMINI_VIDEO_MODEL", "veo-3.0-generate-preview"),
+            gemini_video_poll_seconds=int(os.getenv("GEMINI_VIDEO_POLL_SECONDS", "10")),
             youtube_client_secrets_file=os.getenv("YOUTUBE_CLIENT_SECRETS_FILE", ""),
             youtube_token_file=os.getenv("YOUTUBE_TOKEN_FILE", ""),
             instagram_access_token=os.getenv("INSTAGRAM_ACCESS_TOKEN", ""),

@@ -55,6 +55,11 @@ from content_pipeline.bots.instagram import (
     instagram_publish_reel,
     record_instagram_publish,
 )
+from content_pipeline.bots.gemini_video import (
+    gemini_config_status,
+    generate_missing_gemini_clips,
+    write_gemini_dry_run,
+)
 from content_pipeline.bots.prompt import generate_long_form_video_script
 from content_pipeline.bots.krishna_studio import (
     assemble_manual_episode,
@@ -245,6 +250,14 @@ def main() -> int:
         help="Assemble downloaded OpenArt/Meta AI clips from a Story Studio workspace.",
     )
     story_assemble_parser.add_argument("--workspace", type=Path, required=True)
+    story_gemini_parser = subparsers.add_parser(
+        "story-studio-gemini-generate",
+        help="Generate missing Story Studio scene clips with Gemini/Veo, or write a dry-run request file.",
+    )
+    story_gemini_parser.add_argument("--workspace", type=Path, required=True)
+    story_gemini_parser.add_argument("--limit", type=int, default=None, help="Maximum new clips to generate.")
+    story_gemini_parser.add_argument("--dry-run", action="store_true", help="Only write gemini_video_requests.json.")
+    subparsers.add_parser("gemini-config-check", help="Check Gemini/Veo API configuration without generating video.")
     policy_parser = subparsers.add_parser(
         "youtube-policy-check", help="Create the required publication approval report."
     )
@@ -500,6 +513,16 @@ def main() -> int:
     if args.command == "story-studio-assemble":
         workspace = args.workspace if args.workspace.is_absolute() else project_dir / args.workspace
         print(f"Story video assembled: {assemble_story_episode(workspace)}")
+        return 0
+    if args.command == "story-studio-gemini-generate":
+        workspace = args.workspace if args.workspace.is_absolute() else project_dir / args.workspace
+        if args.dry_run:
+            print(f"Gemini request file written: {write_gemini_dry_run(workspace)}")
+            return 0
+        print(json.dumps(generate_missing_gemini_clips(workspace, settings, args.limit), indent=2))
+        return 0
+    if args.command == "gemini-config-check":
+        print(json.dumps(gemini_config_status(settings), indent=2))
         return 0
     if args.command == "youtube-policy-check":
         video = args.video if args.video.is_absolute() else project_dir / args.video

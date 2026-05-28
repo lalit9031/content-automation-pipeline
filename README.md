@@ -256,6 +256,38 @@ PYTHONPATH=src .venv/bin/python -m content_pipeline story-studio-assemble \
   --workspace output/story_studio/episodes/<episode_id>
 ```
 
+### Gemini/Veo Clip Generation
+
+Add your API key only to local `.env`:
+
+```dotenv
+GEMINI_API_KEY=your_key_here
+GEMINI_VIDEO_MODEL=veo-3.0-generate-preview
+```
+
+Check configuration:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m content_pipeline gemini-config-check
+```
+
+Preview the exact Gemini/Veo requests without spending quota:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m content_pipeline story-studio-gemini-generate \
+  --workspace output/story_studio/episodes/<episode_id> --dry-run
+```
+
+Generate missing clips while quota is available:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m content_pipeline story-studio-gemini-generate \
+  --workspace output/story_studio/episodes/<episode_id> --limit 1
+```
+
+When quota is exhausted, continue manually in Gemini/OpenArt using the same
+scene prompts and save files into `clips/inbox/`.
+
 ## Architecture
 
 The supplied architecture diagram is kept at [assets/content_automation_pipeline.svg](assets/content_automation_pipeline.svg).
