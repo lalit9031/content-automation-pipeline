@@ -218,6 +218,44 @@ PYTHONPATH=src .venv/bin/python -m content_pipeline krishna-manual-video-assembl
 This keeps provider use compliant: the bot prepares story, prompts, metadata
 and assembly, but does not automate OpenArt's website.
 
+## General Story Studio
+
+For non-religious stories, use the generic Story Studio. It supports `kid` and
+`adult` audiences, keeps the last 3 story backups in a dashboard dropdown, and
+creates OpenArt/Meta AI prompts plus a clip inbox.
+
+Auto-create a 2-5 kids story:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m content_pipeline story-studio-create \
+  --audience kid --date 2026-05-28
+```
+
+Create from your own idea:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m content_pipeline story-studio-create \
+  --audience kid --idea "a baby elephant learns to share toys" --date 2026-05-28
+```
+
+Create an adult cinematic story:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m content_pipeline story-studio-create \
+  --audience adult --aspect landscape --idea "a queen finds a robot army under the desert"
+```
+
+Kids stories mark every scene as `motion_video`. Adult stories use mostly
+`2_5d_image` atmospheric scenes, with `motion_video` reserved for action,
+discovery or creative movement.
+
+After downloading clips into the episode's `clips/inbox/`, assemble:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m content_pipeline story-studio-assemble \
+  --workspace output/story_studio/episodes/<episode_id>
+```
+
 ## Architecture
 
 The supplied architecture diagram is kept at [assets/content_automation_pipeline.svg](assets/content_automation_pipeline.svg).

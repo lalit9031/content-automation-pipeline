@@ -48,6 +48,12 @@ from content_pipeline.bots.krishna_studio import (
     butter_heist_short_episode,
     create_daily_video_workspace,
 )
+from content_pipeline.bots.story_studio import (
+    assemble_story_episode,
+    create_story_episode,
+    create_story_workspace,
+    recent_stories,
+)
 from content_pipeline.bots.video import (
     _assemble_video,
     long_form_scenes,
@@ -655,6 +661,66 @@ class PipelineTest(unittest.TestCase):
             with patch("content_pipeline.bots.krishna_studio.shutil.which", return_value="/usr/bin/ffmpeg"):
                 with self.assertRaisesRegex(FileNotFoundError, "scene_01.mp4"):
                     assemble_manual_episode(root)
+
+    def test_story_studio_creates_kid_workspace_and_recent_story_dropdown(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            output = Path(temporary_dir) / "output"
+            episode = create_story_episode("kid", episode_date="2026-05-28")
+            written = create_story_workspace(output, episode)
+            root = output / "story_studio" / "episodes" / episode.episode_id
+
+            prompts = json.loads((root / "scene_prompts.json").read_text(encoding="utf-8"))
+            dashboard = (root / "ui" / "index.html").read_text(encoding="utf-8")
+            script = (root / "story_script.md").read_text(encoding="utf-8")
+
+            self.assertTrue(all(path.exists() for path in written))
+            self.assertEqual(episode.audience, "kid")
+            self.assertTrue(all(row["visual_mode"] == "motion_video" for row in prompts))
+            self.assertIn("Last 3 backup stories", dashboard)
+            self.assertIn("2-5 year olds", script)
+            self.assertEqual(recent_stories(output)[0]["episode_id"], episode.episode_id)
+
+    def test_story_studio_adult_workspace_marks_action_scenes_for_motion(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            output = Path(temporary_dir) / "output"
+            episode = create_story_episode(
+                "adult",
+                idea="a queen finds a robot army under the desert",
+                episode_date="2026-05-28",
+                aspect="landscape",
+            )
+            create_story_workspace(output, episode)
+            root = output / "story_studio" / "episodes" / episode.episode_id
+            prompts = json.loads((root / "scene_prompts.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(episode.width, 1280)
+            self.assertEqual(episode.height, 720)
+            self.assertEqual(prompts[0]["size"], "1280x720")
+            self.assertIn("2_5d_image", {row["visual_mode"] for row in prompts})
+            self.assertIn("motion_video", {row["visual_mode"] for row in prompts})
+
+    def test_story_studio_keeps_only_last_three_story_backups(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            output = Path(temporary_dir) / "output"
+            for index in range(4):
+                episode = create_story_episode("kid", idea=f"story idea {index}", episode_date=f"2026-05-2{index}")
+                create_story_workspace(output, episode)
+
+            stories = recent_stories(output)
+
+            self.assertEqual(len(stories), 3)
+            self.assertIn("Story Idea 3", stories[0]["title"])
+
+    def test_story_studio_assembly_reports_missing_clips(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            output = Path(temporary_dir) / "output"
+            episode = create_story_episode("adult", episode_date="2026-05-28")
+            create_story_workspace(output, episode)
+            root = output / "story_studio" / "episodes" / episode.episode_id
+
+            with patch("content_pipeline.bots.story_studio.shutil.which", return_value="/usr/bin/ffmpeg"):
+                with self.assertRaisesRegex(FileNotFoundError, "scene_01.mp4"):
+                    assemble_story_episode(root)
 
     def test_youtube_policy_gate_blocks_missing_declarations(self) -> None:
         report = review_publication(

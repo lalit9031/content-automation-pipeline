@@ -44,6 +44,11 @@ from content_pipeline.bots.krishna_studio import (
     butter_heist_short_episode,
     create_daily_video_workspace,
 )
+from content_pipeline.bots.story_studio import (
+    assemble_story_episode,
+    create_story_episode,
+    create_story_workspace,
+)
 from content_pipeline.bots.video import render_landscape_preview, render_long_form_preview
 from content_pipeline.bots.youtube import authorize_youtube, upload_youtube_video
 from content_pipeline.config import Settings
@@ -204,6 +209,25 @@ def main() -> int:
         help="Assemble downloaded OpenArt/Meta AI scene clips from an episode workspace.",
     )
     manual_assemble_parser.add_argument("--workspace", type=Path, required=True)
+    story_parser = subparsers.add_parser(
+        "story-studio-create",
+        help="Create a general kid/adult story dashboard, prompts and clip inbox.",
+    )
+    story_parser.add_argument("--date", default=date.today().isoformat(), help="Date in YYYY-MM-DD.")
+    story_parser.add_argument("--audience", choices=("kid", "adult"), default="kid")
+    story_parser.add_argument("--idea", default="", help="Optional story idea. Omit for an auto-created story.")
+    story_parser.add_argument(
+        "--aspect",
+        choices=("shorts", "landscape"),
+        default="shorts",
+        help="Create mobile Shorts prompts or landscape YouTube prompts.",
+    )
+    story_parser.add_argument("--destination", type=Path, default=Path("output"))
+    story_assemble_parser = subparsers.add_parser(
+        "story-studio-assemble",
+        help="Assemble downloaded OpenArt/Meta AI clips from a Story Studio workspace.",
+    )
+    story_assemble_parser.add_argument("--workspace", type=Path, required=True)
     policy_parser = subparsers.add_parser(
         "youtube-policy-check", help="Create the required publication approval report."
     )
@@ -353,6 +377,25 @@ def main() -> int:
     if args.command == "krishna-manual-video-assemble":
         workspace = args.workspace if args.workspace.is_absolute() else project_dir / args.workspace
         print(f"Manual video assembled: {assemble_manual_episode(workspace)}")
+        return 0
+    if args.command == "story-studio-create":
+        destination = args.destination
+        if not destination.is_absolute():
+            destination = project_dir / destination
+        episode = create_story_episode(
+            args.audience,
+            idea=args.idea or None,
+            episode_date=args.date,
+            aspect=args.aspect,
+        )
+        written = create_story_workspace(destination, episode)
+        for path in written:
+            print(path)
+        print(f"Open the dashboard file in your browser: {written[-1]}")
+        return 0
+    if args.command == "story-studio-assemble":
+        workspace = args.workspace if args.workspace.is_absolute() else project_dir / args.workspace
+        print(f"Story video assembled: {assemble_story_episode(workspace)}")
         return 0
     if args.command == "youtube-policy-check":
         video = args.video if args.video.is_absolute() else project_dir / args.video
