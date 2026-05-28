@@ -29,6 +29,9 @@ class ManualVideoEpisode:
     title_en: str
     description_hi: str
     target_duration_seconds: int
+    aspect: str
+    width: int
+    height: int
     audience: str
     scenes: list[ManualVideoScene]
     safety_rules: list[str]
@@ -43,6 +46,9 @@ class ManualVideoEpisode:
             "title_en": self.title_en,
             "description_hi": self.description_hi,
             "target_duration_seconds": self.target_duration_seconds,
+            "aspect": self.aspect,
+            "width": self.width,
+            "height": self.height,
             "audience": self.audience,
             "scenes": [asdict(scene) for scene in self.scenes],
             "safety_rules": self.safety_rules,
@@ -59,6 +65,9 @@ class ManualVideoEpisode:
             title_en=data["title_en"],
             description_hi=data["description_hi"],
             target_duration_seconds=int(data["target_duration_seconds"]),
+            aspect=data.get("aspect", "shorts"),
+            width=int(data.get("width", 720)),
+            height=int(data.get("height", 1280)),
             audience=data["audience"],
             scenes=[ManualVideoScene(**scene) for scene in data["scenes"]],
             safety_rules=list(data["safety_rules"]),
@@ -68,10 +77,22 @@ class ManualVideoEpisode:
         )
 
 
-def butter_heist_short_episode(episode_date: str | None = None) -> ManualVideoEpisode:
+def butter_heist_short_episode(
+    episode_date: str | None = None,
+    aspect: str = "shorts",
+) -> ManualVideoEpisode:
+    if aspect not in {"shorts", "landscape"}:
+        raise ValueError("aspect must be 'shorts' or 'landscape'.")
     day = episode_date or date.today().isoformat()
+    aspect_label = "Landscape 16:9" if aspect == "landscape" else "Vertical 9:16"
+    width, height = (1280, 720) if aspect == "landscape" else (720, 1280)
+    framing = (
+        "wide cinematic YouTube frame with characters fully visible and extra Gokul background space"
+        if aspect == "landscape"
+        else "mobile Shorts frame with the subject centered and readable on a phone screen"
+    )
     style = (
-        "Vertical 9:16, original bright 3D Indian children's animation, warm Gokul village, "
+        f"{aspect_label}, {framing}, original bright 3D Indian children's animation, warm Gokul village, "
         "expressive fictional toddler Kanha with soft blue-toned skin, curly hair, one peacock "
         "feather, yellow dhoti, red waistband; fictional Yashoda in orange sari with magenta "
         "border. Child-safe devotional comedy, no copied studio style, no copyrighted character, "
@@ -82,7 +103,7 @@ def butter_heist_short_episode(episode_date: str | None = None) -> ManualVideoEp
         "clouds, marigold garlands swaying, butter pot swinging lightly."
     )
     return ManualVideoEpisode(
-        episode_id=f"{day}_makhan_ki_matki",
+        episode_id=f"{day}_makhan_ki_matki_{aspect}",
         title_hi="कान्हा और माखन की मटकी",
         title_en="Kanha and the Butter Pot",
         description_hi=(
@@ -91,6 +112,9 @@ def butter_heist_short_episode(episode_date: str | None = None) -> ManualVideoEp
             "सीख देती हैं कि खुशी बांटने से बढ़ती है।"
         ),
         target_duration_seconds=64,
+        aspect=aspect,
+        width=width,
+        height=height,
         audience="Kids and family devotional storytelling",
         scenes=[
             ManualVideoScene(
@@ -103,7 +127,7 @@ def butter_heist_short_episode(episode_date: str | None = None) -> ManualVideoEp
                 ),
                 on_screen_text_hi="गोकुल की सुनहरी सुबह",
                 openart_prompt=f"{style} {motion} Wide establishing shot of a cheerful Gokul courtyard at sunrise, decorated hanging butter pot, rangoli, marigolds, leafy tree, peaceful cows in far background.",
-                meta_prompt=f"{style} {motion} Create a 7 second vertical animated shot: cheerful Gokul courtyard sunrise, hanging butter pot sways gently, leaves and clouds move softly.",
+                meta_prompt=f"{style} {motion} Create a 7 second {aspect_label} animated shot: cheerful Gokul courtyard sunrise, hanging butter pot sways gently, leaves and clouds move softly.",
                 expected_clip_file="scene_01.mp4",
             ),
             ManualVideoScene(
@@ -142,7 +166,7 @@ def butter_heist_short_episode(episode_date: str | None = None) -> ManualVideoEp
                 ),
                 on_screen_text_hi="माखन की खुशबू!",
                 openart_prompt=f"{style} {motion} Close-up of decorated clay butter pot with fresh white butter at rim, peacock feather nearby, small friendly monkeys watching from tree branch, cute and gentle.",
-                meta_prompt=f"{style} {motion} Close-up butter pot, creamy butter visible, peacock feather, friendly monkeys on branch, warm sunlight, 7 second vertical animation.",
+                meta_prompt=f"{style} {motion} Close-up butter pot, creamy butter visible, peacock feather, friendly monkeys on branch, warm sunlight, 7 second {aspect_label} animation.",
                 expected_clip_file="scene_04.mp4",
             ),
             ManualVideoScene(
@@ -278,7 +302,10 @@ def assemble_manual_episode(workspace_dir: Path) -> Path:
                 "-i",
                 str(source),
                 "-vf",
-                "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2,format=yuv420p",
+                (
+                    f"scale={episode.width}:{episode.height}:force_original_aspect_ratio=decrease,"
+                    f"pad={episode.width}:{episode.height}:(ow-iw)/2:(oh-ih)/2,format=yuv420p"
+                ),
                 "-r",
                 "25",
                 "-an",
@@ -332,6 +359,7 @@ def _story_markdown(episode: ManualVideoEpisode) -> str:
         "",
         f"**English:** {episode.title_en}",
         f"**Duration target:** {episode.target_duration_seconds} seconds",
+        f"**Format:** {episode.aspect} ({episode.width}x{episode.height})",
         f"**Audience:** {episode.audience}",
         "",
         episode.description_hi,
@@ -360,6 +388,8 @@ def _prompts_json(episode: ManualVideoEpisode) -> str:
             "scene": scene.id,
             "title": scene.title,
             "duration_seconds": scene.duration_seconds,
+            "aspect": episode.aspect,
+            "size": f"{episode.width}x{episode.height}",
             "expected_clip_file": scene.expected_clip_file,
             "openart_prompt": scene.openart_prompt,
             "meta_ai_prompt": scene.meta_prompt,
@@ -391,6 +421,8 @@ def _clip_drop_guide(episode: ManualVideoEpisode) -> str:
         "# Clip Drop Guide",
         "",
         "Generate each scene manually in OpenArt or Meta AI, download the MP4, then rename it exactly:",
+        "",
+        f"Target format: `{episode.aspect}` / `{episode.width}x{episode.height}`",
         "",
     ]
     for scene in episode.scenes:
@@ -443,6 +475,7 @@ def _episode_dashboard_html(episode: ManualVideoEpisode, root: Path) -> str:
 <body>
   <header>
     <div class="pill">Manual OpenArt / Meta AI Workflow</div>
+    <div class="pill">{escape(episode.aspect)} - {episode.width}x{episode.height}</div>
     <h1>{escape(episode.title_hi)}</h1>
     <p>{escape(episode.description_hi)}</p>
     <p class="muted">Workspace: <code>{escape(str(root))}</code></p>
@@ -451,7 +484,7 @@ def _episode_dashboard_html(episode: ManualVideoEpisode, root: Path) -> str:
     <section class="grid">
       <div class="card">
         <h2>Today&apos;s Flow</h2>
-        <p>1. Read script. 2. Copy scene prompts into OpenArt or Meta AI. 3. Download each MP4. 4. Rename files as shown. 5. Drop them into <code>clips/inbox</code>. 6. Run assembly.</p>
+        <p>1. Read script. 2. Copy scene prompts into OpenArt or Meta AI. 3. Select <strong>{episode.width}x{episode.height}</strong> / <strong>{escape(episode.aspect)}</strong> when possible. 4. Download each MP4. 5. Rename files as shown. 6. Drop them into <code>clips/inbox</code>. 7. Run assembly.</p>
       </div>
       <div class="card">
         <h2>YouTube Metadata</h2>

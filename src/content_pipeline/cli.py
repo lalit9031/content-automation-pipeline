@@ -192,6 +192,12 @@ def main() -> int:
         help="Create a daily manual OpenArt/Meta AI episode dashboard and clip inbox.",
     )
     manual_ui_parser.add_argument("--date", default=date.today().isoformat(), help="Date in YYYY-MM-DD.")
+    manual_ui_parser.add_argument(
+        "--aspect",
+        choices=("shorts", "landscape"),
+        default="shorts",
+        help="Create mobile Shorts prompts or landscape YouTube prompts.",
+    )
     manual_ui_parser.add_argument("--destination", type=Path, default=Path("output"))
     manual_assemble_parser = subparsers.add_parser(
         "krishna-manual-video-assemble",
@@ -338,7 +344,7 @@ def main() -> int:
         destination = args.destination
         if not destination.is_absolute():
             destination = project_dir / destination
-        episode = butter_heist_short_episode(args.date)
+        episode = butter_heist_short_episode(args.date, aspect=args.aspect)
         written = create_daily_video_workspace(destination, episode)
         for path in written:
             print(path)

@@ -623,9 +623,27 @@ class PipelineTest(unittest.TestCase):
 
             self.assertIn("Manual OpenArt / Meta AI Workflow", dashboard)
             self.assertIn("कान्हा और माखन की मटकी", script)
+            self.assertIn("shorts (720x1280)", script)
             self.assertEqual(len(prompts), 8)
             self.assertEqual(prompts[0]["expected_clip_file"], "scene_01.mp4")
+            self.assertEqual(prompts[0]["size"], "720x1280")
             self.assertIn("Treat Meta AI commercial usage as unconfirmed", " ".join(episode.safety_rules))
+
+    def test_manual_krishna_video_workspace_supports_landscape_prompts(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            output = Path(temporary_dir) / "output"
+            episode = butter_heist_short_episode("2026-05-28", aspect="landscape")
+            create_daily_video_workspace(output, episode)
+            root = output / "kanha_ki_nanhi_leela" / "episodes" / episode.episode_id
+
+            prompts = json.loads((root / "scene_prompts.json").read_text(encoding="utf-8"))
+            dashboard = (root / "ui" / "index.html").read_text(encoding="utf-8")
+
+            self.assertEqual(episode.width, 1280)
+            self.assertEqual(episode.height, 720)
+            self.assertIn("Landscape 16:9", prompts[0]["openart_prompt"])
+            self.assertEqual(prompts[0]["size"], "1280x720")
+            self.assertIn("landscape - 1280x720", dashboard)
 
     def test_manual_episode_assembly_reports_missing_downloaded_clips(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_dir:

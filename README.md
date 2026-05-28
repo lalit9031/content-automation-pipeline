@@ -199,13 +199,20 @@ PYTHONPATH=src .venv/bin/python -m content_pipeline krishna-daily-video-ui \
   --date 2026-05-28
 ```
 
+For a landscape YouTube version:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m content_pipeline krishna-daily-video-ui \
+  --date 2026-05-28 --aspect landscape
+```
+
 Open the generated `ui/index.html`, copy each scene prompt into OpenArt or Meta
 AI manually, download the MP4s, rename them `scene_01.mp4` through
 `scene_08.mp4`, and place them in the episode's `clips/inbox/` folder. Then:
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m content_pipeline krishna-manual-video-assemble \
-  --workspace output/kanha_ki_nanhi_leela/episodes/2026-05-28_makhan_ki_matki
+  --workspace output/kanha_ki_nanhi_leela/episodes/2026-05-28_makhan_ki_matki_shorts
 ```
 
 This keeps provider use compliant: the bot prepares story, prompts, metadata

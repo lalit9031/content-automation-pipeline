@@ -144,10 +144,17 @@ PYTHONPATH=src .venv/bin/python -m content_pipeline krishna-daily-video-ui \
   --date 2026-05-28
 ```
 
+For a landscape YouTube version instead of a Short:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m content_pipeline krishna-daily-video-ui \
+  --date 2026-05-28 --aspect landscape
+```
+
 This creates an episode workspace:
 
 ```text
-output/kanha_ki_nanhi_leela/episodes/2026-05-28_makhan_ki_matki/
+output/kanha_ki_nanhi_leela/episodes/2026-05-28_makhan_ki_matki_shorts/
 ```
 
 Important files:
@@ -176,8 +183,11 @@ PYTHONPATH=src .venv/bin/python -m content_pipeline krishna-manual-video-assembl
   --workspace output/kanha_ki_nanhi_leela/episodes/2026-05-28_makhan_ki_matki
 ```
 
-The assembler normalizes all clips to vertical `720x1280`, combines them, and
-writes:
+The assembler normalizes all clips to the episode format, combines them, and
+writes the review render:
+
+- Shorts: `720x1280`
+- Landscape: `1280x720`
 
 ```text
 video/assembled_review.mp4
