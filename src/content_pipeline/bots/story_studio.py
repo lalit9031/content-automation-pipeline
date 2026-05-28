@@ -255,26 +255,116 @@ def _kid_episode(day: str, idea: str | None, aspect: str, width: int, height: in
     )
     characters = [
         CharacterReference(
-            "golu_v1",
-            "Golu",
+            "momo_v1",
+            "Momo the Bunny",
             "main character",
-            "A round baby elephant with soft blue-gray skin, big kind eyes, tiny yellow scarf, small red toy-car badge, cheerful toddler expressions.",
+            "A round soft pink-and-white bunny with long floppy ears, big sparkly eyes, rosy cheeks, tiny pink nose, three whiskers per side, fluffy cotton-ball tail. Wears nothing except her natural fur. Always smiling with a gentle happy expression.",
             (
-                "Create a clean character reference sheet for Golu V1, a round baby elephant for an original "
-                "2-5 kids cartoon: soft blue-gray skin, big kind eyes, tiny yellow scarf, small red toy-car badge, "
-                "front view, side view, happy face, thoughtful face, simple shapes, no text, no logo."
+                "PROFESSIONAL CHARACTER REFERENCE SHEET for MOMO V1 — original 2-5 kids cartoon character.\n"
+                "SPECIES: Bunny rabbit.\n"
+                "BODY: Round soft preschool proportions, pear-shaped body, gentle curves.\n"
+                "COLORS: Pale pink body (#f1c0c8), lighter pink belly, white inner ears and tail.\n"
+                "FEATURES: Long floppy ears that droop gently, big round dark eyes with white catchlights, "
+                "rosy circular cheek patches, small pink oval nose, cute whiskers (3 per side), small round tail.\n"
+                "STYLE: Ultra-simple 3D cartoon, smooth rounded polygons, no sharp edges, no clothing, "
+                "soft diffuse lighting, pastel nursery palette.\n"
+                "POSES REQUIRED: Front view smiling, front view with arms up saying hello, side view hopping, "
+                "close-up happy face.\n"
+                "MOOD: Warm, gentle, curious, toddler-safe.\n"
+                "ABSOLUTELY NO: Text, logos, watermarks, realistic fur, sharp edges, shadows on face, "
+                "copyrighted elements, scary expressions."
+            ),
+            "characters/momo_v1_reference.svg",
+        ),
+        CharacterReference(
+            "tinku_v1",
+            "Tinku the Teddy",
+            "main character",
+            "A warm golden-brown teddy bear with round ears, a bright red bow tie at the neck, soft cream belly, big friendly eyes, a small oval black nose, and a gentle smile. Plump cuddly body, short rounded arms and legs.",
+            (
+                "PROFESSIONAL CHARACTER REFERENCE SHEET for TINKU V1 — original 2-5 kids cartoon character.\n"
+                "SPECIES: Teddy bear.\n"
+                "BODY: Plump cuddly pear shape, short rounded limbs, soft squishable appearance.\n"
+                "COLORS: Golden-brown body (#8d6e63), cream belly and muzzle (#d7ccc8), bright red bow (#e53935).\n"
+                "FEATURES: Round ears on top of head (inner ear lighter), large friendly dark eyes with white "
+                "catchlights, oval black nose on cream snout, gentle curved smile, red bow tie at neck always tied.\n"
+                "STYLE: Ultra-simple 3D cartoon, smooth rounded surfaces, soft warm lighting, toy-like finish.\n"
+                "POSES REQUIRED: Front view waving, sitting pose hugging knees, side view waddling, "
+                "close-up happy face with eyes closed smiling.\n"
+                "MOOD: Friendly, cuddly, reassuring, patient.\n"
+                "ABSOLUTELY NO: Text, logos, watermarks, realistic fur texture, sharp edges, "
+                "copyrighted character imitation, scary or intense expressions."
+            ),
+            "characters/tinku_v1_reference.svg",
+        ),
+        CharacterReference(
+            "pihu_v1",
+            "Pihu the Little Cloud",
+            "main character",
+            "A fluffy white cloud shaped like a round cotton ball with a smiling face, bright blue eyes, rosy cheeks, a small pink smile. Wears a tiny rainbow-colored striped scarf. Has a few small raindrops that sometimes fall from her bottom edge. Soft dreamy appearance.",
+            (
+                "PROFESSIONAL CHARACTER REFERENCE SHEET for PIHU V1 — original 2-5 kids cartoon character.\n"
+                "SPECIES: Personified cloud.\n"
+                "BODY: Fluffy round cloud shape made of overlapping soft circles, cotton-ball texture (implied).\n"
+                "COLORS: Pure white cloud body with soft light-blue inner shading, rainbow scarf (red-orange-green-blue stripes), "
+                "bright blue eyes (#40c4ff), pink cheeks, teardrop-shaped raindrops (#40c4ff, semi-transparent).\n"
+                "FEATURES: Two bright blue circular eyes with white catchlights, small pink oval mouth, "
+                "circular rosy cheek patches, a thin rainbow-striped scarf that floats as if in a breeze, "
+                "3-4 small teardrop raindrops dangling below (gently, not stormy).\n"
+                "STYLE: Ultra-simple 3D cartoon, soft billowy surfaces, dreamy pastel lighting, gentle floating motion.\n"
+                "POSES REQUIRED: Front view smiling, side view floating, happy rain pose with arms/cloud-puffs out, "
+                "sleepy face closing eyes.\n"
+                "MOOD: Dreamy, cheerful, gentle, magical.\n"
+                "ABSOLUTELY NO: Text, logos, watermarks, dark storm clouds, lightning, realistic water, "
+                "thunder, scary weather, sharp edges."
+            ),
+            "characters/pihu_v1_reference.svg",
+        ),
+        CharacterReference(
+            "golu_v1",
+            "Golu the Baby Elephant",
+            "main character",
+            "A round baby elephant with soft blue-gray skin, big gentle dark eyes with white sparkles, a long curved trunk, large flappy ears, a tiny yellow scarf tied at the neck, and a small red toy-car badge pinned on his left side. Sweet toddler-like expressions.",
+            (
+                "PROFESSIONAL CHARACTER REFERENCE SHEET for GOLU V1 — original 2-5 kids cartoon character.\n"
+                "SPECIES: Baby elephant.\n"
+                "BODY: Round pear-shaped toddler proportions, sturdy short legs, floppy appearance.\n"
+                "COLORS: Soft blue-gray body (#90a4ae), lighter inner ears (#b0bec5), bright yellow scarf (#fdd835), "
+                "tiny red toy-car badge (#e53935) with yellow wheels.\n"
+                "FEATURES: Large flappy ears extending sideways from head (lighter inside), long gently curved trunk, "
+                "big dark circular eyes with white catchlights, gentle curved smile, short sturdy legs, "
+                "yellow knitted scarf that hangs loosely, tiny red car badge (circle with wheels) on left chest.\n"
+                "STYLE: Ultra-simple 3D cartoon, smooth rounded surfaces, soft warm nursery lighting, "
+                "gentle and huggable proportions.\n"
+                "POSES REQUIRED: Front view smiling with trunk up, side view walking, sitting pose with toys, "
+                "close-up happy squinting eyes smile.\n"
+                "MOOD: Sweet, curious, gentle, slightly shy but friendly.\n"
+                "ABSOLUTELY NO: Text, logos, watermarks, realistic skin texture, tusks, "
+                "sharp edges, scary expressions, copyrighted character imitation."
             ),
             "characters/golu_v1_reference.svg",
         ),
         CharacterReference(
             "mimi_v1",
-            "Mimi",
+            "Mimi the Bird",
             "friend",
-            "A tiny yellow bird with orange feet, small teal bow, round friendly eyes, soft preschool cartoon proportions.",
+            "A tiny round yellow bird with bright orange feet, a small teal bow on top of her head, big friendly dark eyes, a tiny orange triangular beak, small rounded wings, and short tail feathers. Very small — about half the size of the other characters.",
             (
-                "Create a clean character reference sheet for Mimi V1, a tiny yellow bird friend for an original "
-                "2-5 kids cartoon: orange feet, small teal bow, round friendly eyes, happy pose, curious pose, "
-                "simple soft shapes, no text, no logo."
+                "PROFESSIONAL CHARACTER REFERENCE SHEET for MIMI V1 — original 2-5 kids cartoon character.\n"
+                "SPECIES: Small songbird.\n"
+                "BODY: Tiny round ball shape — approximately half the size of other characters, "
+                "chubby bird proportions, no visible neck.\n"
+                "COLORS: Bright warm yellow body (#fdd835), lighter yellow belly (#fff176), "
+                "bright orange beak and feet (#ff6f00), teal bow (#26c6da) with darker center (#00acc1).\n"
+                "FEATURES: Two small dark circular eyes with white catchlights, small triangular orange beak, "
+                "small rounded wings on sides, short tail feathers at back, teal bow tied on top of head, "
+                "thin orange stick legs with three-toed feet, circular rosy cheek patches.\n"
+                "STYLE: Ultra-simple 3D cartoon, tiny and round, bouncy motion, warm sunny palette.\n"
+                "POSES REQUIRED: Front view chirping, side view flying with wings out, hopping pose (one foot up), "
+                "close-up happy face.\n"
+                "MOOD: Playful, curious, cheerful, bouncy.\n"
+                "ABSOLUTELY NO: Text, logos, watermarks, realistic feathers, sharp beak, "
+                "copyrighted character imitation, scary expressions, sharp edges."
             ),
             "characters/mimi_v1_reference.svg",
         ),
@@ -404,12 +494,31 @@ def _adult_episode(day: str, idea: str | None, aspect: str, width: int, height: 
         CharacterReference(
             "ira_v1",
             "Commander Ira",
-            "main character",
-            "A determined adult space explorer in a matte white suit with cobalt trim, amber visor, triangular mission patch and compact shoulder light.",
+            "main character — human space explorer",
+            "A determined adult space explorer in her mid-30s with sharp angular features, short practical dark hair tucked under a matte-white helmet, warm brown eyes visible through the amber-tinted visor, a focused but thoughtful expression. She wears a matte-white EVA suit with cobalt-blue trim stripes along the arms and legs, a triangular red-and-gold mission patch on the left shoulder (symbol: a seven-pointed star above crossed orbits), a compact tactical shoulder light, a grey utility belt with two silver pouches, and reinforced knee pads. Her gloved hands have articulated fingers. The suit surface shows subtle scuff marks and frost crystals at the collar, implying recent EVA activity.",
             (
-                "Create a cinematic character reference sheet for Commander Ira V1, an original adult sci-fi explorer: "
-                "matte white suit, cobalt trim, amber visor, triangular mission patch, compact shoulder light, "
-                "front view, side view, helmet close-up, no text, no logo."
+                "PROFESSIONAL CHARACTER REFERENCE SHEET for COMMANDER IRA V1 — original adult sci-fi character.\n"
+                "SPECIES: Human (female).\n"
+                "AGE: Mid-30s, experienced deep-space mission commander.\n"
+                "BODY: Lean athletic build, 170 cm, sharp jawline, straight posture, practical confident stance.\n"
+                "SUIT COLORS: Matte white body (#e0e0e0), cobalt blue trim (#1a237e), grey joints (#78909c),\n"
+                "amber visor (#ff8f00, semi-reflective gradient), red-and-gold shoulder patch (#d32f2f / #fdd835).\n"
+                "HELMET: Full EVA helmet, circular matte-white shell, amber-tinted curved visor that hides the upper face \n"
+                "in reflections but reveals warm brown eyes from certain angles, breathing tube on right jaw, \n"
+                "small white LED light module on left temple.\n"
+                "DETAILS: Compact shoulder light (grey cylinder with yellow lens), grey canvas utility belt with \n"
+                "two silver pouches, reinforced grey knee pads, articulated grey glove fingers, \n"
+                "triangular mission patch on left deltoid (seven-pointed star over crossed orbits, red/gold on navy).\n"
+                "WEATHERING: Subtle scuff marks on knees and elbows, frost crystals at collar seal, \n"
+                "faint blue tint on visor edges from ice residue.\n"
+                "STYLE: Cinematic semi-realistic 3D rendering, dramatic lighting (key light from upper right), \n"
+                "medium surface detail, dark-space background with faint star field.\n"
+                "POSES REQUIRED: Front full-body standing (confident stance, helmet on), \n"
+                "three-quarter body (hand on hip, looking right), helmet close-up (amber reflection, eyes visible), \n"
+                "crouched examination pose (one knee down, reaching forward).\n"
+                "MOOD: Determined, weary, curious, professional but deeply tired.\n"
+                "ABSOLUTELY NO: Text, logos, watermarks, realistic blood, copyrighted franchise elements, \n"
+                "excessive gore, stylized anime proportions, weapon in hand."
             ),
             "characters/ira_v1_reference.svg",
         ),
@@ -629,89 +738,409 @@ def _dashboard_html(episode: StoryEpisode, root: Path, recent: list[dict[str, st
         "PYTHONPATH=src .venv/bin/python -m content_pipeline story-studio-create "
         "--audience adult --aspect landscape --date 2026-05-28"
     )
+    is_kid = episode.audience == "kid"
+    if is_kid:
+        return _kid_dashboard_html(
+            episode, root, recent, recent_options, cards, character_cards,
+            notes, safety, current_command, kid_command, adult_command,
+        )
+    return _adult_dashboard_html(
+        episode, root, recent, recent_options, cards, character_cards,
+        notes, safety, current_command, kid_command, adult_command,
+    )
+
+
+def _kid_dashboard_html(
+    episode: StoryEpisode, root: Path, recent: list[dict[str, str]],
+    recent_options: str, cards: str, character_cards: str,
+    notes: str, safety: str, current_command: str,
+    kid_command: str, adult_command: str,
+) -> str:
+    """Professional production dashboard for kids content — clean, modern, SaaS-style."""
     return f"""<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{escape(episode.title)} - Story Studio</title>
+  <title>{escape(episode.title)} — Story Studio</title>
   <style>
-    body {{ margin: 0; font-family: Arial, Helvetica, sans-serif; background: #111827; color: #fff7ed; }}
-    header {{ padding: 34px; background: linear-gradient(135deg, #1d4ed8, #9333ea); }}
-    main {{ max-width: 1180px; margin: 0 auto; padding: 28px; }}
-    .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 18px; }}
-    .card {{ background: #1f2937; border: 1px solid #475569; border-radius: 18px; padding: 18px; box-shadow: 0 14px 38px rgba(0,0,0,.25); }}
-    .scene {{ border-left: 5px solid #fbbf24; }}
-    textarea, select, input {{ width: 100%; box-sizing: border-box; border-radius: 12px; border: 1px solid #64748b; padding: 12px; background: #020617; color: #fff7ed; }}
-    textarea {{ min-height: 190px; }}
-    button {{ background: #fbbf24; color: #111827; border: 0; border-radius: 999px; padding: 9px 14px; font-weight: 700; cursor: pointer; }}
-    code {{ color: #fde68a; }}
-    .pill {{ display: inline-block; margin: 3px 6px 3px 0; padding: 5px 10px; border-radius: 999px; background: #312e81; color: #e0e7ff; font-size: 13px; }}
-    .choice-row {{ display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 10px 0 14px; }}
-    .choice {{ border: 1px solid #64748b; border-radius: 14px; padding: 12px; background: #020617; }}
-    .character-img {{ width: 100%; border-radius: 14px; background: #020617; border: 1px solid #64748b; }}
-    .choice strong {{ display: block; margin-bottom: 4px; color: #fef3c7; }}
-    p, li {{ line-height: 1.55; color: #e5e7eb; }}
+    *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    body {{ font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif; background: #f1f5f9; color: #1e293b; line-height: 1.5; }}
+    .app {{ display: flex; min-height: 100vh; }}
+    /* Sidebar */
+    .sidebar {{ width: 240px; flex-shrink: 0; background: #0f172a; color: #e2e8f0; padding: 0; }}
+    .sidebar-head {{ padding: 20px 20px 12px; border-bottom: 1px solid #1e293b; }}
+    .sidebar-head h1 {{ font-size: 15px; font-weight: 700; color: #f1f5f9; letter-spacing: -0.3px; }}
+    .sidebar-head p {{ font-size: 11px; color: #64748b; margin-top: 2px; }}
+    .sidebar-nav {{ padding: 12px 0; }}
+    .sidebar-nav a {{ display: flex; align-items: center; gap: 10px; padding: 8px 20px; font-size: 13px; color: #94a3b8; text-decoration: none; border-left: 3px solid transparent; transition: all 0.12s; }}
+    .sidebar-nav a:hover {{ background: #1e293b; color: #e2e8f0; }}
+    .sidebar-nav a.active {{ background: #1e293b; color: #60a5fa; border-left-color: #60a5fa; font-weight: 600; }}
+    /* Main */
+    .main {{ flex: 1; min-width: 0; }}
+    /* Top bar */
+    .topbar {{ display: flex; align-items: center; justify-content: space-between; padding: 16px 32px; background: #ffffff; border-bottom: 1px solid #e2e8f0; }}
+    .topbar-left {{ display: flex; align-items: center; gap: 12px; }}
+    .topbar-left h2 {{ font-size: 18px; font-weight: 600; color: #0f172a; }}
+    .badge {{ display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; }}
+    .badge-kid {{ background: #fce7f3; color: #be185d; }}
+    .badge-blue {{ background: #dbeafe; color: #1d4ed8; }}
+    .badge-green {{ background: #d1fae5; color: #059669; }}
+    .badge-amber {{ background: #fef3c7; color: #d97706; }}
+    .topbar-right {{ display: flex; align-items: center; gap: 10px; font-size: 13px; color: #64748b; }}
+    .topbar-right code {{ font-size: 12px; background: #f1f5f9; padding: 2px 8px; border-radius: 4px; color: #475569; }}
+    /* Content */
+    .content {{ padding: 28px 32px; }}
+    .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }}
+    .grid-wide {{ grid-template-columns: 1fr 1fr; }}
+    .card {{ background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); transition: box-shadow 0.18s; }}
+    .card:hover {{ box-shadow: 0 4px 12px rgba(0,0,0,0.06); }}
+    .scene {{ border-left: 4px solid #f59e0b; }}
+    .char-card {{ border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; background: #ffffff; transition: box-shadow 0.18s; }}
+    .char-card:hover {{ box-shadow: 0 4px 12px rgba(0,0,0,0.06); }}
+    .card h3 {{ font-size: 15px; font-weight: 600; color: #0f172a; margin-bottom: 6px; }}
+    .card p, .card li {{ font-size: 13px; color: #475569; line-height: 1.55; }}
+    .card ul {{ padding-left: 16px; }}
+    .card li {{ margin-bottom: 4px; }}
+    .section-title {{ font-size: 16px; font-weight: 600; color: #0f172a; margin: 28px 0 16px; display: flex; align-items: center; gap: 8px; }}
+    .section-title .count {{ font-size: 12px; font-weight: 500; color: #64748b; background: #f1f5f9; padding: 2px 10px; border-radius: 999px; }}
+    .character-img {{ width: 100%; border-radius: 8px; background: #f8fafc; border: 1px solid #e2e8f0; transition: transform 0.2s; }}
+    .character-img:hover {{ transform: scale(1.01); }}
+    textarea, select, input {{ width: 100%; box-sizing: border-box; border-radius: 8px; border: 1px solid #cbd5e1; padding: 10px 12px; background: #ffffff; color: #1e293b; font-family: 'SF Mono', 'Consolas', 'Monaco', monospace; font-size: 13px; transition: border-color 0.15s; }}
+    textarea:focus, select:focus, input:focus {{ outline: none; border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }}
+    textarea {{ min-height: 120px; }}
+    select {{ font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif; }}
+    label {{ display: block; margin: 12px 0 4px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }}
+    button {{ background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #ffffff; border: 0; border-radius: 8px; padding: 9px 16px; font-weight: 600; cursor: pointer; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif; font-size: 13px; transition: all 0.12s; box-shadow: 0 2px 8px rgba(99,102,241,0.2); }}
+    button:hover {{ transform: translateY(-1px); box-shadow: 0 4px 14px rgba(99,102,241,0.3); }}
+    button:active {{ transform: translateY(0); }}
+    .btn-sm {{ padding: 6px 12px; font-size: 12px; }}
+    code {{ background: #f1f5f9; padding: 2px 6px; border-radius: 4px; color: #475569; font-size: 12px; }}
+    .pill {{ display: inline-block; margin: 2px 4px 2px 0; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; }}
+    .pill-blue {{ background: #dbeafe; color: #1d4ed8; }}
+    .pill-green {{ background: #d1fae5; color: #059669; }}
+    .pill-amber {{ background: #fef3c7; color: #d97706; }}
+    .pill-pink {{ background: #fce7f3; color: #be185d; }}
+    .choice-row {{ display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0 12px; }}
+    .choice {{ border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; background: #f8fafc; font-size: 12px; color: #475569; }}
+    .choice strong {{ display: block; margin-bottom: 2px; color: #0f172a; font-size: 12px; }}
+    .char-header {{ display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }}
+    .char-header .emoji {{ font-size: 28px; }}
+    .char-header .info {{ flex: 1; }}
+    .char-header .info h3 {{ margin: 0 0 2px; font-size: 15px; }}
+    .char-header .info .role {{ font-size: 12px; color: #64748b; }}
+    details summary {{ cursor: pointer; font-size: 12px; font-weight: 600; color: #6366f1; padding: 4px 0; }}
+    details summary:hover {{ color: #4f46e5; }}
+    .mb-4 {{ margin-bottom: 4px; }}
+    .mt-8 {{ margin-top: 8px; }}
+    .flex {{ display: flex; }} .gap-8 {{ gap: 8px; }} .items-center {{ align-items: center; }}
+    .char-summary {{ cursor: pointer; color: #7b1fa2; font-weight: 700; font-size: 14px; }}
+    .char-summary:hover {{ color: #4a148c; }}
+    hr {{ border: 0; border-top: 1px solid #e2e8f0; margin: 14px 0; }}
+    @media (max-width: 800px) {{ .app {{ flex-direction: column; }} .sidebar {{ width: 100%; }} .grid-wide {{ grid-template-columns: 1fr; }} }}
   </style>
 </head>
 <body>
-  <header>
-    <div class="pill">{escape(episode.audience)}</div>
-    <div class="pill">{escape(episode.aspect)} - {episode.width}x{episode.height}</div>
-    <h1>{escape(episode.title)}</h1>
-    <p>{escape(episode.logline)}</p>
-    <p>Workspace: <code>{escape(str(root))}</code></p>
-  </header>
-  <main>
-    <section class="grid">
-      <div class="card">
-        <h2>Create Story</h2>
-        <p>Choose the audience and format, then copy the updated command. The current scene prompts below belong to <strong>{escape(episode.aspect)}</strong>; create a new workspace to switch formats cleanly.</p>
-        <label>Audience</label>
-        <select id="audience">
-          <option value="kid" {"selected" if episode.audience == "kid" else ""}>Kid: 2-5 years, gentle motion in every scene</option>
-          <option value="adult" {"selected" if episode.audience == "adult" else ""}>Adult: sci-fi, war, king/queen, mystery, adventure</option>
-        </select>
-        <label style="display:block; margin-top: 12px;">Format</label>
-        <select id="aspect">
-          <option value="shorts" {"selected" if episode.aspect == "shorts" else ""}>Shorts/Reels: 9:16</option>
-          <option value="landscape" {"selected" if episode.aspect == "landscape" else ""}>Landscape YouTube: 16:9</option>
-        </select>
-        <div class="choice-row">
-          <div class="choice"><strong>Kid rule</strong>Motion video for every scene: smiles, blinking, toys, clouds, sparkles.</div>
-          <div class="choice"><strong>Adult rule</strong>2.5D for mood; motion video only for action, discovery or creative moments.</div>
-        </div>
-        <label>Optional idea</label>
-        <input id="idea" placeholder="Example: a baby elephant learns to share toys">
-        <p><strong>Ask Codex:</strong> "Create a story from this UI selection" or "Create a new story by yourself."</p>
-        <label>Selected command</label>
-        <textarea id="selected_command">{escape(current_command)}</textarea>
-        <button onclick="copyText('selected_command')">Copy Selected Command</button>
-        <br><br>
-        <label>Kid command</label>
-        <textarea id="kid_command">{escape(kid_command)}</textarea>
-        <button onclick="copyText('kid_command')">Copy Kid Command</button>
-        <br><br>
-        <label>Adult command</label>
-        <textarea id="adult_command">{escape(adult_command)}</textarea>
-        <button onclick="copyText('adult_command')">Copy Adult Command</button>
-        <br><br>
-        <label>Last 3 backup stories</label>
-        <select>{recent_options}</select>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="sidebar-head">
+        <h1>Story Studio</h1>
+        <p>Content Pipeline v1</p>
       </div>
-      <div class="card"><h2>Production Plan</h2><ul>{notes}</ul></div>
-      <div class="card"><h2>Policy Notes</h2><ul>{safety}</ul></div>
-    </section>
-    <h2 style="margin-top: 30px;">Character References</h2>
-    <section class="grid">{character_cards}</section>
-    <h2 style="margin-top: 30px;">Scene Prompts</h2>
-    <section class="grid">{cards}</section>
-  </main>
+      <nav class="sidebar-nav">
+        <a href="#" class="active">&#9679; Dashboard</a>
+        <a href="#">&#9679; Episodes</a>
+        <a href="#">&#9679; Characters</a>
+        <a href="#">&#9679; Assets</a>
+        <a href="#">&#9679; Settings</a>
+      </nav>
+    </aside>
+    <div class="main">
+      <header class="topbar">
+        <div class="topbar-left">
+          <span class="badge badge-kid">{escape(episode.audience)}</span>
+          <span class="badge badge-blue">{escape(episode.aspect)}</span>
+          <span class="badge badge-green">{episode.target_duration_seconds}s</span>
+          <h2>{escape(episode.title)}</h2>
+        </div>
+        <div class="topbar-right">
+          <span>{escape(str(root))}</span>
+        </div>
+      </header>
+      <div class="content">
+        <p style="font-size: 14px; color: #64748b; margin-bottom: 20px;">{escape(episode.logline)}</p>
+        <section class="grid grid-wide" style="margin-bottom: 8px;">
+          <div class="card">
+            <h3>Create Story</h3>
+            <p style="margin-bottom: 12px;">Choose audience and format, then copy the command.</p>
+            <label>Audience</label>
+            <select id="audience">
+              <option value="kid" {"selected" if episode.audience == "kid" else ""}>Kid: 2–5 years, gentle motion</option>
+              <option value="adult" {"selected" if episode.audience == "adult" else ""}>Adult: sci-fi, war, mystery</option>
+            </select>
+            <label style="margin-top: 10px;">Format</label>
+            <select id="aspect">
+              <option value="shorts" {"selected" if episode.aspect == "shorts" else ""}>Shorts / Reels — 9:16</option>
+              <option value="landscape" {"selected" if episode.aspect == "landscape" else ""}>Landscape YouTube — 16:9</option>
+            </select>
+            <div class="choice-row">
+              <div class="choice"><strong>Kid rule</strong>Motion in every scene: smiles, toys, sparkles</div>
+              <div class="choice"><strong>Adult rule</strong>2.5D for mood; motion for action scenes</div>
+            </div>
+            <label>Optional idea</label>
+            <input id="idea" placeholder="Type a story idea…" style="font-family: system-ui; font-size: 13px;">
+            <div class="flex items-center gap-8" style="margin-top: 8px;">
+              <label style="margin: 0; white-space: nowrap;">Command</label>
+              <textarea id="selected_command" style="min-height: 44px; font-size: 12px;">{escape(current_command)}</textarea>
+              <button onclick="copyText('selected_command')" style="white-space: nowrap;">Copy</button>
+            </div>
+            <hr>
+            <div class="flex items-center gap-8">
+              <label style="margin: 0; white-space: nowrap; flex-shrink: 0; width: 60px;">Kid</label>
+              <textarea id="kid_command" style="min-height: 36px; font-size: 11px;">{escape(kid_command)}</textarea>
+              <button onclick="copyText('kid_command')" class="btn-sm">Copy</button>
+            </div>
+            <div class="flex items-center gap-8" style="margin-top: 4px;">
+              <label style="margin: 0; white-space: nowrap; flex-shrink: 0; width: 60px;">Adult</label>
+              <textarea id="adult_command" style="min-height: 36px; font-size: 11px;">{escape(adult_command)}</textarea>
+              <button onclick="copyText('adult_command')" class="btn-sm">Copy</button>
+            </div>
+            <hr>
+            <label>Recent stories</label>
+            <select>{recent_options}</select>
+          </div>
+          <div class="card">
+            <h3>Production Plan</h3>
+            <ul>{notes}</ul>
+            <h3 style="margin-top: 16px;">Safety Rules</h3>
+            <ul>{safety}</ul>
+          </div>
+        </section>
+        <div class="section-title">
+          Character References <span class="count">{len(episode.characters)}</span>
+        </div>
+        <section class="grid" id="character-gallery">{character_cards}</section>
+        <div class="section-title">
+          Scene Prompts <span class="count">{len(episode.scenes)}</span>
+        </div>
+        <section class="grid" id="scene-gallery">{cards}</section>
+      </div>
+    </div>
+  </div>
   <script>
     function copyText(id) {{
       const el = document.getElementById(id);
       el.select();
       navigator.clipboard.writeText(el.value);
+      const btn = el.nextElementSibling;
+      const orig = btn.textContent;
+      btn.textContent = 'Copied!';
+      setTimeout(() => btn.textContent = orig, 1000);
+    }}
+    function refreshSelectedCommand() {{
+      const audience = document.getElementById('audience').value;
+      const aspect = document.getElementById('aspect').value;
+      const idea = document.getElementById('idea').value.trim();
+      let command = `PYTHONPATH=src .venv/bin/python -m content_pipeline story-studio-create --audience ${{audience}} --aspect ${{aspect}} --date 2026-05-28`;
+      if (idea) {{
+        command += ` --idea "${{idea.replaceAll('"', '\\"')}}"`;
+      }}
+      document.getElementById('selected_command').value = command;
+    }}
+    document.getElementById('audience').addEventListener('change', refreshSelectedCommand);
+    document.getElementById('aspect').addEventListener('change', refreshSelectedCommand);
+    document.getElementById('idea').addEventListener('input', refreshSelectedCommand);
+  </script>
+</body>
+</html>
+"""
+
+
+def _adult_dashboard_html(
+    episode: StoryEpisode, root: Path, recent: list[dict[str, str]],
+    recent_options: str, cards: str, character_cards: str,
+    notes: str, safety: str, current_command: str,
+    kid_command: str, adult_command: str,
+) -> str:
+    """Professional production dashboard for adult content — dark theme, same layout as kid dashboard."""
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{escape(episode.title)} — Story Studio</title>
+  <style>
+    *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    body {{ font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif; background: #0b1120; color: #e2e8f0; line-height: 1.5; }}
+    .app {{ display: flex; min-height: 100vh; }}
+    /* Sidebar */
+    .sidebar {{ width: 240px; flex-shrink: 0; background: #060b17; color: #e2e8f0; padding: 0; border-right: 1px solid #1e293b; }}
+    .sidebar-head {{ padding: 20px 20px 12px; border-bottom: 1px solid #1e293b; }}
+    .sidebar-head h1 {{ font-size: 15px; font-weight: 700; color: #f1f5f9; letter-spacing: -0.3px; }}
+    .sidebar-head p {{ font-size: 11px; color: #475569; margin-top: 2px; }}
+    .sidebar-nav {{ padding: 12px 0; }}
+    .sidebar-nav a {{ display: flex; align-items: center; gap: 10px; padding: 8px 20px; font-size: 13px; color: #64748b; text-decoration: none; border-left: 3px solid transparent; transition: all 0.12s; }}
+    .sidebar-nav a:hover {{ background: #0f172a; color: #e2e8f0; }}
+    .sidebar-nav a.active {{ background: #0f172a; color: #818cf8; border-left-color: #818cf8; font-weight: 600; }}
+    /* Main */
+    .main {{ flex: 1; min-width: 0; }}
+    /* Top bar */
+    .topbar {{ display: flex; align-items: center; justify-content: space-between; padding: 16px 32px; background: #0f172a; border-bottom: 1px solid #1e293b; }}
+    .topbar-left {{ display: flex; align-items: center; gap: 12px; }}
+    .topbar-left h2 {{ font-size: 18px; font-weight: 600; color: #f1f5f9; }}
+    .badge {{ display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; }}
+    .badge-adult {{ background: rgba(139,92,246,0.15); color: #c4b5fd; border: 1px solid rgba(139,92,246,0.2); }}
+    .badge-blue {{ background: rgba(59,130,246,0.15); color: #93c5fd; border: 1px solid rgba(59,130,246,0.2); }}
+    .badge-green {{ background: rgba(34,197,94,0.15); color: #86efac; border: 1px solid rgba(34,197,94,0.2); }}
+    .topbar-right {{ display: flex; align-items: center; gap: 10px; font-size: 13px; color: #64748b; }}
+    .topbar-right code {{ font-size: 12px; background: #1e293b; padding: 2px 8px; border-radius: 4px; color: #94a3b8; }}
+    /* Content */
+    .content {{ padding: 28px 32px; }}
+    .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }}
+    .grid-wide {{ grid-template-columns: 1fr 1fr; }}
+    .card {{ background: #0f172a; border: 1px solid #1e293b; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.2); transition: border-color 0.18s; }}
+    .card:hover {{ border-color: #334155; }}
+    .scene {{ border-left: 4px solid #f59e0b; }}
+    .char-card {{ border: 1px solid #1e293b; border-radius: 12px; padding: 20px; background: #0f172a; transition: border-color 0.18s; }}
+    .char-card:hover {{ border-color: #334155; }}
+    .card h3 {{ font-size: 15px; font-weight: 600; color: #f1f5f9; margin-bottom: 6px; }}
+    .card p, .card li {{ font-size: 13px; color: #94a3b8; line-height: 1.55; }}
+    .card ul {{ padding-left: 16px; }}
+    .card li {{ margin-bottom: 4px; }}
+    .section-title {{ font-size: 16px; font-weight: 600; color: #f1f5f9; margin: 28px 0 16px; display: flex; align-items: center; gap: 8px; }}
+    .section-title .count {{ font-size: 12px; font-weight: 500; color: #94a3b8; background: #1e293b; padding: 2px 10px; border-radius: 999px; }}
+    .character-img {{ width: 100%; border-radius: 8px; background: #060b17; border: 1px solid #1e293b; transition: transform 0.2s; }}
+    .character-img:hover {{ transform: scale(1.01); }}
+    textarea, select, input {{ width: 100%; box-sizing: border-box; border-radius: 8px; border: 1px solid #334155; padding: 10px 12px; background: #060b17; color: #e2e8f0; font-family: 'SF Mono', 'Consolas', 'Monaco', monospace; font-size: 13px; transition: border-color 0.15s; }}
+    textarea:focus, select:focus, input:focus {{ outline: none; border-color: #818cf8; box-shadow: 0 0 0 3px rgba(129,140,248,0.1); }}
+    textarea {{ min-height: 120px; }}
+    select {{ font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif; }}
+    label {{ display: block; margin: 12px 0 4px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }}
+    button {{ background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #ffffff; border: 0; border-radius: 8px; padding: 9px 16px; font-weight: 600; cursor: pointer; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif; font-size: 13px; transition: all 0.12s; box-shadow: 0 2px 8px rgba(99,102,241,0.2); }}
+    button:hover {{ transform: translateY(-1px); box-shadow: 0 4px 14px rgba(99,102,241,0.3); }}
+    button:active {{ transform: translateY(0); }}
+    .btn-sm {{ padding: 6px 12px; font-size: 12px; }}
+    code {{ background: #1e293b; padding: 2px 6px; border-radius: 4px; color: #94a3b8; font-size: 12px; }}
+    .pill {{ display: inline-block; margin: 2px 4px 2px 0; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; }}
+    .pill-blue {{ background: rgba(59,130,246,0.15); color: #93c5fd; border: 1px solid rgba(59,130,246,0.2); }}
+    .pill-green {{ background: rgba(34,197,94,0.15); color: #86efac; border: 1px solid rgba(34,197,94,0.2); }}
+    .pill-amber {{ background: rgba(245,158,11,0.15); color: #fcd34d; border: 1px solid rgba(245,158,11,0.2); }}
+    .pill-purple {{ background: rgba(139,92,246,0.15); color: #c4b5fd; border: 1px solid rgba(139,92,246,0.2); }}
+    .choice-row {{ display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0 12px; }}
+    .choice {{ border: 1px solid #334155; border-radius: 8px; padding: 10px; background: #060b17; font-size: 12px; color: #94a3b8; }}
+    .choice strong {{ display: block; margin-bottom: 2px; color: #e2e8f0; font-size: 12px; }}
+    .char-header {{ display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }}
+    .char-header .emoji {{ font-size: 28px; }}
+    .char-header .info {{ flex: 1; }}
+    .char-header .info h3 {{ margin: 0 0 2px; font-size: 15px; }}
+    .char-header .info .role {{ font-size: 12px; color: #64748b; }}
+    details summary {{ cursor: pointer; font-size: 12px; font-weight: 600; color: #818cf8; padding: 4px 0; }}
+    details summary:hover {{ color: #a5b4fc; }}
+    .mb-4 {{ margin-bottom: 4px; }}
+    .mt-8 {{ margin-top: 8px; }}
+    .flex {{ display: flex; }} .gap-8 {{ gap: 8px; }} .items-center {{ align-items: center; }}
+    .char-summary {{ cursor: pointer; color: #a78bfa; font-weight: 700; font-size: 14px; }}
+    .char-summary:hover {{ color: #c4b5fd; }}
+    hr {{ border: 0; border-top: 1px solid #1e293b; margin: 14px 0; }}
+    @media (max-width: 800px) {{ .app {{ flex-direction: column; }} .sidebar {{ width: 100%; }} .grid-wide {{ grid-template-columns: 1fr; }} }}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="sidebar-head">
+        <h1>Story Studio</h1>
+        <p>Content Pipeline v1</p>
+      </div>
+      <nav class="sidebar-nav">
+        <a href="#" class="active">&#9679; Dashboard</a>
+        <a href="#">&#9679; Episodes</a>
+        <a href="#">&#9679; Characters</a>
+        <a href="#">&#9679; Assets</a>
+        <a href="#">&#9679; Settings</a>
+      </nav>
+    </aside>
+    <div class="main">
+      <header class="topbar">
+        <div class="topbar-left">
+          <span class="badge badge-adult">{escape(episode.audience)}</span>
+          <span class="badge badge-blue">{escape(episode.aspect)}</span>
+          <span class="badge badge-green">{episode.target_duration_seconds}s</span>
+          <h2>{escape(episode.title)}</h2>
+        </div>
+        <div class="topbar-right">
+          <span>{escape(str(root))}</span>
+        </div>
+      </header>
+      <div class="content">
+        <p style="font-size: 14px; color: #64748b; margin-bottom: 20px;">{escape(episode.logline)}</p>
+        <section class="grid grid-wide" style="margin-bottom: 8px;">
+          <div class="card">
+            <h3>Create Story</h3>
+            <p style="margin-bottom: 12px;">Choose audience and format, then copy the command.</p>
+            <label>Audience</label>
+            <select id="audience">
+              <option value="kid" {"selected" if episode.audience == "kid" else ""}>Kid: 2–5 years, gentle motion</option>
+              <option value="adult" {"selected" if episode.audience == "adult" else ""}>Adult: sci-fi, war, mystery</option>
+            </select>
+            <label style="margin-top: 10px;">Format</label>
+            <select id="aspect">
+              <option value="shorts" {"selected" if episode.aspect == "shorts" else ""}>Shorts / Reels — 9:16</option>
+              <option value="landscape" {"selected" if episode.aspect == "landscape" else ""}>Landscape YouTube — 16:9</option>
+            </select>
+            <div class="choice-row">
+              <div class="choice"><strong>Kid rule</strong>Motion in every scene: smiles, toys, sparkles</div>
+              <div class="choice"><strong>Adult rule</strong>2.5D for mood; motion for action scenes</div>
+            </div>
+            <label>Optional idea</label>
+            <input id="idea" placeholder="Type a story idea…" style="font-family: system-ui; font-size: 13px;">
+            <div class="flex items-center gap-8" style="margin-top: 8px;">
+              <label style="margin: 0; white-space: nowrap;">Command</label>
+              <textarea id="selected_command" style="min-height: 44px; font-size: 12px;">{escape(current_command)}</textarea>
+              <button onclick="copyText('selected_command')" style="white-space: nowrap;">Copy</button>
+            </div>
+            <hr>
+            <div class="flex items-center gap-8">
+              <label style="margin: 0; white-space: nowrap; flex-shrink: 0; width: 60px;">Kid</label>
+              <textarea id="kid_command" style="min-height: 36px; font-size: 11px;">{escape(kid_command)}</textarea>
+              <button onclick="copyText('kid_command')" class="btn-sm">Copy</button>
+            </div>
+            <div class="flex items-center gap-8" style="margin-top: 4px;">
+              <label style="margin: 0; white-space: nowrap; flex-shrink: 0; width: 60px;">Adult</label>
+              <textarea id="adult_command" style="min-height: 36px; font-size: 11px;">{escape(adult_command)}</textarea>
+              <button onclick="copyText('adult_command')" class="btn-sm">Copy</button>
+            </div>
+            <hr>
+            <label>Recent stories</label>
+            <select>{recent_options}</select>
+          </div>
+          <div class="card">
+            <h3>Production Plan</h3>
+            <ul>{notes}</ul>
+            <h3 style="margin-top: 16px;">Safety Rules</h3>
+            <ul>{safety}</ul>
+          </div>
+        </section>
+        <div class="section-title">
+          Character References <span class="count">{len(episode.characters)}</span>
+        </div>
+        <section class="grid" id="character-gallery">{character_cards}</section>
+        <div class="section-title">
+          Scene Prompts <span class="count">{len(episode.scenes)}</span>
+        </div>
+        <section class="grid" id="scene-gallery">{cards}</section>
+      </div>
+    </div>
+  </div>
+  <script>
+    function copyText(id) {{
+      const el = document.getElementById(id);
+      el.select();
+      navigator.clipboard.writeText(el.value);
+      const btn = el.nextElementSibling;
+      const orig = btn.textContent;
+      btn.textContent = 'Copied!';
+      setTimeout(() => btn.textContent = orig, 1000);
     }}
     function refreshSelectedCommand() {{
       const audience = document.getElementById('audience').value;
@@ -734,15 +1163,40 @@ def _dashboard_html(episode: StoryEpisode, root: Path, recent: list[dict[str, st
 
 def _character_card(character: CharacterReference) -> str:
     prompt_id = f"character_{character.id}"
-    return f"""<article class="card">
-  <h3>{escape(character.name)}</h3>
-  <p><strong>{escape(character.role)}</strong></p>
+    emoji = _char_emoji(character.id)
+    return f"""<article class="card char-card">
+  <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+    <span style="font-size: 36px;">{emoji}</span>
+    <div>
+      <h3 style="margin: 0 0 2px 0;">{escape(character.name)}</h3>
+      <span style="font-size: 13px; color: #888; font-weight: 600;">{escape(character.role)}</span>
+    </div>
+  </div>
   <img class="character-img" src="../{escape(character.image_file)}" alt="{escape(character.name)} reference">
-  <p>{escape(character.description)}</p>
-  <label>Reference image prompt</label>
-  <textarea id="{prompt_id}">{escape(character.reference_prompt)}</textarea>
-  <button onclick="copyText('{prompt_id}')">Copy Character Prompt</button>
+  <p style="font-size: 14px; margin: 10px 0;">{escape(character.description)}</p>
+  <details>
+    <summary class="char-summary">Meta AI Reference Prompt</summary>
+    <textarea id="{prompt_id}" style="margin-top: 8px;">{escape(character.reference_prompt)}</textarea>
+    <button onclick="copyText('{prompt_id}')" style="margin-top: 6px;"> Copy Prompt</button>
+  </details>
 </article>"""
+
+
+def _char_emoji(char_id: str) -> str:
+    """Return a character-appropriate emoji based on the character ID."""
+    if "momo" in char_id:
+        return "🐰"  # bunny
+    elif "tinku" in char_id:
+        return "🧸"  # teddy bear
+    elif "pihu" in char_id:
+        return "☁️"  # cloud
+    elif "golu" in char_id:
+        return "🐘"  # elephant
+    elif "mimi" in char_id:
+        return "🐦"  # bird
+    elif "ira" in char_id:
+        return "🧑‍🚀"  # astronaut
+    return "🌟"  # star (fallback)
 
 
 def _scene_card(scene: StoryScene, index: int) -> str:
@@ -774,38 +1228,366 @@ def _subtitle_srt(episode: StoryEpisode) -> str:
 
 
 def _character_svg(character: CharacterReference) -> str:
-    color = "#60a5fa" if "elephant" in character.description.lower() else "#facc15"
-    accent = "#f97316" if "bird" in character.description.lower() else "#22d3ee"
+    """Generate a unique, cute SVG character reference illustration for each character."""
     title = escape(character.name)
     role = escape(character.role)
-    description = escape(character.description)
+    desc = escape(character.description)
+    cid = character.id
+
+    if "momo" in cid:
+        return _svg_momo(title, role, desc)
+    elif "tinku" in cid:
+        return _svg_tinku(title, role, desc)
+    elif "pihu" in cid:
+        return _svg_pihu(title, role, desc)
+    elif "golu" in cid:
+        return _svg_golu(title, role, desc)
+    elif "mimi" in cid:
+        return _svg_mimi(title, role, desc)
+    elif "ira" in cid:
+        return _svg_ira(title, role, desc)
+    return _svg_fallback(title, role, desc)
+
+
+def _svg_base(title: str, role: str, desc: str, bg_start: str, bg_end: str) -> str:
     return f"""<svg xmlns="http://www.w3.org/2000/svg" width="960" height="1280" viewBox="0 0 960 1280">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop stop-color="#111827"/>
-      <stop offset="1" stop-color="#312e81"/>
+      <stop stop-color="{bg_start}"/>
+      <stop offset="1" stop-color="{bg_end}"/>
     </linearGradient>
   </defs>
   <rect width="960" height="1280" fill="url(#bg)"/>
-  <rect x="64" y="64" width="832" height="1152" rx="44" fill="#f8fafc" opacity="0.96"/>
-  <text x="96" y="142" fill="#111827" font-family="Arial, sans-serif" font-size="54" font-weight="700">{title}</text>
-  <text x="96" y="196" fill="#475569" font-family="Arial, sans-serif" font-size="28">{role}</text>
-  <circle cx="480" cy="430" r="190" fill="{color}"/>
+  <rect x="64" y="64" width="832" height="1152" rx="44" fill="#ffffff" opacity="0.95"/>
+  <text x="96" y="152" fill="#111827" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="56" font-weight="700">{title}</text>
+  <text x="96" y="208" fill="#6b7280" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="28" font-weight="600">{role}</text>
+  <foreignObject x="96" y="1100" width="768" height="100">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif; font-size: 22px; line-height: 1.35; color: #374151;">{desc}</div>
+  </foreignObject>
+"""
+
+
+def _svg_momo(title: str, role: str, desc: str) -> str:
+    """Momo the Bunny — soft pink/white bunny with long floppy ears."""
+    return f"""{_svg_base(title, role, desc, "#fce4ec", "#c2185b")}
+  <!-- body -->
+  <ellipse cx="480" cy="680" rx="160" ry="180" fill="#f8bbd0"/>
+  <ellipse cx="480" cy="700" rx="110" ry="100" fill="#ffffff" opacity="0.6"/>
+  <!-- head -->
+  <circle cx="480" cy="380" r="150" fill="#f1c0c8"/>
+  <!-- left ear -->
+  <ellipse cx="360" cy="180" rx="40" ry="120" fill="#e8a0b0" transform="rotate(-15 360 180)"/>
+  <ellipse cx="360" cy="180" rx="22" ry="90" fill="#f5d0d8" transform="rotate(-15 360 180)"/>
+  <!-- right ear -->
+  <ellipse cx="600" cy="180" rx="40" ry="120" fill="#e8a0b0" transform="rotate(15 600 180)"/>
+  <ellipse cx="600" cy="180" rx="22" ry="90" fill="#f5d0d8" transform="rotate(15 600 180)"/>
+  <!-- cheeks -->
+  <circle cx="400" cy="420" r="28" fill="#f48fb1" opacity="0.4"/>
+  <circle cx="560" cy="420" r="28" fill="#f48fb1" opacity="0.4"/>
+  <!-- eyes -->
+  <ellipse cx="420" cy="360" rx="22" ry="28" fill="#3e2723"/>
+  <ellipse cx="540" cy="360" rx="22" ry="28" fill="#3e2723"/>
+  <ellipse cx="414" cy="352" rx="8" ry="10" fill="#ffffff"/>
+  <ellipse cx="534" cy="352" rx="8" ry="10" fill="#ffffff"/>
+  <!-- nose -->
+  <ellipse cx="480" cy="400" rx="12" ry="8" fill="#ec407a"/>
+  <!-- mouth -->
+  <path d="M460 415 Q480 435 500 415" fill="none" stroke="#3e2723" stroke-width="4" stroke-linecap="round"/>
+  <!-- whiskers -->
+  <line x1="360" y1="400" x2="420" y2="405" stroke="#9e9e9e" stroke-width="2" stroke-linecap="round"/>
+  <line x1="360" y1="412" x2="420" y2="412" stroke="#9e9e9e" stroke-width="2" stroke-linecap="round"/>
+  <line x1="600" y1="400" x2="540" y2="405" stroke="#9e9e9e" stroke-width="2" stroke-linecap="round"/>
+  <line x1="600" y1="412" x2="540" y2="412" stroke="#9e9e9e" stroke-width="2" stroke-linecap="round"/>
+  <!-- feet -->
+  <ellipse cx="400" cy="860" rx="50" ry="30" fill="#f1c0c8"/>
+  <ellipse cx="560" cy="860" rx="50" ry="30" fill="#f1c0c8"/>
+  <!-- tail -->
+  <circle cx="300" cy="760" r="25" fill="#ffffff"/>
+  <text x="96" y="1070" fill="#111827" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="26" font-weight="700">&#11088; For Meta AI</text>
+</svg>"""
+
+
+def _svg_tinku(title: str, role: str, desc: str) -> str:
+    """Tinku the Teddy — warm brown teddy bear with red bow."""
+    return f"""{_svg_base(title, role, desc, "#efebe9", "#5d4037")}
+  <!-- body -->
+  <ellipse cx="480" cy="700" rx="150" ry="170" fill="#8d6e63"/>
+  <ellipse cx="480" cy="720" rx="100" ry="90" fill="#d7ccc8" opacity="0.5"/>
+  <!-- arms -->
+  <ellipse cx="310" cy="640" rx="40" ry="80" fill="#8d6e63" transform="rotate(20 310 640)"/>
+  <ellipse cx="650" cy="640" rx="40" ry="80" fill="#8d6e63" transform="rotate(-20 650 640)"/>
+  <!-- head -->
+  <circle cx="480" cy="370" r="140" fill="#8d6e63"/>
+  <!-- ears -->
+  <circle cx="370" cy="260" r="45" fill="#8d6e63"/>
+  <circle cx="370" cy="260" r="28" fill="#a1887f"/>
+  <circle cx="590" cy="260" r="45" fill="#8d6e63"/>
+  <circle cx="590" cy="260" r="28" fill="#a1887f"/>
+  <!-- red bow -->
+  <polygon points="410,445 480,480 550,445 480,510" fill="#e53935"/>
+  <circle cx="480" cy="478" r="10" fill="#c62828"/>
+  <!-- eyes -->
+  <circle cx="430" cy="350" r="20" fill="#3e2723"/>
+  <circle cx="530" cy="350" r="20" fill="#3e2723"/>
+  <circle cx="425" cy="344" r="7" fill="#ffffff"/>
+  <circle cx="525" cy="344" r="7" fill="#ffffff"/>
+  <!-- snout -->
+  <ellipse cx="480" cy="390" rx="40" ry="28" fill="#d7ccc8"/>
+  <ellipse cx="480" cy="385" rx="12" ry="8" fill="#3e2723"/>
+  <!-- smile -->
+  <path d="M458 405 Q480 425 502 405" fill="none" stroke="#3e2723" stroke-width="4" stroke-linecap="round"/>
+  <!-- feet -->
+  <ellipse cx="400" cy="870" rx="55" ry="35" fill="#8d6e63"/>
+  <ellipse cx="560" cy="870" rx="55" ry="35" fill="#8d6e63"/>
+  <ellipse cx="385" cy="865" rx="20" ry="14" fill="#a1887f"/>
+  <ellipse cx="545" cy="865" rx="20" ry="14" fill="#a1887f"/>
+  <text x="96" y="1070" fill="#111827" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="26" font-weight="700">&#11088; For Meta AI</text>
+</svg>"""
+
+
+def _svg_pihu(title: str, role: str, desc: str) -> str:
+    """Pihu the Little Cloud — soft white/blue cloud with rainbow accent."""
+    return f"""{_svg_base(title, role, desc, "#e3f2fd", "#1a237e")}
+  <!-- cloud body using overlapping circles -->
+  <circle cx="360" cy="520" r="100" fill="#ffffff" opacity="0.95"/>
+  <circle cx="480" cy="480" r="130" fill="#ffffff" opacity="0.95"/>
+  <circle cx="600" cy="520" r="100" fill="#ffffff" opacity="0.95"/>
+  <circle cx="420" cy="550" r="90" fill="#e3f2fd" opacity="0.7"/>
+  <circle cx="540" cy="550" r="90" fill="#e3f2fd" opacity="0.7"/>
+  <ellipse cx="480" cy="590" rx="200" ry="60" fill="#ffffff" opacity="0.95"/>
+  <!-- rainbow scarf -->
+  <path d="M340 610 Q480 660 620 610" fill="none" stroke="#ff5252" stroke-width="8" stroke-linecap="round"/>
+  <path d="M345 625 Q480 675 615 625" fill="none" stroke="#ffab40" stroke-width="8" stroke-linecap="round"/>
+  <path d="M350 640 Q480 690 610 640" fill="none" stroke="#69f0ae" stroke-width="8" stroke-linecap="round"/>
+  <path d="M355 655 Q480 705 605 655" fill="none" stroke="#40c4ff" stroke-width="8" stroke-linecap="round"/>
+  <!-- face -->
+  <circle cx="430" cy="500" r="18" fill="#37474f"/>
+  <circle cx="530" cy="500" r="18" fill="#37474f"/>
+  <circle cx="425" cy="494" r="6" fill="#ffffff"/>
+  <circle cx="525" cy="494" r="6" fill="#ffffff"/>
+  <ellipse cx="480" cy="530" rx="14" ry="10" fill="#ff8a80"/>
+  <path d="M450 545 Q480 570 510 545" fill="none" stroke="#37474f" stroke-width="5" stroke-linecap="round"/>
+  <!-- rosy cheeks -->
+  <circle cx="400" cy="525" r="20" fill="#ff8a80" opacity="0.35"/>
+  <circle cx="560" cy="525" r="20" fill="#ff8a80" opacity="0.35"/>
+  <!-- raindrops -->
+  <ellipse cx="300" cy="700" rx="8" ry="14" fill="#40c4ff" opacity="0.4"/>
+  <ellipse cx="660" cy="720" rx="8" ry="14" fill="#40c4ff" opacity="0.4"/>
+  <ellipse cx="320" cy="740" rx="6" ry="10" fill="#40c4ff" opacity="0.3"/>
+  <ellipse cx="640" cy="760" rx="6" ry="10" fill="#40c4ff" opacity="0.3"/>
+  <text x="96" y="1070" fill="#111827" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="26" font-weight="700">&#11088; For Meta AI</text>
+</svg>"""
+
+
+def _svg_golu(title: str, role: str, desc: str) -> str:
+    """Golu the Baby Elephant — blue-gray with big ears, trunk, yellow scarf."""
+    return f"""{_svg_base(title, role, desc, "#eceff1", "#37474f")}
+  <!-- body -->
+  <ellipse cx="480" cy="720" rx="170" ry="160" fill="#90a4ae"/>
+  <ellipse cx="480" cy="740" rx="120" ry="90" fill="#b0bec5" opacity="0.5"/>
+  <!-- yellow scarf -->
+  <path d="M330 610 Q480 660 630 610" fill="none" stroke="#fdd835" stroke-width="18" stroke-linecap="round"/>
+  <path d="M590 610 L620 680" stroke="#fdd835" stroke-width="18" stroke-linecap="round"/>
+  <path d="M610 665 L635 635" stroke="#f9a825" stroke-width="8" stroke-linecap="round"/>
+  <!-- legs -->
+  <rect x="370" y="830" width="55" height="90" rx="27" fill="#90a4ae"/>
+  <rect x="535" y="830" width="55" height="90" rx="27" fill="#90a4ae"/>
+  <rect x="360" y="900" width="75" height="30" rx="15" fill="#78909c"/>
+  <rect x="525" y="900" width="75" height="30" rx="15" fill="#78909c"/>
+  <!-- head -->
+  <circle cx="480" cy="400" r="140" fill="#90a4ae"/>
+  <!-- big ears -->
+  <ellipse cx="310" cy="410" rx="65" ry="90" fill="#90a4ae" transform="rotate(-10 310 410)"/>
+  <ellipse cx="310" cy="410" rx="40" ry="60" fill="#b0bec5" transform="rotate(-10 310 410)"/>
+  <ellipse cx="650" cy="410" rx="65" ry="90" fill="#90a4ae" transform="rotate(10 650 410)"/>
+  <ellipse cx="650" cy="410" rx="40" ry="60" fill="#b0bec5" transform="rotate(10 650 410)"/>
+  <!-- eyes -->
+  <circle cx="430" cy="380" r="22" fill="#263238"/>
+  <circle cx="530" cy="380" r="22" fill="#263238"/>
+  <circle cx="424" cy="374" r="8" fill="#ffffff"/>
+  <circle cx="524" cy="374" r="8" fill="#ffffff"/>
+  <!-- trunk -->
+  <path d="M480 420 Q490 450 475 490 Q470 500 478 510" fill="none" stroke="#78909c" stroke-width="28" stroke-linecap="round"/>
+  <!-- smile -->
+  <path d="M440 440 Q480 470 520 440" fill="none" stroke="#263238" stroke-width="4" stroke-linecap="round"/>
+  <!-- red toy car badge -->
+  <circle cx="580" cy="720" r="18" fill="#e53935"/>
+  <rect x="572" y="714" width="16" height="8" rx="3" fill="#b71c1c"/>
+  <circle cx="576" cy="726" r="4" fill="#ffcc02"/>
+  <circle cx="588" cy="726" r="4" fill="#ffcc02"/>
+  <!-- rosy cheeks -->
+  <circle cx="400" cy="415" r="22" fill="#ef9a9a" opacity="0.35"/>
+  <circle cx="560" cy="415" r="22" fill="#ef9a9a" opacity="0.35"/>
+  <text x="96" y="1070" fill="#111827" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="26" font-weight="700">&#11088; For Meta AI</text>
+</svg>"""
+
+
+def _svg_mimi(title: str, role: str, desc: str) -> str:
+    """Mimi the Bird — tiny round yellow bird with orange feet and teal bow."""
+    return f"""{_svg_base(title, role, desc, "#fffde7", "#f57f17")}
+  <!-- body -->
+  <circle cx="480" cy="550" r="130" fill="#fdd835"/>
+  <ellipse cx="480" cy="570" rx="100" ry="80" fill="#fff176" opacity="0.5"/>
+  <!-- belly -->
+  <ellipse cx="480" cy="600" rx="70" ry="60" fill="#fff9c4" opacity="0.7"/>
+  <!-- teal bow -->
+  <polygon points="430,440 380,400 380,480" fill="#26c6da"/>
+  <polygon points="530,440 580,400 580,480" fill="#26c6da"/>
+  <circle cx="480" cy="440" r="14" fill="#00acc1"/>
+  <!-- head -->
+  <circle cx="480" cy="420" r="90" fill="#fdd835"/>
+  <!-- eyes -->
+  <circle cx="445" cy="405" r="16" fill="#3e2723"/>
+  <circle cx="515" cy="405" r="16" fill="#3e2723"/>
+  <circle cx="441" cy="400" r="5" fill="#ffffff"/>
+  <circle cx="511" cy="400" r="5" fill="#ffffff"/>
+  <!-- beak -->
+  <polygon points="480,415 460,435 500,435" fill="#ff6f00"/>
+  <!-- wings -->
+  <ellipse cx="330" cy="530" rx="50" ry="70" fill="#f9a825" transform="rotate(-15 330 530)"/>
+  <ellipse cx="630" cy="530" rx="50" ry="70" fill="#f9a825" transform="rotate(15 630 530)"/>
+  <ellipse cx="340" cy="525" rx="25" ry="40" fill="#ffee58" transform="rotate(-15 340 525)"/>
+  <ellipse cx="620" cy="525" rx="25" ry="40" fill="#ffee58" transform="rotate(15 620 525)"/>
+  <!-- rosy cheeks -->
+  <circle cx="420" cy="435" r="16" fill="#ef9a9a" opacity="0.4"/>
+  <circle cx="540" cy="435" r="16" fill="#ef9a9a" opacity="0.4"/>
+  <!-- feet -->
+  <line x1="440" y1="680" x2="440" y2="730" stroke="#ff6f00" stroke-width="6" stroke-linecap="round"/>
+  <line x1="520" y1="680" x2="520" y2="730" stroke="#ff6f00" stroke-width="6" stroke-linecap="round"/>
+  <line x1="440" y1="730" x2="420" y2="740" stroke="#ff6f00" stroke-width="4" stroke-linecap="round"/>
+  <line x1="440" y1="730" x2="460" y2="740" stroke="#ff6f00" stroke-width="4" stroke-linecap="round"/>
+  <line x1="520" y1="730" x2="500" y2="740" stroke="#ff6f00" stroke-width="4" stroke-linecap="round"/>
+  <line x1="520" y1="730" x2="540" y2="740" stroke="#ff6f00" stroke-width="4" stroke-linecap="round"/>
+  <!-- tail feathers -->
+  <ellipse cx="280" cy="580" rx="18" ry="30" fill="#f9a825" transform="rotate(30 280 580)"/>
+  <ellipse cx="270" cy="600" rx="14" ry="25" fill="#ffee58" transform="rotate(20 270 600)"/>
+  <text x="96" y="1070" fill="#111827" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="26" font-weight="700">&#11088; For Meta AI</text>
+</svg>"""
+
+
+def _svg_ira(title: str, role: str, desc: str) -> str:
+    """Commander Ira — detailed space suit illustration with helmet, mission patch, and amber visor."""
+    return f"""{_svg_base(title, role, desc, "#0f172a", "#1e3a5f")}
+  <!-- star field background inside card -->
+  <circle cx="160" cy="160" r="2" fill="#ffffff" opacity="0.6"/>
+  <circle cx="720" cy="120" r="1.5" fill="#ffffff" opacity="0.4"/>
+  <circle cx="800" cy="300" r="1" fill="#ffffff" opacity="0.5"/>
+  <circle cx="200" cy="900" r="1.5" fill="#ffffff" opacity="0.3"/>
+  <circle cx="750" cy="850" r="2" fill="#ffffff" opacity="0.4"/>
+  <circle cx="640" cy="200" r="1" fill="#ffffff" opacity="0.35"/>
+  <circle cx="300" cy="1000" r="1.5" fill="#ffffff" opacity="0.25"/>
+  <!-- body / torso -->
+  <rect x="370" y="580" width="220" height="280" rx="40" fill="#e0e0e0"/>
+  <rect x="380" y="595" width="200" height="120" rx="20" fill="#eeeeee" opacity="0.5"/>
+  <!-- cobalt trim stripes on torso -->
+  <rect x="370" y="740" width="220" height="8" rx="4" fill="#1a237e"/>
+  <rect x="370" y="770" width="220" height="8" rx="4" fill="#1a237e"/>
+  <!-- collar -->
+  <rect x="390" y="555" width="180" height="40" rx="20" fill="#bdbdbd"/>
+  <rect x="400" y="560" width="160" height="30" rx="15" fill="#9e9e9e"/>
+  <!-- frost crystals on collar -->
+  <line x1="410" y1="562" x2="415" y2="568" stroke="#e0f7fa" stroke-width="1.5" opacity="0.6"/>
+  <line x1="550" y1="564" x2="545" y2="570" stroke="#e0f7fa" stroke-width="1.5" opacity="0.6"/>
+  <line x1="480" y1="560" x2="483" y2="566" stroke="#e0f7fa" stroke-width="1" opacity="0.4"/>
+  <!-- mission patch (triangular, red/gold on navy, seven-pointed star + orbits) -->
+  <polygon points="380,630 420,630 400,672" fill="#d32f2f" stroke="#fdd835" stroke-width="2"/>
+  <polygon points="388,640 412,640 400,662" fill="#1a237e"/>
+  <!-- seven-pointed star (approximated with overlapping triangles) -->
+  <polygon points="400,645 396,653 404,653" fill="#fdd835"/>
+  <polygon points="396,650 404,650 400,658" fill="#fdd835"/>
+  <!-- crossed orbits -->
+  <ellipse cx="400" cy="652" rx="6" ry="2" fill="none" stroke="#fdd835" stroke-width="1" transform="rotate(-30 400 652)"/>
+  <ellipse cx="400" cy="652" rx="6" ry="2" fill="none" stroke="#fdd835" stroke-width="1" transform="rotate(30 400 652)"/>
+  <!-- left arm -->
+  <rect x="300" y="590" width="70" height="240" rx="35" fill="#e0e0e0"/>
+  <rect x="300" y="590" width="70" height="120" rx="35" fill="#eeeeee" opacity="0.4"/>
+  <rect x="335" y="610" width="8" height="200" rx="4" fill="#1a237e"/>
+  <!-- left shoulder light -->
+  <rect x="295" y="585" width="16" height="30" rx="8" fill="#78909c"/>
+  <circle cx="303" cy="600" r="5" fill="#fdd835"/>
+  <circle cx="303" cy="600" r="3" fill="#ffffff" opacity="0.8"/>
+  <!-- right arm -->
+  <rect x="590" y="590" width="70" height="240" rx="35" fill="#e0e0e0"/>
+  <rect x="590" y="590" width="70" height="120" rx="35" fill="#eeeeee" opacity="0.4"/>
+  <rect x="617" y="610" width="8" height="200" rx="4" fill="#1a237e"/>
+  <!-- gloved hands -->
+  <rect x="315" y="820" width="40" height="50" rx="18" fill="#78909c"/>
+  <line x1="325" y1="835" x2="325" y2="865" stroke="#607d8b" stroke-width="2" stroke-linecap="round"/>
+  <line x1="335" y1="835" x2="335" y2="865" stroke="#607d8b" stroke-width="2" stroke-linecap="round"/>
+  <line x1="345" y1="835" x2="345" y2="865" stroke="#607d8b" stroke-width="2" stroke-linecap="round"/>
+  <rect x="605" y="820" width="40" height="50" rx="18" fill="#78909c"/>
+  <line x1="615" y1="835" x2="615" y2="865" stroke="#607d8b" stroke-width="2" stroke-linecap="round"/>
+  <line x1="625" y1="835" x2="625" y2="865" stroke="#607d8b" stroke-width="2" stroke-linecap="round"/>
+  <line x1="635" y1="835" x2="635" y2="865" stroke="#607d8b" stroke-width="2" stroke-linecap="round"/>
+  <!-- legs -->
+  <rect x="395" y="840" width="65" height="180" rx="32" fill="#e0e0e0"/>
+  <rect x="500" y="840" width="65" height="180" rx="32" fill="#e0e0e0"/>
+  <rect x="410" y="850" width="8" height="160" rx="4" fill="#1a237e"/>
+  <rect x="510" y="850" width="8" height="160" rx="4" fill="#1a237e"/>
+  <!-- knee pads -->
+  <rect x="390" y="940" width="70" height="40" rx="15" fill="#78909c"/>
+  <rect x="500" y="940" width="70" height="40" rx="15" fill="#78909c"/>
+  <!-- boots -->
+  <rect x="385" y="1010" width="80" height="40" rx="20" fill="#78909c"/>
+  <rect x="495" y="1010" width="80" height="40" rx="20" fill="#78909c"/>
+  <rect x="380" y="1030" width="90" height="20" rx="10" fill="#607d8b"/>
+  <rect x="490" y="1030" width="90" height="20" rx="10" fill="#607d8b"/>
+  <!-- utility belt -->
+  <rect x="370" y="810" width="220" height="30" rx="10" fill="#616161"/>
+  <rect x="378" y="812" width="2" height="26" fill="#424242"/>
+  <rect x="580" y="812" width="2" height="26" fill="#424242"/>
+  <!-- silver pouches -->
+  <rect x="420" y="812" width="28" height="30" rx="6" fill="#9e9e9e"/>
+  <rect x="515" y="812" width="28" height="30" rx="6" fill="#9e9e9e"/>
+  <line x1="434" y1="812" x2="434" y2="842" stroke="#757575" stroke-width="1.5"/>
+  <line x1="529" y1="812" x2="529" y2="842" stroke="#757575" stroke-width="1.5"/>
+  <!-- scuff marks -->
+  <ellipse cx="400" cy="900" rx="12" ry="4" fill="#9e9e9e" opacity="0.4"/>
+  <ellipse cx="560" cy="890" rx="10" ry="3" fill="#9e9e9e" opacity="0.35"/>
+  <ellipse cx="330" cy="800" rx="8" ry="3" fill="#9e9e9e" opacity="0.3"/>
+  <!-- helmet -->
+  <circle cx="480" cy="370" r="130" fill="#e0e0e0"/>
+  <circle cx="480" cy="370" r="120" fill="#eeeeee"/>
+  <circle cx="480" cy="370" r="115" fill="#f5f5f5"/>
+  <!-- helmet visor (amber, semi-reflective gradient effect) -->
+  <ellipse cx="480" cy="370" rx="82" ry="90" fill="#ff8f00" opacity="0.35"/>
+  <ellipse cx="475" cy="365" rx="80" ry="88" fill="#ffb300" opacity="0.15"/>
+  <!-- visor reflection highlights -->
+  <path d="M430 330 Q460 310 490 320" fill="none" stroke="#ffffff" stroke-width="6" opacity="0.25" stroke-linecap="round"/>
+  <path d="M510 430 Q530 420 540 400" fill="none" stroke="#ffffff" stroke-width="4" opacity="0.15" stroke-linecap="round"/>
+  <!-- warm brown eyes visible through visor -->
+  <ellipse cx="445" cy="360" rx="12" ry="7" fill="#5d4037" opacity="0.7"/>
+  <ellipse cx="515" cy="360" rx="12" ry="7" fill="#5d4037" opacity="0.7"/>
+  <circle cx="442" cy="358" r="3" fill="#3e2723" opacity="0.5"/>
+  <circle cx="512" cy="358" r="3" fill="#3e2723" opacity="0.5"/>
+  <!-- breathing tube -->
+  <path d="M540 380 Q560 385 550 410" fill="none" stroke="#78909c" stroke-width="10" stroke-linecap="round"/>
+  <path d="M540 380 Q560 385 550 410" fill="none" stroke="#90a4ae" stroke-width="6" stroke-linecap="round"/>
+  <!-- helmet LED light -->
+  <rect x="435" y="255" width="12" height="18" rx="4" fill="#bdbdbd"/>
+  <circle cx="441" cy="258" r="4" fill="#40c4ff"/>
+  <circle cx="441" cy="258" r="2" fill="#ffffff" opacity="0.7"/>
+  <!-- ice residue on visor edge -->
+  <path d="M410 420 Q415 425 412 430" fill="none" stroke="#b3e5fc" stroke-width="2" opacity="0.4" stroke-linecap="round"/>
+  <path d="M545 415 Q550 420 547 425" fill="none" stroke="#b3e5fc" stroke-width="2" opacity="0.35" stroke-linecap="round"/>
+  <text x="96" y="1070" fill="#e0e0e0" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="26" font-weight="700">&#11088; For Meta AI</text>
+</svg>"""
+
+
+def _svg_fallback(title: str, role: str, desc: str) -> str:
+    return _svg_base(title, role, desc, "#111827", "#312e81") + f"""
+  <circle cx="480" cy="430" r="190" fill="#60a5fa"/>
   <circle cx="410" cy="394" r="26" fill="#111827"/>
   <circle cx="550" cy="394" r="26" fill="#111827"/>
   <circle cx="402" cy="386" r="8" fill="#ffffff"/>
   <circle cx="542" cy="386" r="8" fill="#ffffff"/>
   <path d="M405 505 Q480 565 555 505" fill="none" stroke="#111827" stroke-width="16" stroke-linecap="round"/>
-  <rect x="310" y="635" width="340" height="310" rx="80" fill="{color}"/>
-  <rect x="346" y="680" width="268" height="54" rx="27" fill="{accent}"/>
-  <circle cx="315" cy="470" r="74" fill="{color}" opacity="0.92"/>
-  <circle cx="645" cy="470" r="74" fill="{color}" opacity="0.92"/>
-  <text x="96" y="1044" fill="#111827" font-family="Arial, sans-serif" font-size="26" font-weight="700">Consistency Notes</text>
-  <foreignObject x="96" y="1070" width="768" height="110">
-    <div xmlns="http://www.w3.org/1999/xhtml" style="font-family: Arial, sans-serif; font-size: 24px; line-height: 1.35; color: #334155;">{description}</div>
-  </foreignObject>
-</svg>
-"""
+  <rect x="310" y="635" width="340" height="310" rx="80" fill="#60a5fa"/>
+  <rect x="346" y="680" width="268" height="54" rx="27" fill="#22d3ee"/>
+  <circle cx="315" cy="470" r="74" fill="#60a5fa" opacity="0.92"/>
+  <circle cx="645" cy="470" r="74" fill="#60a5fa" opacity="0.92"/>
+  <text x="96" y="1070" fill="#111827" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="26" font-weight="700">Consistency Notes</text>
+</svg>"""
 
 
 def _timestamp(seconds: int) -> str:

@@ -38,6 +38,23 @@ from content_pipeline.bots.motion import (
     write_motion_plan,
 )
 from content_pipeline.bots.policy import PublicationDeclarations, review_publication
+from content_pipeline.bots.video_engine import (
+    VideoCompilation,
+    assemble_compilation,
+    assemble_episode,
+    assert_shorts_publish_allowed,
+    create_clip_plan,
+    create_compilation_workspace,
+    create_episode_workspace,
+    generate_auto_2_5d_clips,
+    record_shorts_publish,
+    shorts_publish_metadata,
+)
+from content_pipeline.bots.instagram import (
+    authorize_instagram,
+    instagram_publish_reel,
+    record_instagram_publish,
+)
 from content_pipeline.bots.prompt import generate_long_form_video_script
 from content_pipeline.bots.krishna_studio import (
     assemble_manual_episode,
@@ -249,6 +266,93 @@ def main() -> int:
     upload_parser.add_argument(
         "--privacy", choices=("private", "unlisted", "public"), default="private"
     )
+    clip_plan_parser = subparsers.add_parser(
+        "video-clip-plan",
+        help="Generate a structured clip plan (VideoEpisode) from a topic.",
+    )
+    clip_plan_parser.add_argument("--topic", required=True)
+    clip_plan_parser.add_argument("--audience", choices=("kid", "adult"), default="adult")
+    clip_plan_parser.add_argument("--aspect", choices=("shorts", "landscape"), default="shorts")
+    clip_plan_parser.add_argument("--date", default=date.today().isoformat())
+    clip_plan_parser.add_argument("--target-duration", type=int, default=150)
+
+    ep_create_parser = subparsers.add_parser(
+        "video-episode-create",
+        help="Create episode workspace and generate auto 2.5D clips from a topic plan.",
+    )
+    ep_create_parser.add_argument("--topic", required=True)
+    ep_create_parser.add_argument("--audience", choices=("kid", "adult"), default="adult")
+    ep_create_parser.add_argument("--aspect", choices=("shorts", "landscape"), default="shorts")
+    ep_create_parser.add_argument("--date", default=date.today().isoformat())
+    ep_create_parser.add_argument("--target-duration", type=int, default=150)
+
+    ep_assemble_parser = subparsers.add_parser(
+        "video-episode-assemble",
+        help="Assemble an episode from its workspace (auto + manual clips) into a final MP4.",
+    )
+    ep_assemble_parser.add_argument("--workspace", type=Path, required=True)
+
+    comp_parser = subparsers.add_parser(
+        "video-compilation-create",
+        help="Create a compilation manifest referencing multiple episode IDs.",
+    )
+    comp_parser.add_argument("--title", required=True)
+    comp_parser.add_argument("--description", required=True)
+    comp_parser.add_argument("--episode-ids", required=True, help="Comma-separated list of episode IDs.")
+    comp_parser.add_argument("--compilation-id", default="", help="Optional custom ID.")
+    comp_parser.add_argument("--transition-duration", type=int, default=2)
+
+    comp_assemble_parser = subparsers.add_parser(
+        "video-compilation-assemble",
+        help="Stitch compiled episodes into a final long-form video.",
+    )
+    comp_assemble_parser.add_argument("--manifest", type=Path, required=True, help="Path to compilation.json manifest.")
+
+    shorts_parser = subparsers.add_parser(
+        "shorts-publish",
+        help="Publish an assembled episode as YouTube Shorts / Instagram Reels.",
+    )
+    shorts_parser.add_argument("--workspace", type=Path, required=True, help="Episode workspace directory.")
+    shorts_parser.add_argument(
+        "--platform",
+        choices=("youtube", "instagram", "all"),
+        default="youtube",
+        help="Target platform(s) for publishing.",
+    )
+    shorts_parser.add_argument(
+        "--privacy",
+        choices=("private", "unlisted", "public"),
+        default="private",
+        help="YouTube privacy setting (only used for youtube/platform).",
+    )
+    shorts_parser.add_argument(
+        "--video-host-url",
+        default="",
+        help="Public URL where the video is hosted (required for Instagram Reels).",
+    )
+    shorts_parser.add_argument(
+        "--policy-report",
+        type=Path,
+        default=None,
+        help="Path to the YouTube policy report (required for YouTube Shorts).",
+    )
+    shorts_parser.add_argument(
+        "--date",
+        default="",
+        help="Content date in YYYY-MM-DD format (for Instagram receipt path). "
+        "Defaults to the first 10 chars of the episode ID.",
+    )
+    shorts_parser.add_argument(
+        "--force-republish",
+        action="store_true",
+        help="Publish even if a receipt already exists for this episode.",
+    )
+
+    instagram_auth_parser = subparsers.add_parser(
+        "instagram-auth",
+        help="Authorize Instagram Reels publishing via the Facebook Graph API.",
+    )
+
     subparsers.add_parser("youtube-auth", help="Authorize YouTube upload access and store a local token.")
     parser.add_argument(
         "--project-dir",
@@ -435,6 +539,169 @@ def main() -> int:
         )
         print(f"YouTube video uploaded as {args.privacy}: {video_id}")
         return 0
+    if args.command == "video-clip-plan":
+        episode = create_clip_plan(
+            topic=args.topic,
+            audience=args.audience,
+            aspect=args.aspect,
+            episode_date=args.date,
+            target_duration_seconds=args.target_duration,
+        )
+        print(json.dumps(episode.as_dict(), indent=2, ensure_ascii=False))
+        return 0
+
+    if args.command == "video-episode-create":
+        episode = create_clip_plan(
+            topic=args.topic,
+            audience=args.audience,
+            aspect=args.aspect,
+            episode_date=args.date,
+            target_duration_seconds=args.target_duration,
+        )
+        written = create_episode_workspace(settings.output_dir, episode)
+        for path in written:
+            print(path)
+        provider = image_provider(settings)
+        auto_clips = generate_auto_2_5d_clips(episode, provider, settings.output_dir)
+        for path in auto_clips:
+            print(path)
+        print(f"Episode workspace ready at: {settings.output_dir / 'video_episodes' / episode.episode_id}")
+        return 0
+
+    if args.command == "video-episode-assemble":
+        workspace = (
+            args.workspace if args.workspace.is_absolute() else project_dir / args.workspace
+        )
+        print(f"Episode assembled: {assemble_episode(workspace)}")
+        return 0
+
+    if args.command == "video-compilation-create":
+        episode_ids = [eid.strip() for eid in args.episode_ids.split(",") if eid.strip()]
+        if not episode_ids:
+            raise ValueError("At least one episode ID is required.")
+        compilation = VideoCompilation(
+            compilation_id=args.compilation_id or f"compilation_{date.today().isoformat()}",
+            title=args.title,
+            description=args.description,
+            episode_ids=episode_ids,
+            transition_duration_seconds=args.transition_duration,
+        )
+        manifest_path = create_compilation_workspace(settings.output_dir, compilation)
+        print(f"Compilation manifest created: {manifest_path}")
+        return 0
+
+    if args.command == "video-compilation-assemble":
+        manifest_path = (
+            args.manifest if args.manifest.is_absolute() else project_dir / args.manifest
+        )
+        compilation = VideoCompilation.from_dict(
+            json.loads(manifest_path.read_text(encoding="utf-8"))
+        )
+        # Find episode directories under output_dir / video_episodes / <episode_id>
+        episode_dirs = [
+            settings.output_dir / "video_episodes" / eid
+            for eid in compilation.episode_ids
+        ]
+        for ep_dir in episode_dirs:
+            if not ep_dir.is_dir():
+                raise FileNotFoundError(
+                    f"Episode directory not found: {ep_dir}. "
+                    "Create the episode first with video-episode-create."
+                )
+        output_path = assemble_compilation(
+            settings.output_dir, compilation, episode_dirs
+        )
+        print(f"Compilation assembled: {output_path}")
+        return 0
+
+    if args.command == "shorts-publish":
+        workspace = (
+            args.workspace if args.workspace.is_absolute() else project_dir / args.workspace
+        )
+        episode = VideoEpisode.from_dict(
+            json.loads((workspace / "episode.json").read_text(encoding="utf-8"))
+        )
+        if episode.aspect != "shorts":
+            raise ValueError(
+                f"Episode '{episode.episode_id}' has aspect '{episode.aspect}'. "
+                "Only shorts (9:16) episodes can be published to Shorts/Reels."
+            )
+
+        video_path = workspace / "video" / "episode_review.mp4"
+        if not video_path.exists():
+            raise FileNotFoundError(
+                f"Assembled video not found at {video_path}. "
+                "Run video-episode-assemble first."
+            )
+
+        platforms = ["youtube", "instagram"] if args.platform == "all" else [args.platform]
+
+        for platform in platforms:
+            assert_shorts_publish_allowed(
+                settings.output_dir,
+                episode.episode_id,
+                platform,
+                force=args.force_republish,
+            )
+
+            meta = shorts_publish_metadata(episode, platform=platform, video_path=video_path)
+
+            if platform == "youtube":
+                if not args.policy_report:
+                    raise ValueError(
+                        "--policy-report is required for YouTube Shorts publishing. "
+                        "Run youtube-policy-check first."
+                    )
+                report_path = (
+                    args.policy_report
+                    if args.policy_report.is_absolute()
+                    else project_dir / args.policy_report
+                )
+                report = json.loads(report_path.read_text(encoding="utf-8"))
+                video_id = upload_youtube_video(
+                    video_path,
+                    meta.title,
+                    meta.description,
+                    report,
+                    settings,
+                    args.privacy,
+                )
+                record_shorts_publish(
+                    settings.output_dir,
+                    episode.episode_id,
+                    "youtube",
+                    video_id,
+                )
+                print(f"YouTube Short published: {video_id}")
+
+            elif platform == "instagram":
+                if not args.video_host_url:
+                    raise ValueError(
+                        "--video-host-url is required for Instagram Reels publishing. "
+                        "Upload the video to a public URL first."
+                    )
+                media_id = instagram_publish_reel(
+                    video_path,
+                    meta.description,
+                    args.video_host_url,
+                    settings,
+                )
+                publish_day = args.date or episode.episode_id[:10]
+                record_instagram_publish(
+                    settings.output_dir,
+                    episode.episode_id,
+                    publish_day,
+                    media_id,
+                )
+                print(f"Instagram Reel published: {media_id}")
+
+        return 0
+
+    if args.command == "instagram-auth":
+        result = authorize_instagram(settings, project_dir / ".env")
+        print(f"Instagram authorized: user_id={result['instagram_user_id']}")
+        return 0
+
     if args.command == "youtube-auth":
         print(f"YouTube token stored locally: {authorize_youtube(settings)}")
         return 0

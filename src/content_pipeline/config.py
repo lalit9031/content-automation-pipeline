@@ -36,6 +36,10 @@ class Settings:
     luma_video_model: str = "ray-2"
     youtube_client_secrets_file: str = ""
     youtube_token_file: str = ""
+    instagram_access_token: str = ""
+    instagram_user_id: str = ""
+    instagram_client_id: str = ""
+    instagram_client_secret: str = ""
     dotenv_path: Path | None = None
 
     @classmethod
@@ -79,6 +83,10 @@ class Settings:
             luma_video_model=os.getenv("LUMA_VIDEO_MODEL", "ray-2"),
             youtube_client_secrets_file=os.getenv("YOUTUBE_CLIENT_SECRETS_FILE", ""),
             youtube_token_file=os.getenv("YOUTUBE_TOKEN_FILE", ""),
+            instagram_access_token=os.getenv("INSTAGRAM_ACCESS_TOKEN", ""),
+            instagram_user_id=os.getenv("INSTAGRAM_USER_ID", ""),
+            instagram_client_id=os.getenv("INSTAGRAM_CLIENT_ID", ""),
+            instagram_client_secret=os.getenv("INSTAGRAM_CLIENT_SECRET", ""),
             dotenv_path=project_dir / ".env",
         )
 
