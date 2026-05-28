@@ -59,6 +59,7 @@ from content_pipeline.bots.gemini_video import (
     gemini_config_status,
     generate_missing_gemini_clips,
     write_gemini_dry_run,
+    write_gemini_budget_report,
 )
 from content_pipeline.bots.prompt import generate_long_form_video_script
 from content_pipeline.bots.krishna_studio import (
@@ -257,6 +258,11 @@ def main() -> int:
     story_gemini_parser.add_argument("--workspace", type=Path, required=True)
     story_gemini_parser.add_argument("--limit", type=int, default=None, help="Maximum new clips to generate.")
     story_gemini_parser.add_argument("--dry-run", action="store_true", help="Only write gemini_video_requests.json.")
+    story_budget_parser = subparsers.add_parser(
+        "story-studio-budget-report",
+        help="Write Gemini/Veo budget report for a Story Studio workspace.",
+    )
+    story_budget_parser.add_argument("--workspace", type=Path, required=True)
     subparsers.add_parser("gemini-config-check", help="Check Gemini/Veo API configuration without generating video.")
     policy_parser = subparsers.add_parser(
         "youtube-policy-check", help="Create the required publication approval report."
@@ -520,6 +526,10 @@ def main() -> int:
             print(f"Gemini request file written: {write_gemini_dry_run(workspace)}")
             return 0
         print(json.dumps(generate_missing_gemini_clips(workspace, settings, args.limit), indent=2))
+        return 0
+    if args.command == "story-studio-budget-report":
+        workspace = args.workspace if args.workspace.is_absolute() else project_dir / args.workspace
+        print(f"Gemini budget report written: {write_gemini_budget_report(workspace, settings)}")
         return 0
     if args.command == "gemini-config-check":
         print(json.dumps(gemini_config_status(settings), indent=2))

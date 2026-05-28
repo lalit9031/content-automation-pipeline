@@ -262,7 +262,10 @@ Add your API key only to local `.env`:
 
 ```dotenv
 GEMINI_API_KEY=your_key_here
-GEMINI_VIDEO_MODEL=veo-3.0-generate-preview
+GEMINI_VIDEO_MODEL=veo-3.0-fast-generate-001
+GEMINI_VIDEO_PRICE_PER_SECOND_USD=0.15
+GEMINI_VIDEO_DAILY_CLIP_BUDGET=3
+GEMINI_VIDEO_MONTHLY_BUDGET_USD=25
 ```
 
 Check configuration:
@@ -287,6 +290,16 @@ PYTHONPATH=src .venv/bin/python -m content_pipeline story-studio-gemini-generate
 
 When quota is exhausted, continue manually in Gemini/OpenArt using the same
 scene prompts and save files into `clips/inbox/`.
+
+Write a local budget report for the UI:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m content_pipeline story-studio-budget-report \
+  --workspace output/story_studio/episodes/<episode_id>
+```
+
+The budget report estimates pending seconds, approximate cost, suggested clips
+to auto-generate today, and which clips should fall back to manual generation.
 
 ## Architecture
 

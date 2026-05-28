@@ -56,8 +56,10 @@ from content_pipeline.bots.story_studio import (
 )
 from content_pipeline.bots.gemini_video import (
     build_gemini_requests,
+    gemini_budget_report,
     gemini_config_status,
     generate_missing_gemini_clips,
+    write_gemini_budget_report,
     write_gemini_dry_run,
 )
 from content_pipeline.bots.video import (
@@ -771,6 +773,26 @@ class PipelineTest(unittest.TestCase):
             self.assertFalse(gemini_config_status(Settings(output_dir=output))["configured"])
             with self.assertRaisesRegex(ValueError, "GEMINI_API_KEY"):
                 generate_missing_gemini_clips(root, Settings(output_dir=output))
+
+    def test_gemini_budget_report_recommends_limited_auto_generation(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            output = Path(temporary_dir) / "output"
+            episode = create_story_episode("kid", episode_date="2026-05-28")
+            create_story_workspace(output, episode)
+            root = output / "story_studio" / "episodes" / episode.episode_id
+            settings = Settings(
+                output_dir=output,
+                gemini_video_daily_clip_budget=2,
+                gemini_video_price_per_second_usd=0.15,
+            )
+
+            report = gemini_budget_report(root, settings)
+            path = write_gemini_budget_report(root, settings)
+
+            self.assertEqual(report["pending_scenes"], len(episode.scenes))
+            self.assertEqual(len(report["recommended_auto_today"]), 2)
+            self.assertTrue(report["recommended_auto_today_cost_usd"] > 0)
+            self.assertTrue(path.exists())
 
     def test_youtube_policy_gate_blocks_missing_declarations(self) -> None:
         report = review_publication(

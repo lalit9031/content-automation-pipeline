@@ -799,13 +799,15 @@ def _production_status_html(episode: StoryEpisode, root: Path) -> str:
         ),
         _status_row("Final assembly", (root / "video" / "assembled_review.mp4").exists(), "Review MP4 exported"),
     ]
+    budget = _budget_summary_html(root)
     fallback = (
         "Automation plan: use Gemini/Veo API while quota is available. "
         "If quota is exhausted, create the missing clips manually in Gemini/OpenArt using the scene prompts below, "
         "then save them with the expected filenames."
     )
     return f"""<p style="margin-bottom: 10px;">{escape(fallback)}</p>
-<ul style="list-style: none; padding-left: 0;">{''.join(rows)}</ul>"""
+<ul style="list-style: none; padding-left: 0;">{''.join(rows)}</ul>
+{budget}"""
 
 
 def _status_row(label: str, done: bool, detail: str) -> str:
@@ -816,6 +818,21 @@ def _status_row(label: str, done: bool, detail: str) -> str:
         f'<span style="color: {color}; font-weight: 700;">{marker}</span><br>'
         f'<span style="font-size: 12px;">{escape(detail)}</span></li>'
     )
+
+
+def _budget_summary_html(root: Path) -> str:
+    path = root / "gemini_budget_report.json"
+    if not path.exists():
+        return (
+            '<hr><p style="font-size: 12px;"><strong>Budget Agent:</strong> Not run yet. '
+            'Run <code>story-studio-budget-report</code> to estimate Gemini/Veo cost and quota strategy.</p>'
+        )
+    report = json.loads(path.read_text(encoding="utf-8"))
+    advice = "".join(f"<li>{escape(item)}</li>" for item in report.get("advice", []))
+    return f"""<hr>
+<p style="font-size: 12px;"><strong>Budget Agent:</strong> {report.get("completed_scenes", 0)}/{report.get("total_scenes", 0)} clips ready, {report.get("pending_scenes", 0)} pending.</p>
+<p style="font-size: 12px;">Recommended auto today: {len(report.get("recommended_auto_today", []))} clips / approx ${report.get("recommended_auto_today_cost_usd", 0)}. Remaining estimate: ${report.get("estimated_remaining_cost_usd", 0)}.</p>
+<ul>{advice}</ul>"""
 
 
 def _kid_dashboard_html(
