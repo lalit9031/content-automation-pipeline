@@ -60,8 +60,16 @@ subscription alone does not supply API credentials.
 PROMPT_PROVIDER=openai
 OPENAI_API_KEY=your_openai_api_key
 OPENAI_MODEL=gpt-5.4-mini
+OPENAI_IMAGE_MODEL=gpt-image-1
 
-IMAGE_PROVIDER=imagen
+IMAGE_PROVIDER=gemini
+GEMINI_API_KEY=your_gemini_api_key
+GEMINI_IMAGE_MODEL=gemini-2.5-flash-image
+
+# Or use ChatGPT/OpenAI image generation:
+# IMAGE_PROVIDER=openai
+# OPENAI_IMAGE_MODEL=gpt-image-1
+
 GCP_PROJECT_ID=your_google_cloud_project
 GCP_LOCATION=us-central1
 IMAGEN_MODEL=imagen-4.0-generate-001
@@ -172,52 +180,6 @@ and the exact account, template, and brand-kit details needed to wire it in.
 The instructional motion-graphics design target is recorded in
 [docs/VIDEO_STYLE_REFERENCE.md](docs/VIDEO_STYLE_REFERENCE.md).
 
-## Bal Krishna Motion Validation Agent
-
-An experimental children's-story workflow now generates authentic Hindi voice
-samples, plans short real-motion environmental validation clips with Sora,
-assembles approved clips, and blocks YouTube upload until a dated policy report
-passes. The desired child-character motion plan is retained for provider review
-after a live character request was rejected by moderation; it never sends
-family face photos as motion-video reference images.
-
-See [docs/KRISHNA_AGENT_WORKFLOW.md](docs/KRISHNA_AGENT_WORKFLOW.md) for the
-one-agent-per-job design and safe voice-source policy, and
-[docs/KRISHNA_MOTION_AGENT.md](docs/KRISHNA_MOTION_AGENT.md) for motion,
-provider-boundary, character-identity verification, policy-check and
-private-upload commands. The pilot narration selection is recorded as the
-built-in `marin` sample; character clips require a provider route that permits
-original fictional human-like characters. A gated Luma evaluation route can
-generate fictional identity stills and, after creator approval, one private
-five-second Kanha motion test. For the pilot, a no-subscription local 2.5D
-route renders moving vertical shots from the approved fictional artwork.
-
-For daily OpenArt or Meta AI assisted production, generate a local episode UI:
-
-```bash
-PYTHONPATH=src .venv/bin/python -m content_pipeline krishna-daily-video-ui \
-  --date 2026-05-28
-```
-
-For a landscape YouTube version:
-
-```bash
-PYTHONPATH=src .venv/bin/python -m content_pipeline krishna-daily-video-ui \
-  --date 2026-05-28 --aspect landscape
-```
-
-Open the generated `ui/index.html`, copy each scene prompt into OpenArt or Meta
-AI manually, download the MP4s, rename them `scene_01.mp4` through
-`scene_08.mp4`, and place them in the episode's `clips/inbox/` folder. Then:
-
-```bash
-PYTHONPATH=src .venv/bin/python -m content_pipeline krishna-manual-video-assemble \
-  --workspace output/kanha_ki_nanhi_leela/episodes/2026-05-28_makhan_ki_matki_shorts
-```
-
-This keeps provider use compliant: the bot prepares story, prompts, metadata
-and assembly, but does not automate OpenArt's website.
-
 ## General Story Studio
 
 For non-religious stories, use the generic Story Studio. It supports `kid` and
@@ -314,6 +276,41 @@ PYTHONPATH=src .venv/bin/python -m content_pipeline story-studio-budget-report \
 
 The budget report estimates pending seconds, approximate cost, suggested clips
 to auto-generate today, and which clips should fall back to manual generation.
+
+## OpenAI Token Usage
+
+If you want to log the token usage and estimated cost for a single request:
+
+```python
+response = openai.chat.completions.create(
+    model="gpt-5.4-mini",
+    messages=[{"role": "user", "content": "Generate a YouTube script outline."}],
+)
+
+usage = response.usage
+prompt_tokens = usage.prompt_tokens or 0
+completion_tokens = usage.completion_tokens or 0
+total_tokens = usage.total_tokens or (prompt_tokens + completion_tokens)
+
+# Replace this with the actual context window for your chosen model.
+MODEL_CONTEXT_WINDOW = 128000
+remaining_context_tokens = max(MODEL_CONTEXT_WINDOW - total_tokens, 0)
+
+# Example pricing based on your earlier math.
+cost = ((prompt_tokens * 0.75) + (completion_tokens * 4.50)) / 1_000_000
+
+print(f"Prompt tokens: {prompt_tokens}")
+print(f"Completion tokens: {completion_tokens}")
+print(f"Total tokens: {total_tokens}")
+print(f"Remaining context tokens: {remaining_context_tokens}")
+print(f"Estimated cost: ${cost:.5f}")
+```
+
+Important:
+
+- `remaining_context_tokens` is the model context window left in this request.
+- Prepaid API credits are not returned by `chat.completions.create`.
+- To confirm whether your recent `250` credit purchase landed, check the billing overview in the OpenAI dashboard. OpenAI notes that credit balance updates can take a couple of minutes to appear.
 
 ## Architecture
 

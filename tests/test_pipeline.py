@@ -73,6 +73,7 @@ from content_pipeline.bots.video import (
 from content_pipeline.bots.youtube import upload_youtube_video
 from content_pipeline.config import Settings
 from content_pipeline.models import ContentPackage, LongFormVideoScript
+from content_pipeline.openai_usage import summarize_openai_usage
 from content_pipeline.pipeline import run_linkedin_mvp
 from content_pipeline.storage import LocalDailyStorage
 
@@ -178,6 +179,45 @@ class PipelineTest(unittest.TestCase):
         self.assertTrue(captured["text"]["format"]["strict"])
         self.assertIn("Scrum Masters", captured["instructions"])
         self.assertIn("infographic", captured["instructions"])
+
+    def test_summarize_openai_usage_handles_chat_and_responses_shapes(self) -> None:
+        chat_response = types.SimpleNamespace(
+            usage=types.SimpleNamespace(
+                prompt_tokens=120,
+                completion_tokens=30,
+                total_tokens=150,
+            )
+        )
+        responses_response = types.SimpleNamespace(
+            usage=types.SimpleNamespace(
+                input_tokens=200,
+                output_tokens=50,
+            )
+        )
+
+        chat_summary = summarize_openai_usage(
+            chat_response,
+            context_window_tokens=1000,
+            prompt_rate_per_1m=0.75,
+            completion_rate_per_1m=4.50,
+        )
+        responses_summary = summarize_openai_usage(
+            responses_response,
+            context_window_tokens=1000,
+            prompt_rate_per_1m=0.75,
+            completion_rate_per_1m=4.50,
+        )
+
+        self.assertEqual(chat_summary.prompt_tokens, 120)
+        self.assertEqual(chat_summary.completion_tokens, 30)
+        self.assertEqual(chat_summary.total_tokens, 150)
+        self.assertEqual(chat_summary.remaining_context_tokens, 850)
+        self.assertAlmostEqual(chat_summary.estimated_cost_usd or 0.0, 0.000225)
+        self.assertEqual(responses_summary.prompt_tokens, 200)
+        self.assertEqual(responses_summary.completion_tokens, 50)
+        self.assertEqual(responses_summary.total_tokens, 250)
+        self.assertEqual(responses_summary.remaining_context_tokens, 750)
+        self.assertAlmostEqual(responses_summary.estimated_cost_usd or 0.0, 0.000375)
 
     def test_linkedin_authorization_requests_personal_post_scope(self) -> None:
         settings = Settings(
@@ -692,16 +732,55 @@ class PipelineTest(unittest.TestCase):
             self.assertIn("selected_command", dashboard)
             self.assertIn("Production Status", dashboard)
             self.assertIn("Upload Reference", dashboard)
+            self.assertIn("10-second clip prompts for Scene 01", dashboard)
+            self.assertIn("Copy Scene 01-A Prompt", dashboard)
+            self.assertIn("split_scene_01_a", dashboard)
             self.assertIn("Recommended: PNG/JPG image", dashboard)
             self.assertIn('enctype="multipart/form-data"', dashboard)
-            self.assertIn("0/5 reference media files added", dashboard)
+            self.assertIn("0/10 reference media files added", dashboard)
             self.assertIn("0/7 scene clips in clips/inbox", dashboard)
             self.assertTrue((root / "characters" / "golu_v1_reference.svg").exists())
             self.assertTrue((root / "characters" / "momo_v1_reference.svg").exists())
+            self.assertTrue((root / "characters" / "foxy_v1_reference.svg").exists())
+            self.assertTrue((root / "characters" / "coco_v1_reference.svg").exists())
+            self.assertTrue((root / "characters" / "bobo_v1_reference.svg").exists())
+            self.assertTrue((root / "characters" / "bella_v1_reference.svg").exists())
+            self.assertTrue((root / "characters" / "buzzy_v1_reference.svg").exists())
             self.assertEqual(characters[0]["id"], "momo_v1")
+            self.assertEqual(len(characters), 10)
+            self.assertIn("Content type", dashboard)
+            self.assertIn("Prompt base", dashboard)
+            self.assertIn('id="audience_mode"', dashboard)
+            self.assertIn('body class="kid-preview"', dashboard)
+            self.assertIn("Selected Mode Character Library", dashboard)
+            self.assertIn('id="mode_library_kid" class="mode-library-panel active"', dashboard)
+            self.assertIn('id="mode_library_adult" class="mode-library-panel"', dashboard)
+            self.assertIn('id="workspace_panel_kid" class="mode-workspace-panel active"', dashboard)
+            self.assertIn('id="workspace_panel_adult" class="mode-workspace-panel"', dashboard)
+            self.assertIn("Adult Character References", dashboard)
+            self.assertIn("Adult Scene Prompts", dashboard)
+            self.assertIn("adult_split_scene_01_a", dashboard)
+            self.assertIn("document.body.className", dashboard)
+            self.assertIn("Adult character pack ready", dashboard)
             self.assertIn("Use the approved character reference designs", prompts[0]["openart_prompt"])
             self.assertIn("2-5 year olds", script)
             self.assertEqual(recent_stories(output)[0]["episode_id"], episode.episode_id)
+
+    def test_story_studio_writes_split_scene_prompts_for_copy_create_workflow(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            output = Path(temporary_dir) / "output"
+            episode = create_story_episode("kid", episode_date="2026-05-28")
+            create_story_workspace(output, episode)
+            root = output / "story_studio" / "episodes" / episode.episode_id
+
+            split_prompts = json.loads((root / "split_scene_prompts.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(len(split_prompts), len(episode.scenes) * 5)
+            self.assertEqual(split_prompts[0]["clip_id"], "Scene 01-A")
+            self.assertEqual(split_prompts[0]["part_label"], "A")
+            self.assertEqual(split_prompts[0]["expected_clip_file"], "scene_01_a.mp4")
+            self.assertIn("Create only 10 seconds for Scene 01-A", split_prompts[0]["prompt"])
+            self.assertIn("Specific beat for this clip", split_prompts[0]["prompt"])
 
     def test_story_studio_adult_workspace_marks_action_scenes_for_motion(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_dir:
@@ -723,6 +802,20 @@ class PipelineTest(unittest.TestCase):
             self.assertIn("Landscape 16:9", prompts[0]["openart_prompt"])
             self.assertIn("--audience adult --aspect landscape", dashboard)
             self.assertTrue((root / "characters" / "ira_v1_reference.svg").exists())
+            self.assertTrue((root / "characters" / "noor_v1_reference.svg").exists())
+            self.assertTrue((root / "characters" / "rook7_v1_reference.svg").exists())
+            self.assertTrue((root / "characters" / "seren_v1_reference.svg").exists())
+            self.assertTrue((root / "characters" / "vale_v1_reference.svg").exists())
+            self.assertIn("Adult cinematic prompt base", dashboard)
+            self.assertIn('body class="adult-preview"', dashboard)
+            self.assertIn('id="audience_mode"', dashboard)
+            self.assertIn('id="mode_library_kid" class="mode-library-panel"', dashboard)
+            self.assertIn('id="mode_library_adult" class="mode-library-panel active"', dashboard)
+            self.assertIn('id="workspace_panel_kid" class="mode-workspace-panel"', dashboard)
+            self.assertIn('id="workspace_panel_adult" class="mode-workspace-panel active"', dashboard)
+            self.assertIn("Kid Character References", dashboard)
+            self.assertIn("adult_split_scene_01_a", dashboard)
+            self.assertIn("adult learning video explaining a science mystery", dashboard)
             self.assertIn("2_5d_image", {row["visual_mode"] for row in prompts})
             self.assertIn("motion_video", {row["visual_mode"] for row in prompts})
 
@@ -738,7 +831,7 @@ class PipelineTest(unittest.TestCase):
 
             self.assertEqual(saved, (root / "references" / "inbox" / "momo_v1_reference.mp4").resolve())
             self.assertEqual(saved.read_bytes(), b"video-bytes")
-            self.assertIn("1/5 reference media files added", dashboard)
+            self.assertIn("1/10 reference media files added", dashboard)
             self.assertIn("momo_v1_reference.mp4", dashboard)
 
     def test_story_studio_upload_replaces_old_reference_and_validates_input(self) -> None:

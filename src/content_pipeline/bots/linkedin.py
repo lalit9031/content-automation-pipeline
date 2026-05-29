@@ -130,8 +130,9 @@ def linkedin_share_payload(
     member_urn: str,
     package: ContentPackage,
     asset_urn: str,
+    caption_override: str | None = None,
 ) -> dict[str, object]:
-    caption = " ".join([package.linkedin_caption, *package.hashtags])
+    caption = caption_override or " ".join([package.linkedin_caption, *package.hashtags])
     return {
         "author": member_urn,
         "lifecycleState": "PUBLISHED",
@@ -150,6 +151,48 @@ def linkedin_share_payload(
         },
         "visibility": {"com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"},
     }
+
+
+def publish_linkedin_custom_image(
+    settings: Settings,
+    image_path: Path,
+    caption: str,
+    media_title: str,
+) -> str:
+    if not settings.linkedin_access_token or not settings.linkedin_member_urn:
+        raise ValueError("Run linkedin-auth before publishing")
+    if image_path.suffix.lower() != ".png":
+        raise ValueError("LinkedIn live publishing requires a generated PNG image")
+    client = LinkedInClient(settings)
+    upload_url, asset_urn = client.register_image(
+        settings.linkedin_access_token, settings.linkedin_member_urn
+    )
+    client.upload_image(settings.linkedin_access_token, upload_url, image_path)
+    payload = {
+        "author": settings.linkedin_member_urn,
+        "lifecycleState": "PUBLISHED",
+        "specificContent": {
+            "com.linkedin.ugc.ShareContent": {
+                "shareCommentary": {"text": caption},
+                "shareMediaCategory": "IMAGE",
+                "media": [
+                    {
+                        "status": "READY",
+                        "media": asset_urn,
+                        "title": {"text": media_title},
+                    }
+                ],
+            }
+        },
+        "visibility": {"com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"},
+    }
+    response = _request(
+        "https://api.linkedin.com/v2/ugcPosts",
+        method="POST",
+        body=json.dumps(payload).encode("utf-8"),
+        headers=_linkedin_headers(settings.linkedin_access_token),
+    )
+    return response.headers.get("X-RestLi-Id", "published")
 
 
 def authorize_linkedin(settings: Settings, env_path: Path) -> str:
@@ -208,6 +251,7 @@ def record_published_post(
     image_file: str,
     post_id: str,
     storage: LocalDailyStorage,
+    video_url: str = "",
 ) -> dict[str, str]:
     receipt = {
         "platform": "linkedin",
@@ -215,6 +259,7 @@ def record_published_post(
         "topic": package.topic,
         "image_file": image_file,
         "post_id": post_id,
+        "video_url": video_url,
         "published_at": datetime.now(timezone.utc).isoformat(),
     }
     storage.write_json(package.date, "publish/linkedin_published.json", receipt)

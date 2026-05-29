@@ -1,0 +1,44 @@
+name: Public Video Sync
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 */3 * * *"
+
+jobs:
+  sync-public-video:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      CONTENT_OUTPUT_DIR: output
+      YOUTUBE_TOKEN_FILE: ${{ github.workspace }}/.github/youtube_token.json
+      LINKEDIN_ACCESS_TOKEN: ${{ secrets.LINKEDIN_ACCESS_TOKEN }}
+      LINKEDIN_MEMBER_URN: ${{ secrets.LINKEDIN_MEMBER_URN }}
+      YOUTUBE_CHANNEL_URL: https://www.youtube.com/@Lalitsingh-ge6js
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -e .
+      - name: Restore YouTube token
+        run: |
+          mkdir -p .github
+          printf '%s' '${{ secrets.YOUTUBE_TOKEN_JSON }}' > "$YOUTUBE_TOKEN_FILE"
+      - name: Sync public videos to LinkedIn and Telegram
+        run: PYTHONPATH=src python -m content_pipeline youtube-public-sync --state-dir state
+      - name: Commit sync state
+        run: |
+          if git diff --quiet -- state/youtube_public_sync.json; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add state/youtube_public_sync.json
+          git commit -m "Update public video sync state [skip ci]"
+          git push

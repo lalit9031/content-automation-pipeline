@@ -7,6 +7,7 @@ from typing import Protocol
 
 from content_pipeline.config import Settings
 from content_pipeline.models import ContentPackage, LongFormVideoScript
+from content_pipeline.openai_usage import log_openai_usage
 
 
 EDITORIAL_STYLE = (
@@ -30,7 +31,7 @@ EDITORIAL_STYLE = (
 
 
 class PromptProvider(Protocol):
-    def generate(self, day: str) -> ContentPackage: ...
+    def generate(self, day: str, avoid_topics: list[str] | None = None) -> ContentPackage: ...
 
 
 def generate_long_form_video_script(
@@ -106,6 +107,13 @@ def generate_long_form_video_script(
             }
         },
     )
+    log_openai_usage(
+        response,
+        label="OpenAI long-form script usage",
+        context_window_tokens=128000,
+        prompt_rate_per_1m=0.75,
+        completion_rate_per_1m=4.50,
+    )
     script = LongFormVideoScript.from_dict(json.loads(response.output_text))
     return _fit_long_form_duration(script, minimum_seconds, maximum_seconds)
 
@@ -139,7 +147,75 @@ def _fit_long_form_duration(
 
 
 class MockPromptProvider:
-    def generate(self, day: str) -> ContentPackage:
+    def generate(self, day: str, avoid_topics: list[str] | None = None) -> ContentPackage:
+        avoid = {topic.lower().strip() for topic in avoid_topics or []}
+        if "definition of done vs acceptance criteria in agile delivery" in avoid:
+            return ContentPackage.from_dict(
+                {
+                    "date": day,
+                    "topic": "Sprint planning questions that reduce rework",
+                    "image_prompt": (
+                        "Clean supporting illustration of an Agile team reviewing a "
+                        "planning checklist, modern flat editorial style, no text."
+                    ),
+                    "linkedin_infographic": {
+                        "headline": "Plan the work, then protect the plan",
+                        "subtitle": "Sprint planning questions that reduce rework",
+                        "left_panel": {
+                            "title": "Before planning",
+                            "points": [
+                                "Clarify the outcome first",
+                                "Check dependencies early",
+                                "Agree on the real capacity",
+                            ],
+                        },
+                        "right_panel": {
+                            "title": "During planning",
+                            "points": [
+                                "Split stories until they are testable",
+                                "Confirm acceptance criteria",
+                                "Surface risks before the sprint starts",
+                            ],
+                        },
+                        "takeaway_title": "Better planning makes delivery calmer",
+                        "takeaway_points": [
+                            "Short, precise questions prevent hidden work",
+                            "Planning should reduce confusion, not create it",
+                        ],
+                        "workflow": ["Prepare", "Plan", "Confirm", "Commit"],
+                        "discussion_prompt": "What question saves your team the most time?",
+                    },
+                    "video_script": {
+                        "hook": "What is the one question that saves a sprint?",
+                        "points": [
+                            "Start with the outcome, not the task list",
+                            "Check dependencies before you estimate",
+                            "Make the acceptance path visible to everyone",
+                        ],
+                        "cta": "Which question do you always ask in sprint planning?",
+                    },
+                    "linkedin_caption": (
+                        "Sprint planning is easier when the team asks the right questions.\n\n"
+                        "A good planning session clarifies the outcome, surfaces dependencies, "
+                        "and keeps the sprint goal realistic before anyone commits.\n\n"
+                        "Try this next time: start with the outcome, check capacity honestly, "
+                        "and make sure the acceptance path is visible to everyone.\n\n"
+                        "What question helps your team avoid rework?"
+                    ),
+                    "hashtags": [
+                        "#ProjectManagement",
+                        "#ScrumMaster",
+                        "#AgileDelivery",
+                        "#SprintPlanning",
+                        "#QualityAssurance",
+                        "#TeamWork",
+                    ],
+                    "seo_title": "Sprint planning questions that reduce rework",
+                    "seo_description": (
+                        "A practical Agile post showing how better sprint-planning questions reduce rework."
+                    ),
+                }
+            )
         return ContentPackage.from_dict(
             {
                 "date": day,
@@ -222,7 +298,8 @@ class OpenAIPromptProvider:
         self.client = OpenAI(api_key=settings.openai_api_key)
         self.model = settings.openai_model
 
-    def generate(self, day: str) -> ContentPackage:
+    def generate(self, day: str, avoid_topics: list[str] | None = None) -> ContentPackage:
+        avoid_text = _avoid_topics_text(avoid_topics)
         response = self.client.responses.create(
             model=self.model,
             instructions=EDITORIAL_STYLE,
@@ -236,6 +313,7 @@ class OpenAIPromptProvider:
                 "points under 70 characters, workflow to 4 or 5 labels of no more "
                 "than 2 words each (for example: Discover, Refine, Build, Review, "
                 "Done), and discussion_prompt under 70 characters."
+                f"{avoid_text}"
             ),
             text={
                 "format": {
@@ -343,6 +421,13 @@ class OpenAIPromptProvider:
                 }
             },
         )
+        log_openai_usage(
+            response,
+            label="OpenAI daily package usage",
+            context_window_tokens=128000,
+            prompt_rate_per_1m=0.75,
+            completion_rate_per_1m=4.50,
+        )
         return ContentPackage.from_dict(json.loads(response.output_text))
 
 
@@ -357,7 +442,8 @@ class AnthropicPromptProvider:
         self.client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
         self.model = settings.anthropic_model
 
-    def generate(self, day: str) -> ContentPackage:
+    def generate(self, day: str, avoid_topics: list[str] | None = None) -> ContentPackage:
+        avoid_text = _avoid_topics_text(avoid_topics)
         message = self.client.messages.create(
             model=self.model,
             max_tokens=1600,
@@ -375,6 +461,7 @@ class AnthropicPromptProvider:
                         "video_script with hook, points and cta, linkedin_caption, "
                         "hashtags, seo_title, seo_description. Choose a fresh useful "
                         "topic in the specified professional delivery niche."
+                        f"{avoid_text}"
                     ),
                 }
             ],
@@ -390,6 +477,13 @@ def prompt_provider(settings: Settings) -> PromptProvider:
     if settings.prompt_provider == "anthropic":
         return AnthropicPromptProvider(settings)
     raise ValueError(f"Unsupported PROMPT_PROVIDER: {settings.prompt_provider}")
+
+
+def _avoid_topics_text(avoid_topics: list[str] | None) -> str:
+    if not avoid_topics:
+        return ""
+    joined = "; ".join(topic for topic in avoid_topics[:12] if topic)
+    return f"\nAvoid these previously used topics and close variations: {joined}"
 
 
 def today_iso() -> str:

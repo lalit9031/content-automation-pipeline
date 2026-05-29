@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+from dataclasses import replace
 from datetime import date
 from pathlib import Path
 
@@ -13,7 +15,7 @@ from content_pipeline.bots.linkedin import (
     record_published_post,
 )
 from content_pipeline.bots.audio import generate_hindi_voice_samples
-from content_pipeline.bots.image import image_provider
+from content_pipeline.bots.image import VARIANTS, image_provider
 from content_pipeline.bots.krishna_agents import (
     ImagePlan,
     assert_character_design_approved,
@@ -38,6 +40,14 @@ from content_pipeline.bots.motion import (
     write_motion_plan,
 )
 from content_pipeline.bots.policy import PublicationDeclarations, review_publication
+from content_pipeline.bots.pm_video_agents import create_daily_pm_video_batch
+from content_pipeline.bots.pm_slide_router import build_slide_plan
+from content_pipeline.bots.pm_template_agent import write_pm_template_agent_examples
+from content_pipeline.bots.pm_video_templates import (
+    list_pm_video_templates,
+    write_template_examples,
+    write_template_gallery,
+)
 from content_pipeline.bots.video_engine import (
     VideoCompilation,
     assemble_compilation,
@@ -62,6 +72,7 @@ from content_pipeline.bots.gemini_video import (
     write_gemini_budget_report,
 )
 from content_pipeline.bots.prompt import generate_long_form_video_script
+from content_pipeline.bots.prompt_pack import create_prompt_pack
 from content_pipeline.bots.krishna_studio import (
     assemble_manual_episode,
     butter_heist_short_episode,
@@ -74,11 +85,145 @@ from content_pipeline.bots.story_studio import (
     serve_story_studio,
 )
 from content_pipeline.bots.video import render_landscape_preview, render_long_form_preview
-from content_pipeline.bots.youtube import authorize_youtube, upload_youtube_video
+from content_pipeline.bots.telegram import (
+    compose_video_created_message,
+    compose_youtube_upload_message,
+    send_telegram_document,
+    send_telegram_message,
+)
+from content_pipeline.bots.youtube import (
+    authorize_youtube,
+    review_youtube_upload_readiness,
+    upload_youtube_video,
+)
+from content_pipeline.bots.youtube_sync import sync_public_youtube_uploads
 from content_pipeline.config import Settings
-from content_pipeline.models import ContentPackage
+from content_pipeline.content_history import record_history_entry
+from content_pipeline.models import ContentPackage, VideoEpisode
 from content_pipeline.pipeline import run_linkedin_mvp
 from content_pipeline.storage import LocalDailyStorage
+
+
+def _send_telegram_if_configured(message: str) -> None:
+    bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
+    if not bot_token or not chat_id:
+        return
+    send_telegram_message(bot_token, chat_id, message)
+
+
+def _send_telegram_document_if_configured(document_path: Path, caption: str = "") -> None:
+    bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
+    if not bot_token or not chat_id:
+        return
+    send_telegram_document(bot_token, chat_id, document_path, caption=caption)
+
+
+def _write_pm_image_provider_comparison(settings: Settings, plan: object, day: str) -> dict[str, object]:
+    variant = next(variant for variant in VARIANTS if variant.aspect_ratio == "16:9")
+    slide = plan.slides[0]
+    root = settings.output_dir / "pm_image_provider_compare" / day
+    root.mkdir(parents=True, exist_ok=True)
+    prompt_path = root / "prompt.md"
+    prompt_path.write_text(slide.image_prompt, encoding="utf-8")
+
+    provider_configs = [
+        ("local", "mock", "No API local SVG renderer"),
+        ("gemini", "gemini", f"Gemini image model: {settings.gemini_image_model}"),
+        ("openai", "openai", f"OpenAI image model: {settings.openai_image_model}"),
+    ]
+    results: list[dict[str, str]] = []
+    for label, provider_name, description in provider_configs:
+        output = root / f"{label}_cover"
+        try:
+            if provider_name == "gemini" and not settings.gemini_api_key:
+                raise ValueError("GEMINI_API_KEY is not configured.")
+            if provider_name == "openai" and not settings.openai_api_key:
+                raise ValueError("OPENAI_API_KEY is not configured.")
+            provider = image_provider(replace(settings, image_provider=provider_name))
+            image_bytes = provider.create(slide.image_prompt, variant)
+            image_path = output.with_suffix(provider.extension)
+            image_path.write_bytes(image_bytes)
+            results.append(
+                {
+                    "provider": label,
+                    "status": "created",
+                    "description": description,
+                    "path": str(image_path),
+                }
+            )
+        except Exception as exc:
+            results.append(
+                {
+                    "provider": label,
+                    "status": "failed",
+                    "description": description,
+                    "error": str(exc),
+                }
+            )
+
+    html_path = root / "comparison.html"
+    cards = "\n".join(_comparison_card(result, root) for result in results)
+    html_path.write_text(
+        f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PM Image Provider Comparison</title>
+  <style>
+    body {{ margin: 0; background: #060914; color: #f8fafc; font-family: Avenir Next, Helvetica, Arial, sans-serif; }}
+    main {{ padding: 28px; max-width: 1420px; margin: auto; }}
+    h1 {{ font-size: 34px; margin: 0 0 10px; }}
+    .prompt {{ white-space: pre-wrap; background: #111827; border: 1px solid #334155; border-radius: 18px; padding: 18px; color: #cbd5e1; max-height: 300px; overflow: auto; }}
+    .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 22px; margin-top: 24px; }}
+    .card {{ background: #0f172a; border: 1px solid #334155; border-radius: 20px; padding: 16px; box-shadow: 0 18px 60px rgba(0,0,0,.35); }}
+    .card img {{ width: 100%; border-radius: 14px; display: block; background: #020617; }}
+    .status {{ color: #93c5fd; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; font-size: 12px; }}
+    .error {{ color: #fecaca; }}
+    a {{ color: #7dd3fc; }}
+  </style>
+</head>
+<body>
+<main>
+  <h1>PM Image Provider Comparison</h1>
+  <p>Same cinematic prompt, three routes: local fallback, Gemini, and ChatGPT/OpenAI.</p>
+  <section class="grid">{cards}</section>
+  <h2>Prompt</h2>
+  <div class="prompt">{slide.image_prompt}</div>
+</main>
+</body>
+</html>
+""",
+        encoding="utf-8",
+    )
+    manifest = {
+        "topic": plan.topic,
+        "date": day,
+        "prompt": str(prompt_path),
+        "html": str(html_path),
+        "results": results,
+    }
+    (root / "comparison_manifest.json").write_text(
+        json.dumps(manifest, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    return manifest
+
+
+def _comparison_card(result: dict[str, str], root: Path) -> str:
+    if result.get("status") == "created" and result.get("path"):
+        image_path = Path(result["path"])
+        rel = image_path.relative_to(root)
+        media = f'<a href="{rel}"><img src="{rel}" alt="{result["provider"]} output" /></a>'
+    else:
+        media = f'<p class="error">{result.get("error", "No output created.")}</p>'
+    return f"""<article class="card">
+  <p class="status">{result["provider"]} · {result["status"]}</p>
+  <h2>{result["description"]}</h2>
+  {media}
+</article>"""
 
 
 def main() -> int:
@@ -283,6 +428,14 @@ def main() -> int:
     policy_parser.add_argument("--confirm-made-for-kids", action="store_true")
     policy_parser.add_argument("--confirm-no-face-input", action="store_true")
     policy_parser.add_argument("--human-approved", action="store_true")
+    upload_check_parser = subparsers.add_parser(
+        "youtube-upload-preflight",
+        help="Run the YouTube upload readiness test before publishing.",
+    )
+    upload_check_parser.add_argument("--video", type=Path, required=True)
+    upload_check_parser.add_argument("--title", required=True)
+    upload_check_parser.add_argument("--description-file", type=Path, required=True)
+    upload_check_parser.add_argument("--policy-report", type=Path, required=True)
     upload_parser = subparsers.add_parser(
         "youtube-upload", help="Upload a policy-approved video to YouTube."
     )
@@ -303,6 +456,125 @@ def main() -> int:
     clip_plan_parser.add_argument("--date", default=date.today().isoformat())
     clip_plan_parser.add_argument("--target-duration", type=int, default=150)
 
+    pm_daily_parser = subparsers.add_parser(
+        "pm-daily-videos",
+        help="Create daily PM/AI Shorts and YouTube video workspaces.",
+    )
+    pm_daily_parser.add_argument("--date", default=date.today().isoformat())
+    pm_daily_parser.add_argument("--shorts-count", type=int, default=2)
+    pm_daily_parser.add_argument("--youtube-count", type=int, default=2)
+    pm_daily_parser.add_argument(
+        "--template-mode",
+        choices=("random", "course"),
+        default="random",
+        help="Use random visual templates for topic videos or a fixed course layout.",
+    )
+    pm_daily_parser.add_argument(
+        "--no-render",
+        action="store_true",
+        help="Create scripts, subtitles and metadata without rendering MP4 previews.",
+    )
+    pm_daily_parser.add_argument(
+        "--openai-tts",
+        action="store_true",
+        help="Use OpenAI TTS for narration. This is automatic when OPENAI_API_KEY is configured.",
+    )
+    pm_daily_parser.add_argument(
+        "--local-tts",
+        action="store_true",
+        help="Deprecated: PM videos now stay locked to OpenAI narration only.",
+    )
+    pm_daily_parser.add_argument("--tts-voice", default="echo")
+    pm_daily_parser.add_argument(
+        "--voice-sample",
+        type=Path,
+        help="Store a creator voice sample with each PM video workspace for reference.",
+    )
+    pm_daily_parser.add_argument(
+        "--voiceover-file",
+        type=Path,
+        help="Use a complete creator-recorded narration file instead of generated TTS.",
+    )
+    pm_daily_parser.add_argument(
+        "--preview-without-audio",
+        action="store_true",
+        help="Render a review copy with silent narration if OpenAI TTS cannot be reached.",
+    )
+    pm_plan_parser = subparsers.add_parser(
+        "pm-slide-plan",
+        help="Preview the slide-agent split and template families before rendering a PM video.",
+    )
+    pm_plan_parser.add_argument("--topic", required=True)
+    pm_plan_parser.add_argument("--date", default=date.today().isoformat())
+    pm_plan_parser.add_argument("--aspect", choices=("shorts", "landscape"), default="landscape")
+    pm_plan_parser.add_argument(
+        "--template-mode",
+        choices=("random", "course"),
+        default="random",
+        help="Use random visual templates for topic videos or a fixed course layout.",
+    )
+    pm_plan_parser.add_argument(
+        "--slides",
+        type=int,
+        default=None,
+        help="Override the default slide count for the chosen aspect.",
+    )
+    compare_parser = subparsers.add_parser(
+        "pm-image-provider-compare",
+        help="Generate the same PM cover prompt with local, Gemini, and OpenAI image providers.",
+    )
+    compare_parser.add_argument("--topic", required=True)
+    compare_parser.add_argument("--date", default=date.today().isoformat())
+    compare_parser.add_argument(
+        "--template-mode",
+        choices=("random", "course"),
+        default="random",
+        help="Template mode used for prompt planning.",
+    )
+    prompt_pack_parser = subparsers.add_parser(
+        "pm-prompt-pack",
+        help="Create a manual prompt pack for shorts and full video and optionally send it to Telegram.",
+    )
+    prompt_pack_parser.add_argument("--topic", required=True)
+    prompt_pack_parser.add_argument("--date", default=date.today().isoformat())
+    prompt_pack_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=None,
+        help="Override the output directory for the prompt pack.",
+    )
+    prompt_pack_parser.add_argument(
+        "--no-telegram",
+        action="store_true",
+        help="Write the docs locally only and skip Telegram delivery.",
+    )
+    subparsers.add_parser(
+        "pm-video-templates",
+        help="Write a gallery preview of the PM video template catalog.",
+    )
+    template_examples_parser = subparsers.add_parser(
+        "pm-template-examples",
+        help="Render five short template example videos and a single HTML preview page.",
+    )
+    template_examples_parser.add_argument(
+        "--seconds",
+        type=int,
+        default=4,
+        choices=(3, 4, 5),
+        help="Length for each example preview in seconds.",
+    )
+    template_agent_parser = subparsers.add_parser(
+        "pm-template-agent",
+        help="Generate a richer five-pack of workflow, architecture, and dashboard template concepts.",
+    )
+    template_agent_parser.add_argument("--topic", default="Project Management AI")
+    template_agent_parser.add_argument(
+        "--seconds",
+        type=int,
+        default=4,
+        choices=(3, 4, 5),
+        help="Length for each concept preview in seconds.",
+    )
     ep_create_parser = subparsers.add_parser(
         "video-episode-create",
         help="Create episode workspace and generate auto 2.5D clips from a topic plan.",
@@ -381,6 +653,16 @@ def main() -> int:
     )
 
     subparsers.add_parser("youtube-auth", help="Authorize YouTube upload access and store a local token.")
+    sync_parser = subparsers.add_parser(
+        "youtube-public-sync",
+        help="Scan YouTube uploads and auto-post LinkedIn + Telegram updates for public videos.",
+    )
+    sync_parser.add_argument(
+        "--state-dir",
+        type=Path,
+        default=Path("state"),
+        help="Directory for processed video state.",
+    )
     parser.add_argument(
         "--project-dir",
         type=Path,
@@ -569,18 +851,67 @@ def main() -> int:
         print(json.dumps(report, indent=2))
         print(f"Policy report: {report_path}")
         return 0 if report["status"] == "approved_for_upload" else 2
+    if args.command == "youtube-upload-preflight":
+        video = args.video if args.video.is_absolute() else project_dir / args.video
+        description = args.description_file if args.description_file.is_absolute() else project_dir / args.description_file
+        report_path = args.policy_report if args.policy_report.is_absolute() else project_dir / args.policy_report
+        report = review_youtube_upload_readiness(
+            title=args.title,
+            video_path=video,
+            description_text=description.read_text(encoding="utf-8"),
+            policy_report=json.loads(report_path.read_text(encoding="utf-8")),
+            thumbnail_path=description.parent / "thumbnail" / "thumbnail.svg",
+        )
+        preflight_path = video.parent / "youtube_upload_preflight.json"
+        preflight_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+        print(json.dumps(report, indent=2))
+        print(f"Preflight report: {preflight_path}")
+        return 0 if report["status"] == "approved_for_upload" else 2
     if args.command == "youtube-upload":
         video = args.video if args.video.is_absolute() else project_dir / args.video
         description = args.description_file if args.description_file.is_absolute() else project_dir / args.description_file
         report_path = args.policy_report if args.policy_report.is_absolute() else project_dir / args.policy_report
-        report = json.loads(report_path.read_text(encoding="utf-8"))
+        policy_report = json.loads(report_path.read_text(encoding="utf-8"))
+        preflight = review_youtube_upload_readiness(
+            title=args.title,
+            video_path=video,
+            description_text=description.read_text(encoding="utf-8"),
+            policy_report=policy_report,
+            thumbnail_path=description.parent / "thumbnail" / "thumbnail.svg",
+        )
+        preflight_path = video.parent / "youtube_upload_preflight.json"
+        preflight_path.write_text(json.dumps(preflight, indent=2) + "\n", encoding="utf-8")
+        if preflight["status"] != "approved_for_upload" or preflight["blockers"]:
+            raise RuntimeError(
+                "YouTube upload blocked by preflight checks: "
+                + ", ".join(preflight.get("blockers", []))
+            )
         video_id = upload_youtube_video(
             video,
             args.title,
             description.read_text(encoding="utf-8"),
-            report,
+            policy_report,
             settings,
             args.privacy,
+        )
+        _send_telegram_if_configured(
+            compose_youtube_upload_message(
+                title=args.title,
+                youtube_url=f"https://youtu.be/{video_id}",
+                privacy_status=args.privacy,
+                thumbnail_path=str(description.parent / "thumbnail" / "thumbnail.svg"),
+            )
+        )
+        record_history_entry(
+            settings.output_dir,
+            date=date.today().isoformat(),
+            kind="youtube_upload",
+            topic=args.title,
+            title=args.title,
+            platform="youtube",
+            reference=video_id,
+            url=f"https://youtu.be/{video_id}",
+            source="youtube-upload",
         )
         print(f"YouTube video uploaded as {args.privacy}: {video_id}")
         return 0
@@ -593,6 +924,125 @@ def main() -> int:
             target_duration_seconds=args.target_duration,
         )
         print(json.dumps(episode.as_dict(), indent=2, ensure_ascii=False))
+        return 0
+
+    if args.command == "pm-video-templates":
+        gallery_path = write_template_gallery(settings.output_dir, list_pm_video_templates())
+        print(gallery_path)
+        for template in list_pm_video_templates()[:8]:
+            print(f"{template.template_id}: {template.style_line}")
+        print(f"Template count: {len(list_pm_video_templates())}")
+        return 0
+    if args.command == "pm-template-examples":
+        examples_path = write_template_examples(settings.output_dir, list_pm_video_templates(), args.seconds)
+        print(examples_path)
+        return 0
+    if args.command == "pm-template-agent":
+        agent_path = write_pm_template_agent_examples(settings.output_dir, topic=args.topic, seconds=args.seconds)
+        print(agent_path)
+        return 0
+
+    if args.command == "pm-slide-plan":
+        default_slides = 10 if args.aspect == "shorts" else 35
+        slide_count = args.slides or default_slides
+        max_dimension = 1920 if args.aspect == "shorts" else 2048
+        plan = build_slide_plan(
+            topic=args.topic,
+            day=args.date,
+            aspect=args.aspect,
+            total_slides=slide_count,
+            template_mode=args.template_mode,
+            max_dimension=max_dimension,
+            max_bytes=settings.image_max_bytes,
+            openai_key_count=max(1, len(settings.openai_api_keys)),
+            gemini_key_count=max(1, len(settings.gemini_api_keys)),
+        )
+        print(json.dumps(plan.as_dict(), indent=2, ensure_ascii=False))
+        return 0
+
+    if args.command == "pm-image-provider-compare":
+        plan = build_slide_plan(
+            topic=args.topic,
+            day=args.date,
+            aspect="landscape",
+            total_slides=35,
+            template_mode=args.template_mode,
+            max_dimension=settings.image_max_dimension,
+            max_bytes=settings.image_max_bytes,
+            openai_key_count=max(1, len(settings.openai_api_keys)),
+            gemini_key_count=max(1, len(settings.gemini_api_keys)),
+        )
+        comparison = _write_pm_image_provider_comparison(settings, plan, args.date)
+        print(json.dumps(comparison, indent=2, ensure_ascii=False))
+        return 0
+
+    if args.command == "pm-prompt-pack":
+        output_dir = args.output_dir or settings.output_dir
+        paths = create_prompt_pack(args.topic, day=args.date, output_dir=output_dir)
+        for path in paths:
+            print(path)
+        if not args.no_telegram:
+            caption = (
+                "Prompt pack ready.\n"
+                f"Topic: {args.topic}\n"
+                f"Date: {args.date}\n"
+                "Use the attached docx files to create the manual images for shorts and full video."
+            )
+            for path in paths:
+                if path.suffix == ".docx":
+                    _send_telegram_document_if_configured(path, caption=caption)
+                    caption = "Prompt pack document attached."
+        return 0
+
+    if args.command == "pm-daily-videos":
+        if args.local_tts:
+            raise ValueError("PM videos are locked to OpenAI narration only; local TTS is disabled.")
+        use_openai_tts = bool(settings.openai_api_key)
+        if args.openai_tts and not settings.openai_api_key:
+            raise ValueError("OPENAI_API_KEY is required when --openai-tts is used.")
+        if not use_openai_tts:
+            raise ValueError("OPENAI_API_KEY is required for PM video narration.")
+        scene_image_provider = None
+        if settings.image_provider != "mock":
+            try:
+                scene_image_provider = image_provider(settings)
+            except Exception as exc:
+                print(f"WARNING: scene image provider unavailable; using local templates only: {exc}")
+        paths = create_daily_pm_video_batch(
+            settings.output_dir,
+            args.date,
+            shorts_count=args.shorts_count,
+            youtube_count=args.youtube_count,
+            render_videos=not args.no_render,
+            template_mode=args.template_mode,
+            openai_api_key=settings.openai_api_key if use_openai_tts else "",
+            tts_voice=args.tts_voice,
+            voice_sample_path=args.voice_sample,
+            voiceover_file=args.voiceover_file,
+            youtube_channel_url=settings.youtube_channel_url,
+            openai_key_count=max(1, len(settings.openai_api_keys)),
+            gemini_key_count=max(1, len(settings.gemini_api_keys)),
+            preview_without_audio=args.preview_without_audio,
+            scene_image_provider=scene_image_provider,
+        )
+        for path in paths:
+            print(path)
+        manifest_path = settings.output_dir / "pm_video_agents" / args.date / "daily_manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        for episode in manifest.get("episodes", []):
+            _send_telegram_if_configured(
+                compose_video_created_message(
+                    date=args.date,
+                    title=str(episode.get("title", "")),
+                    episode_folder=str(episode.get("workspace", "")),
+                    manifest_path=str(manifest_path),
+                    thumbnail_path=str(episode.get("thumbnail", "")),
+                )
+            )
+        print(
+            "Daily PM video batch ready: "
+            f"{manifest_path}"
+        )
         return 0
 
     if args.command == "video-episode-create":
@@ -717,6 +1167,25 @@ def main() -> int:
                     "youtube",
                     video_id,
                 )
+                _send_telegram_if_configured(
+                    compose_youtube_upload_message(
+                        title=meta.title,
+                        youtube_url=f"https://youtu.be/{video_id}",
+                        privacy_status=args.privacy,
+                        thumbnail_path=str(workspace / "thumbnail" / "thumbnail.svg"),
+                    )
+                )
+                record_history_entry(
+                    settings.output_dir,
+                    date=episode.episode_id[:10],
+                    kind="youtube_publish",
+                    topic=episode.title,
+                    title=meta.title,
+                    platform="youtube",
+                    reference=video_id,
+                    url=f"https://youtu.be/{video_id}",
+                    source="shorts-publish",
+                )
                 print(f"YouTube Short published: {video_id}")
 
             elif platform == "instagram":
@@ -749,6 +1218,11 @@ def main() -> int:
 
     if args.command == "youtube-auth":
         print(f"YouTube token stored locally: {authorize_youtube(settings)}")
+        return 0
+    if args.command == "youtube-public-sync":
+        state_dir = args.state_dir if args.state_dir.is_absolute() else project_dir / args.state_dir
+        results = sync_public_youtube_uploads(settings, state_dir)
+        print(json.dumps([result.as_dict() for result in results], indent=2, ensure_ascii=False))
         return 0
     if args.command == "linkedin-auth":
         member_urn = authorize_linkedin(settings, project_dir / ".env")

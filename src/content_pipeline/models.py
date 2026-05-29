@@ -165,6 +165,14 @@ class VideoClip:
     prompt: str
     source_type: str  # "auto_2_5d" or "manual"
     expected_file: str
+    template_id: str = ""
+    template_name: str = ""
+    template_layout: str = ""
+    provider_family: str = ""
+    provider_slot: str = ""
+    slide_role: str = ""
+    image_max_dimension: int = 2048
+    image_max_bytes: int = 5 * 1024 * 1024
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "VideoClip":
@@ -185,6 +193,14 @@ class VideoClip:
             prompt=_required_text(data, "prompt"),
             source_type=data["source_type"],
             expected_file=_required_text(data, "expected_file"),
+            template_id=str(data.get("template_id", "")).strip(),
+            template_name=str(data.get("template_name", "")).strip(),
+            template_layout=str(data.get("template_layout", "")).strip(),
+            provider_family=str(data.get("provider_family", "")).strip(),
+            provider_slot=str(data.get("provider_slot", "")).strip(),
+            slide_role=str(data.get("slide_role", "")).strip(),
+            image_max_dimension=int(data.get("image_max_dimension", 2048)),
+            image_max_bytes=int(data.get("image_max_bytes", 5 * 1024 * 1024)),
         )
 
 
@@ -201,6 +217,9 @@ class VideoEpisode:
     youtube_title: str
     youtube_description: str
     hashtags: list[str]
+    visual_template_id: str = ""
+    visual_template_name: str = ""
+    visual_template_layout: str = ""
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "VideoEpisode":
@@ -222,6 +241,9 @@ class VideoEpisode:
             youtube_title=_required_text(data, "youtube_title"),
             youtube_description=_required_text(data, "youtube_description"),
             hashtags=[str(tag).strip() for tag in data.get("hashtags", []) if str(tag).strip()],
+            visual_template_id=str(data.get("visual_template_id", "")).strip(),
+            visual_template_name=str(data.get("visual_template_name", "")).strip(),
+            visual_template_layout=str(data.get("visual_template_layout", "")).strip(),
         )
 
     def as_dict(self) -> dict[str, Any]:

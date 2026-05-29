@@ -4,6 +4,7 @@ from email.parser import BytesParser
 from email.policy import default as email_default_policy
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import json
+import os
 import shutil
 import subprocess
 from dataclasses import asdict, dataclass
@@ -16,6 +17,8 @@ REFERENCE_VIDEO_EXTENSIONS = (".mp4", ".webm", ".mov")
 REFERENCE_IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".svg")
 REFERENCE_MEDIA_EXTENSIONS = REFERENCE_VIDEO_EXTENSIONS + REFERENCE_IMAGE_EXTENSIONS
 MAX_REFERENCE_UPLOAD_BYTES = 250 * 1024 * 1024
+SPLIT_CLIP_LABELS = ("A", "B", "C", "D", "E")
+SPLIT_CLIP_SECONDS = 10
 
 
 @dataclass(frozen=True)
@@ -138,6 +141,7 @@ def create_story_workspace(
         _write_json(root / "characters" / "character_references.json", [asdict(character) for character in episode.characters]),
         _write_text(root / "story_script.md", _script_markdown(episode)),
         _write_json(root / "scene_prompts.json", _prompt_rows(episode)),
+        _write_json(root / "split_scene_prompts.json", _split_prompt_rows(episode)),
         _write_text(root / "clip_drop_guide.md", _clip_drop_guide(episode)),
         _write_text(root / "reference_media_guide.md", _reference_media_guide(episode)),
         _write_text(root / "youtube_metadata.md", _metadata_markdown(episode)),
@@ -497,6 +501,91 @@ def _kid_episode(day: str, idea: str | None, aspect: str, width: int, height: in
             ),
             "characters/mimi_v1_reference.svg",
         ),
+        CharacterReference(
+            "foxy_v1",
+            "Foxy the Little Fox",
+            "friend",
+            "A small orange fox with a cream belly, oversized fluffy tail with white tip, big curious eyes, tiny black nose, rounded ears, and a green leaf-shaped neck scarf. Clever but gentle, never sneaky or scary.",
+            (
+                "PROFESSIONAL CHARACTER REFERENCE SHEET for FOXY V1 - original 2-5 kids cartoon character.\n"
+                "SPECIES: Young fox.\n"
+                "BODY: Small rounded preschool proportions, short legs, oversized soft tail.\n"
+                "COLORS: Warm orange body (#f97316), cream belly and muzzle (#ffedd5), white tail tip, green leaf scarf (#22c55e).\n"
+                "FEATURES: Rounded triangular ears, big dark eyes with catchlights, tiny black nose, soft smile, fluffy tail.\n"
+                "STYLE: Ultra-simple 3D cartoon, soft shapes, nursery-safe, warm light.\n"
+                "POSES REQUIRED: Front smile, side walk, sitting with tail curled, close-up curious face.\n"
+                "ABSOLUTELY NO: Text, logos, watermarks, sharp teeth, scary expression, copyrighted character imitation."
+            ),
+            "characters/foxy_v1_reference.svg",
+        ),
+        CharacterReference(
+            "coco_v1",
+            "Coco the Cat",
+            "friend",
+            "A round cream-and-ginger kitten with soft stripes, tiny pink nose, blue collar with a moon charm, big sleepy-friendly eyes, and small rounded paws.",
+            (
+                "PROFESSIONAL CHARACTER REFERENCE SHEET for COCO V1 - original 2-5 kids cartoon character.\n"
+                "SPECIES: Kitten.\n"
+                "BODY: Tiny round body, soft paws, short tail with ginger stripes.\n"
+                "COLORS: Cream fur (#fff7ed), ginger patches (#fb923c), blue collar (#38bdf8), yellow moon charm.\n"
+                "FEATURES: Big friendly eyes, pink nose, tiny whiskers, rounded ears, gentle smile.\n"
+                "STYLE: Ultra-simple 3D cartoon, soft toy-like surface, pastel nursery lighting.\n"
+                "POSES REQUIRED: Front wave, curled sitting, playful paw raise, happy close-up.\n"
+                "ABSOLUTELY NO: Text, logos, watermarks, realistic claws, scary hunting pose, copyrighted character imitation."
+            ),
+            "characters/coco_v1_reference.svg",
+        ),
+        CharacterReference(
+            "bobo_v1",
+            "Bobo the Puppy",
+            "friend",
+            "A soft brown puppy with floppy ears, cream muzzle, small red bandana, big trusting eyes, short wagging tail, and rounded toddler-safe paws.",
+            (
+                "PROFESSIONAL CHARACTER REFERENCE SHEET for BOBO V1 - original 2-5 kids cartoon character.\n"
+                "SPECIES: Puppy dog.\n"
+                "BODY: Round cuddly body, floppy ears, short legs, wagging tail.\n"
+                "COLORS: Warm brown fur (#a16207), cream muzzle and belly (#fde68a), red bandana (#ef4444).\n"
+                "FEATURES: Big dark eyes, soft oval nose, tiny smile, rounded paws.\n"
+                "STYLE: Ultra-simple 3D cartoon, plush toy finish, warm nursery palette.\n"
+                "POSES REQUIRED: Front sitting, tail wagging, playful bow, close-up happy face.\n"
+                "ABSOLUTELY NO: Text, logos, watermarks, realistic teeth, aggressive pose, copyrighted character imitation."
+            ),
+            "characters/bobo_v1_reference.svg",
+        ),
+        CharacterReference(
+            "bella_v1",
+            "Bella the Butterfly",
+            "learning guide",
+            "A tiny lavender butterfly with rounded wings, yellow spots, a smiling face, little antennae, and a soft glowing trail used for alphabet, color, and nature learning scenes.",
+            (
+                "PROFESSIONAL CHARACTER REFERENCE SHEET for BELLA V1 - original 2-5 kids learning character.\n"
+                "SPECIES: Butterfly.\n"
+                "BODY: Very small rounded body, soft symmetrical wings, friendly face.\n"
+                "COLORS: Lavender wings (#c4b5fd), yellow spots (#fde047), mint body (#86efac).\n"
+                "FEATURES: Tiny antennae, smiling face, simple wing pattern, gentle sparkle trail.\n"
+                "STYLE: Ultra-simple 3D cartoon, soft educational nursery style.\n"
+                "POSES REQUIRED: Front hovering, side flying, pointing wing, close-up smiling face.\n"
+                "ABSOLUTELY NO: Text inside image, logos, watermarks, realistic insect detail, scary look."
+            ),
+            "characters/bella_v1_reference.svg",
+        ),
+        CharacterReference(
+            "buzzy_v1",
+            "Buzzy the Bee",
+            "learning guide",
+            "A round yellow-and-black baby bee with tiny wings, rosy cheeks, soft antennae, and a tiny explorer pouch for counting, shapes, and garden lessons.",
+            (
+                "PROFESSIONAL CHARACTER REFERENCE SHEET for BUZZY V1 - original 2-5 kids learning character.\n"
+                "SPECIES: Baby bee.\n"
+                "BODY: Round bean-shaped body, tiny translucent wings, soft antennae.\n"
+                "COLORS: Sunny yellow (#facc15), soft black stripes (#27272a), sky-blue wings (#bae6fd), tan pouch.\n"
+                "FEATURES: Big friendly eyes, rosy cheeks, tiny smile, no stinger visible.\n"
+                "STYLE: Ultra-simple 3D cartoon, cheerful garden-learning style.\n"
+                "POSES REQUIRED: Front hover, counting pose, side flying, close-up happy face.\n"
+                "ABSOLUTELY NO: Text, logos, watermarks, realistic insect texture, stinger focus, scary expression."
+            ),
+            "characters/buzzy_v1_reference.svg",
+        ),
     ]
     character_lock = _character_lock(characters)
     scenes = [
@@ -651,6 +740,73 @@ def _adult_episode(day: str, idea: str | None, aspect: str, width: int, height: 
             ),
             "characters/ira_v1_reference.svg",
         ),
+        CharacterReference(
+            "noor_v1",
+            "Dr. Noor Sen",
+            "adult science lead",
+            "A calm adult astrobiologist in her early 40s with copper-brown skin, silver-streaked black bob haircut, rectangular glasses, teal expedition jacket, slate utility trousers, and a field scanner strapped to her wrist. Precise, ethical, and curious.",
+            (
+                "PROFESSIONAL CHARACTER REFERENCE SHEET for DR. NOOR SEN V1 - original adult science-adventure character.\n"
+                "AGE: Early 40s. BUILD: Average height, practical field posture.\n"
+                "FACE: Copper-brown skin, focused warm eyes, rectangular glasses, composed expression.\n"
+                "HAIR: Black bob haircut with one silver streak.\n"
+                "COSTUME: Teal expedition jacket, slate trousers, wrist scanner, compact sample satchel.\n"
+                "STYLE: Cinematic semi-realistic 3D, grounded adventure lighting, high detail.\n"
+                "POSES REQUIRED: Front full-body, lab tablet pose, crouched sample scan, close-up thoughtful face.\n"
+                "ABSOLUTELY NO: Text, logos, watermarks, celebrity likeness, copyrighted franchise elements."
+            ),
+            "characters/noor_v1_reference.svg",
+        ),
+        CharacterReference(
+            "rook7_v1",
+            "Rook-7",
+            "android companion",
+            "A tall graphite-gray humanoid android with a slim rectangular head, one cyan visor line, segmented shoulders, long careful hands, and a weathered orange rescue stripe across the chest. Loyal, quiet, and slightly uncanny.",
+            (
+                "PROFESSIONAL CHARACTER REFERENCE SHEET for ROOK-7 V1 - original adult sci-fi android.\n"
+                "BODY: Tall slim humanoid frame, graphite armor plates, exposed soft joint gaskets.\n"
+                "HEAD: Rectangular smooth head, single cyan visor line, no human face.\n"
+                "COLORS: Graphite gray (#374151), cyan light (#22d3ee), weathered orange rescue stripe (#f97316).\n"
+                "DETAILS: Long articulated hands, scuffed knees, compact backpack battery, subtle dust and scratches.\n"
+                "STYLE: Cinematic semi-realistic 3D, mature science fiction, practical industrial design.\n"
+                "POSES REQUIRED: Front standing, three-quarter walking, hand extended, close-up visor.\n"
+                "ABSOLUTELY NO: Text, logos, watermarks, copied robot franchise, cute toy proportions."
+            ),
+            "characters/rook7_v1_reference.svg",
+        ),
+        CharacterReference(
+            "seren_v1",
+            "Queen Seren",
+            "adult fantasy ruler",
+            "A composed fantasy queen in her late 30s with deep brown skin, braided crown hairstyle, dark emerald cloak, bronze circlet, layered travel armor, and a quiet strategic gaze. Regal without being ornamental.",
+            (
+                "PROFESSIONAL CHARACTER REFERENCE SHEET for QUEEN SEREN V1 - original adult fantasy character.\n"
+                "AGE: Late 30s. BUILD: Tall, poised, battle-ready posture.\n"
+                "FACE: Deep brown skin, calm strategic eyes, subtle scar near left eyebrow.\n"
+                "HAIR: Braided crown hairstyle, black hair with bronze thread woven in.\n"
+                "COSTUME: Dark emerald cloak, bronze circlet, layered leather-and-bronze travel armor, signet ring.\n"
+                "STYLE: Cinematic fantasy realism, moody natural light, original kingdom design.\n"
+                "POSES REQUIRED: Front regal stance, map table pose, cloak in wind, close-up decisive expression.\n"
+                "ABSOLUTELY NO: Text, logos, watermarks, copied fantasy franchise, excessive gore."
+            ),
+            "characters/seren_v1_reference.svg",
+        ),
+        CharacterReference(
+            "vale_v1",
+            "Marshal Vale",
+            "adult action lead",
+            "A weathered desert marshal in his late 40s with tan skin, close-cropped salt-and-pepper hair, sand-colored long coat, brass badge with abstract sun mark, and tired observant eyes. Built for western, mystery, and war-adjacent stories.",
+            (
+                "PROFESSIONAL CHARACTER REFERENCE SHEET for MARSHAL VALE V1 - original adult action/mystery character.\n"
+                "AGE: Late 40s. BUILD: Lean, durable, slightly stooped from travel.\n"
+                "FACE: Tan skin, tired observant eyes, short salt-and-pepper hair, trimmed stubble.\n"
+                "COSTUME: Sand long coat, navy shirt, practical boots, brass abstract sun badge, worn satchel.\n"
+                "STYLE: Cinematic grounded realism, desert dust, mature mystery tone.\n"
+                "POSES REQUIRED: Front stance, walking through dust, reading evidence, close-up suspicious look.\n"
+                "ABSOLUTELY NO: Text, logos, watermarks, celebrity likeness, graphic injury."
+            ),
+            "characters/vale_v1_reference.svg",
+        ),
     ]
     character_lock = _character_lock(characters)
     scenes = [
@@ -757,6 +913,14 @@ def _prompt_rows(episode: StoryEpisode) -> list[dict[str, Any]]:
         }
         for scene in episode.scenes
     ]
+
+
+def _split_prompt_rows(episode: StoryEpisode) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for index, scene in enumerate(episode.scenes, start=1):
+        for clip in _split_clip_prompts(scene, index):
+            rows.append(clip)
+    return rows
 
 
 def _character_lock(characters: list[CharacterReference]) -> str:
@@ -875,6 +1039,84 @@ def _metadata_markdown(episode: StoryEpisode) -> str:
     )
 
 
+def _audience_prompt_base(audience: str) -> str:
+    if audience == "adult":
+        return (
+            "Adult cinematic prompt base: original mature genre story, reusable adult character library, "
+            "cinematic lighting, 2.5D for atmosphere, motion video for action/discovery, no franchise imitation, "
+            "no celebrity likeness, no copyrighted music, no logo or watermark."
+        )
+    return (
+        "Kid prompt base: original 2-5 learning/story world, reusable animal and nature character library, "
+        "gentle motion in every scene, soft rounded 3D cartoon shapes, simple emotions, no scary visuals, "
+        "no text, logo or watermark."
+    )
+
+
+def _mode_character_library_html(active_audience: str) -> str:
+    kid = create_story_episode("kid", episode_date="2026-05-28")
+    adult = create_story_episode("adult", episode_date="2026-05-28", aspect="landscape")
+    kid_class = "mode-library-panel active" if active_audience == "kid" else "mode-library-panel"
+    adult_class = "mode-library-panel active" if active_audience == "adult" else "mode-library-panel"
+    return "\n".join(
+        [
+            f'<div id="mode_library_kid" class="{kid_class}">',
+            *_mode_character_cards(kid.characters),
+            "</div>",
+            f'<div id="mode_library_adult" class="{adult_class}">',
+            *_mode_character_cards(adult.characters),
+            "</div>",
+        ]
+    )
+
+
+def _mode_character_cards(characters: list[CharacterReference]) -> list[str]:
+    return [
+        (
+            f'<div class="library-card"><span>{_char_emoji(character.id)}</span>'
+            f'<strong>{escape(character.name)}</strong>'
+            f'<small>{escape(character.role)}</small></div>'
+        )
+        for character in characters
+    ]
+
+
+def _mode_workspace_panels_html(root: Path, day: str, active_audience: str) -> str:
+    output_dir = _story_output_dir(root)
+    kid = create_story_episode("kid", episode_date=day)
+    adult = create_story_episode("adult", episode_date=day, aspect="landscape")
+    return "\n".join(
+        [
+            _mode_workspace_panel(kid, output_dir, root, active_audience),
+            _mode_workspace_panel(adult, output_dir, root, active_audience),
+        ]
+    )
+
+
+def _mode_workspace_panel(
+    episode: StoryEpisode, output_dir: Path, page_root: Path, active_audience: str
+) -> str:
+    workspace = output_dir / "story_studio" / "episodes" / episode.episode_id
+    id_prefix = f"{episode.audience}_"
+    character_cards = "\n".join(
+        _character_card(character, workspace, page_root, id_prefix) for character in episode.characters
+    )
+    scene_cards = "\n".join(
+        _scene_card(scene, index, id_prefix) for index, scene in enumerate(episode.scenes, start=1)
+    )
+    panel_class = "mode-workspace-panel active" if episode.audience == active_audience else "mode-workspace-panel"
+    return f"""<div id="workspace_panel_{escape(episode.audience)}" class="{panel_class}">
+  <div class="section-title">
+    {escape(episode.audience.title())} Character References <span class="count">{len(episode.characters)}</span>
+  </div>
+  <section class="grid">{character_cards}</section>
+  <div class="section-title">
+    {escape(episode.audience.title())} Scene Prompts <span class="count">{len(episode.scenes)}</span>
+  </div>
+  <section class="grid">{scene_cards}</section>
+</div>"""
+
+
 def _dashboard_html(episode: StoryEpisode, root: Path, recent: list[dict[str, str]]) -> str:
     recent_options = "\n".join(
         f'<option value="{escape(item["episode_id"])}">{escape(item["title"])} - {escape(item["audience"])}</option>'
@@ -885,6 +1127,9 @@ def _dashboard_html(episode: StoryEpisode, root: Path, recent: list[dict[str, st
     notes = "\n".join(f"<li>{escape(note)}</li>" for note in episode.production_notes)
     safety = "\n".join(f"<li>{escape(rule)}</li>" for rule in episode.safety_rules)
     status_html = _production_status_html(episode, root)
+    prompt_base = _audience_prompt_base(episode.audience)
+    mode_library = _mode_character_library_html(episode.audience)
+    mode_workspaces = _mode_workspace_panels_html(root, episode.episode_id[:10], episode.audience)
     current_command = (
         f"PYTHONPATH=src .venv/bin/python -m content_pipeline story-studio-create "
         f"--audience {episode.audience} --aspect {episode.aspect} --date 2026-05-28"
@@ -902,10 +1147,12 @@ def _dashboard_html(episode: StoryEpisode, root: Path, recent: list[dict[str, st
         return _kid_dashboard_html(
             episode, root, recent, recent_options, cards, character_cards,
             notes, safety, status_html, current_command, kid_command, adult_command,
+            prompt_base, mode_library, mode_workspaces,
         )
     return _adult_dashboard_html(
         episode, root, recent, recent_options, cards, character_cards,
         notes, safety, status_html, current_command, kid_command, adult_command,
+        prompt_base, mode_library, mode_workspaces,
     )
 
 
@@ -967,7 +1214,8 @@ def _kid_dashboard_html(
     episode: StoryEpisode, root: Path, recent: list[dict[str, str]],
     recent_options: str, cards: str, character_cards: str,
     notes: str, safety: str, status_html: str, current_command: str,
-    kid_command: str, adult_command: str,
+    kid_command: str, adult_command: str, prompt_base: str, mode_library: str,
+    mode_workspaces: str,
 ) -> str:
     """Professional production dashboard for kids content — clean, modern, SaaS-style."""
     return f"""<!doctype html>
@@ -979,6 +1227,7 @@ def _kid_dashboard_html(
   <style>
     *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
     body {{ font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif; background: #f1f5f9; color: #1e293b; line-height: 1.5; }}
+    body.adult-preview {{ background: #0b1120; color: #e2e8f0; }}
     .app {{ display: flex; min-height: 100vh; }}
     /* Sidebar */
     .sidebar {{ width: 240px; flex-shrink: 0; background: #0f172a; color: #e2e8f0; padding: 0; }}
@@ -1002,12 +1251,18 @@ def _kid_dashboard_html(
     .badge-amber {{ background: #fef3c7; color: #d97706; }}
     .topbar-right {{ display: flex; align-items: center; gap: 10px; font-size: 13px; color: #64748b; }}
     .topbar-right code {{ font-size: 12px; background: #f1f5f9; padding: 2px 8px; border-radius: 4px; color: #475569; }}
+    body.adult-preview .topbar {{ background: #0f172a; border-bottom-color: #1e293b; }}
+    body.adult-preview .topbar-left h2 {{ color: #f1f5f9; }}
+    body.adult-preview .topbar-right {{ color: #94a3b8; }}
     /* Content */
     .content {{ padding: 28px 32px; }}
     .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }}
     .grid-wide {{ grid-template-columns: 1fr 1fr; }}
     .card {{ background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); transition: box-shadow 0.18s; }}
     .card:hover {{ box-shadow: 0 4px 12px rgba(0,0,0,0.06); }}
+    body.adult-preview .card, body.adult-preview .char-card {{ background: #0f172a; border-color: #1e293b; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }}
+    body.adult-preview .card h3, body.adult-preview .section-title {{ color: #f1f5f9; }}
+    body.adult-preview .card p, body.adult-preview .card li {{ color: #94a3b8; }}
     .scene {{ border-left: 4px solid #f59e0b; }}
     .char-card {{ border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; background: #ffffff; transition: box-shadow 0.18s; }}
     .char-card:hover {{ box-shadow: 0 4px 12px rgba(0,0,0,0.06); }}
@@ -1021,6 +1276,7 @@ def _kid_dashboard_html(
     .character-img:hover {{ transform: scale(1.01); }}
     textarea, select, input {{ width: 100%; box-sizing: border-box; border-radius: 8px; border: 1px solid #cbd5e1; padding: 10px 12px; background: #ffffff; color: #1e293b; font-family: 'SF Mono', 'Consolas', 'Monaco', monospace; font-size: 13px; transition: border-color 0.15s; }}
     textarea:focus, select:focus, input:focus {{ outline: none; border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }}
+    body.adult-preview textarea, body.adult-preview select, body.adult-preview input {{ border-color: #334155; background: #060b17; color: #e2e8f0; }}
     textarea {{ min-height: 120px; }}
     select {{ font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif; }}
     label {{ display: block; margin: 12px 0 4px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }}
@@ -1037,6 +1293,24 @@ def _kid_dashboard_html(
     .choice-row {{ display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0 12px; }}
     .choice {{ border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; background: #f8fafc; font-size: 12px; color: #475569; }}
     .choice strong {{ display: block; margin-bottom: 2px; color: #0f172a; font-size: 12px; }}
+    body.adult-preview .choice {{ border-color: #334155; background: #060b17; color: #94a3b8; }}
+    body.adult-preview .choice strong {{ color: #e2e8f0; }}
+    .mode-switch {{ display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 8px; background: #f8fafc; }}
+    .mode-switch label {{ margin: 0; color: #475569; }}
+    .mode-switch select {{ min-width: 138px; padding: 6px 8px; }}
+    body.adult-preview .mode-switch {{ background: #060b17; border-color: #334155; }}
+    .mode-library-panel {{ display: none; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }}
+    .mode-library-panel.active {{ display: grid; }}
+    .mode-workspace-panel {{ display: none; }}
+    .mode-workspace-panel.active {{ display: block; }}
+    .hidden-by-mode {{ display: none !important; }}
+    .hidden-by-mode {{ display: none !important; }}
+    .library-card {{ border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; background: #f8fafc; display: grid; grid-template-columns: auto 1fr; column-gap: 8px; align-items: center; }}
+    .library-card span {{ font-size: 24px; grid-row: span 2; }}
+    .library-card strong {{ font-size: 13px; color: #0f172a; }}
+    .library-card small {{ font-size: 11px; color: #64748b; }}
+    body.adult-preview .library-card {{ background: #060b17; border-color: #334155; }}
+    body.adult-preview .library-card strong {{ color: #e2e8f0; }}
     .char-header {{ display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }}
     .char-header .emoji {{ font-size: 28px; }}
     .char-header .info {{ flex: 1; }}
@@ -1053,7 +1327,7 @@ def _kid_dashboard_html(
     @media (max-width: 800px) {{ .app {{ flex-direction: column; }} .sidebar {{ width: 100%; }} .grid-wide {{ grid-template-columns: 1fr; }} }}
   </style>
 </head>
-<body>
+<body class="{episode.audience}-preview">
   <div class="app">
     <aside class="sidebar">
       <div class="sidebar-head">
@@ -1071,7 +1345,14 @@ def _kid_dashboard_html(
     <div class="main">
       <header class="topbar">
         <div class="topbar-left">
-          <span class="badge badge-kid">{escape(episode.audience)}</span>
+          <div class="mode-switch">
+            <label for="audience_mode">Mode</label>
+            <select id="audience_mode">
+              <option value="kid" {"selected" if episode.audience == "kid" else ""}>Kid</option>
+              <option value="adult" {"selected" if episode.audience == "adult" else ""}>Adult</option>
+            </select>
+          </div>
+          <span class="badge badge-kid" id="mode_badge">{escape(episode.audience)}</span>
           <span class="badge badge-blue">{escape(episode.aspect)}</span>
           <span class="badge badge-green">{episode.target_duration_seconds}s</span>
           <h2>{escape(episode.title)}</h2>
@@ -1085,7 +1366,7 @@ def _kid_dashboard_html(
         <section class="grid grid-wide" style="margin-bottom: 8px;">
           <div class="card">
             <h3>Create Story</h3>
-            <p style="margin-bottom: 12px;">Choose audience and format, then copy the command.</p>
+            <p style="margin-bottom: 12px;" id="mode_help">Choose Kid or Adult from the top mode switch; the prompt profile and command update together.</p>
             <label>Audience</label>
             <select id="audience">
               <option value="kid" {"selected" if episode.audience == "kid" else ""}>Kid: 2–5 years, gentle motion</option>
@@ -1096,10 +1377,21 @@ def _kid_dashboard_html(
               <option value="shorts" {"selected" if episode.aspect == "shorts" else ""}>Shorts / Reels — 9:16</option>
               <option value="landscape" {"selected" if episode.aspect == "landscape" else ""}>Landscape YouTube — 16:9</option>
             </select>
+            <label style="margin-top: 10px;">Content type</label>
+            <select id="content_type">
+              <option value="story">Story</option>
+              <option value="learning">Learning video</option>
+            </select>
             <div class="choice-row">
               <div class="choice"><strong>Kid rule</strong>Motion in every scene: smiles, toys, sparkles</div>
               <div class="choice"><strong>Adult rule</strong>2.5D for mood; motion for action scenes</div>
             </div>
+            <div class="choice" style="margin-bottom: 12px;">
+              <strong id="profile_title">Kid character pack ready</strong>
+              <span id="profile_copy">Animals, birds and tiny nature guides are ready for stories and learning videos.</span>
+            </div>
+            <label>Prompt base</label>
+            <textarea id="prompt_base" readonly style="min-height: 76px; font-size: 12px;">{escape(prompt_base)}</textarea>
             <label>Optional idea</label>
             <input id="idea" placeholder="Type a story idea…" style="font-family: system-ui; font-size: 13px;">
             <div class="flex items-center gap-8" style="margin-top: 8px;">
@@ -1134,13 +1426,10 @@ def _kid_dashboard_html(
           </div>
         </section>
         <div class="section-title">
-          Character References <span class="count">{len(episode.characters)}</span>
+          Selected Mode Character Library <span class="count" id="library_count">{len(episode.characters)}</span>
         </div>
-        <section class="grid" id="character-gallery">{character_cards}</section>
-        <div class="section-title">
-          Scene Prompts <span class="count">{len(episode.scenes)}</span>
-        </div>
-        <section class="grid" id="scene-gallery">{cards}</section>
+        <section>{mode_library}</section>
+        {mode_workspaces}
       </div>
     </div>
   </div>
@@ -1155,18 +1444,56 @@ def _kid_dashboard_html(
       setTimeout(() => btn.textContent = orig, 1000);
     }}
     function refreshSelectedCommand() {{
-      const audience = document.getElementById('audience').value;
+      const mode = document.getElementById('audience_mode').value;
+      const audienceSelect = document.getElementById('audience');
+      audienceSelect.value = mode;
+      const audience = mode;
       const aspect = document.getElementById('aspect').value;
+      const contentType = document.getElementById('content_type').value;
       const idea = document.getElementById('idea').value.trim();
+      const profiles = {{
+        kid: {{
+          title: 'Kid character pack ready',
+          copy: 'Animals, birds and tiny nature guides are ready for stories and learning videos.',
+          prompt: 'Kid prompt base: original 2-5 learning/story world, reusable animal and nature character library, gentle motion in every scene, soft rounded 3D cartoon shapes, simple emotions, no scary visuals, no text, logo or watermark.',
+          defaultIdea: contentType === 'learning' ? 'learning video about colors with Buzzy, Bella and friends' : 'story about sharing toys with Golu and friends',
+          count: 10
+        }},
+        adult: {{
+          title: 'Adult character pack ready',
+          copy: 'Sci-fi, fantasy, mystery and action characters are ready for mature story worlds.',
+          prompt: 'Adult cinematic prompt base: original mature genre story, reusable adult character library, cinematic lighting, 2.5D for atmosphere, motion video for action/discovery, no franchise imitation, no celebrity likeness, no copyrighted music, no logo or watermark.',
+          defaultIdea: contentType === 'learning' ? 'adult learning video explaining a science mystery with Dr. Noor and Rook-7' : 'cinematic adult story using Commander Ira, Dr. Noor, Rook-7, Queen Seren or Marshal Vale',
+          count: 5
+        }}
+      }};
+      const profile = profiles[audience];
+      document.body.className = `${{audience}}-preview`;
+      document.getElementById('mode_badge').textContent = audience;
+      document.getElementById('library_count').textContent = profile.count;
+      document.getElementById('mode_library_kid').classList.toggle('active', audience === 'kid');
+      document.getElementById('mode_library_adult').classList.toggle('active', audience === 'adult');
+      document.getElementById('workspace_panel_kid').classList.toggle('active', audience === 'kid');
+      document.getElementById('workspace_panel_adult').classList.toggle('active', audience === 'adult');
+      document.getElementById('profile_title').textContent = profile.title;
+      document.getElementById('profile_copy').textContent = profile.copy;
+      document.getElementById('prompt_base').value = profile.prompt;
       let command = `PYTHONPATH=src .venv/bin/python -m content_pipeline story-studio-create --audience ${{audience}} --aspect ${{aspect}} --date 2026-05-28`;
-      if (idea) {{
-        command += ` --idea "${{idea.replaceAll('"', '\\"')}}"`;
+      const finalIdea = idea || profile.defaultIdea;
+      if (finalIdea) {{
+        command += ` --idea "${{finalIdea.replaceAll('"', '\\"')}}"`;
       }}
       document.getElementById('selected_command').value = command;
     }}
-    document.getElementById('audience').addEventListener('change', refreshSelectedCommand);
+    document.getElementById('audience_mode').addEventListener('change', refreshSelectedCommand);
+    document.getElementById('audience').addEventListener('change', function(event) {{
+      document.getElementById('audience_mode').value = event.target.value;
+      refreshSelectedCommand();
+    }});
     document.getElementById('aspect').addEventListener('change', refreshSelectedCommand);
+    document.getElementById('content_type').addEventListener('change', refreshSelectedCommand);
     document.getElementById('idea').addEventListener('input', refreshSelectedCommand);
+    refreshSelectedCommand();
   </script>
 </body>
 </html>
@@ -1177,7 +1504,8 @@ def _adult_dashboard_html(
     episode: StoryEpisode, root: Path, recent: list[dict[str, str]],
     recent_options: str, cards: str, character_cards: str,
     notes: str, safety: str, status_html: str, current_command: str,
-    kid_command: str, adult_command: str,
+    kid_command: str, adult_command: str, prompt_base: str, mode_library: str,
+    mode_workspaces: str,
 ) -> str:
     """Professional production dashboard for adult content — dark theme, same layout as kid dashboard."""
     return f"""<!doctype html>
@@ -1189,6 +1517,7 @@ def _adult_dashboard_html(
   <style>
     *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
     body {{ font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif; background: #0b1120; color: #e2e8f0; line-height: 1.5; }}
+    body.kid-preview {{ background: #f1f5f9; color: #1e293b; }}
     .app {{ display: flex; min-height: 100vh; }}
     /* Sidebar */
     .sidebar {{ width: 240px; flex-shrink: 0; background: #060b17; color: #e2e8f0; padding: 0; border-right: 1px solid #1e293b; }}
@@ -1211,12 +1540,18 @@ def _adult_dashboard_html(
     .badge-green {{ background: rgba(34,197,94,0.15); color: #86efac; border: 1px solid rgba(34,197,94,0.2); }}
     .topbar-right {{ display: flex; align-items: center; gap: 10px; font-size: 13px; color: #64748b; }}
     .topbar-right code {{ font-size: 12px; background: #1e293b; padding: 2px 8px; border-radius: 4px; color: #94a3b8; }}
+    body.kid-preview .topbar {{ background: #ffffff; border-bottom-color: #e2e8f0; }}
+    body.kid-preview .topbar-left h2 {{ color: #0f172a; }}
+    body.kid-preview .topbar-right {{ color: #64748b; }}
     /* Content */
     .content {{ padding: 28px 32px; }}
     .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }}
     .grid-wide {{ grid-template-columns: 1fr 1fr; }}
     .card {{ background: #0f172a; border: 1px solid #1e293b; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.2); transition: border-color 0.18s; }}
     .card:hover {{ border-color: #334155; }}
+    body.kid-preview .card, body.kid-preview .char-card {{ background: #ffffff; border-color: #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }}
+    body.kid-preview .card h3, body.kid-preview .section-title {{ color: #0f172a; }}
+    body.kid-preview .card p, body.kid-preview .card li {{ color: #475569; }}
     .scene {{ border-left: 4px solid #f59e0b; }}
     .char-card {{ border: 1px solid #1e293b; border-radius: 12px; padding: 20px; background: #0f172a; transition: border-color 0.18s; }}
     .char-card:hover {{ border-color: #334155; }}
@@ -1230,6 +1565,7 @@ def _adult_dashboard_html(
     .character-img:hover {{ transform: scale(1.01); }}
     textarea, select, input {{ width: 100%; box-sizing: border-box; border-radius: 8px; border: 1px solid #334155; padding: 10px 12px; background: #060b17; color: #e2e8f0; font-family: 'SF Mono', 'Consolas', 'Monaco', monospace; font-size: 13px; transition: border-color 0.15s; }}
     textarea:focus, select:focus, input:focus {{ outline: none; border-color: #818cf8; box-shadow: 0 0 0 3px rgba(129,140,248,0.1); }}
+    body.kid-preview textarea, body.kid-preview select, body.kid-preview input {{ border-color: #cbd5e1; background: #ffffff; color: #1e293b; }}
     textarea {{ min-height: 120px; }}
     select {{ font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif; }}
     label {{ display: block; margin: 12px 0 4px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }}
@@ -1246,6 +1582,23 @@ def _adult_dashboard_html(
     .choice-row {{ display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0 12px; }}
     .choice {{ border: 1px solid #334155; border-radius: 8px; padding: 10px; background: #060b17; font-size: 12px; color: #94a3b8; }}
     .choice strong {{ display: block; margin-bottom: 2px; color: #e2e8f0; font-size: 12px; }}
+    body.kid-preview .choice {{ border-color: #e2e8f0; background: #f8fafc; color: #475569; }}
+    body.kid-preview .choice strong {{ color: #0f172a; }}
+    .mode-switch {{ display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid #334155; border-radius: 8px; background: #060b17; }}
+    .mode-switch label {{ margin: 0; color: #94a3b8; }}
+    .mode-switch select {{ min-width: 138px; padding: 6px 8px; }}
+    body.kid-preview .mode-switch {{ background: #f8fafc; border-color: #cbd5e1; }}
+    body.kid-preview .mode-switch label {{ color: #475569; }}
+    .mode-library-panel {{ display: none; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }}
+    .mode-library-panel.active {{ display: grid; }}
+    .mode-workspace-panel {{ display: none; }}
+    .mode-workspace-panel.active {{ display: block; }}
+    .library-card {{ border: 1px solid #334155; border-radius: 8px; padding: 10px; background: #060b17; display: grid; grid-template-columns: auto 1fr; column-gap: 8px; align-items: center; }}
+    .library-card span {{ font-size: 24px; grid-row: span 2; }}
+    .library-card strong {{ font-size: 13px; color: #e2e8f0; }}
+    .library-card small {{ font-size: 11px; color: #94a3b8; }}
+    body.kid-preview .library-card {{ background: #f8fafc; border-color: #e2e8f0; }}
+    body.kid-preview .library-card strong {{ color: #0f172a; }}
     .char-header {{ display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }}
     .char-header .emoji {{ font-size: 28px; }}
     .char-header .info {{ flex: 1; }}
@@ -1262,7 +1615,7 @@ def _adult_dashboard_html(
     @media (max-width: 800px) {{ .app {{ flex-direction: column; }} .sidebar {{ width: 100%; }} .grid-wide {{ grid-template-columns: 1fr; }} }}
   </style>
 </head>
-<body>
+<body class="{episode.audience}-preview">
   <div class="app">
     <aside class="sidebar">
       <div class="sidebar-head">
@@ -1280,7 +1633,14 @@ def _adult_dashboard_html(
     <div class="main">
       <header class="topbar">
         <div class="topbar-left">
-          <span class="badge badge-adult">{escape(episode.audience)}</span>
+          <div class="mode-switch">
+            <label for="audience_mode">Mode</label>
+            <select id="audience_mode">
+              <option value="kid" {"selected" if episode.audience == "kid" else ""}>Kid</option>
+              <option value="adult" {"selected" if episode.audience == "adult" else ""}>Adult</option>
+            </select>
+          </div>
+          <span class="badge badge-adult" id="mode_badge">{escape(episode.audience)}</span>
           <span class="badge badge-blue">{escape(episode.aspect)}</span>
           <span class="badge badge-green">{episode.target_duration_seconds}s</span>
           <h2>{escape(episode.title)}</h2>
@@ -1294,7 +1654,7 @@ def _adult_dashboard_html(
         <section class="grid grid-wide" style="margin-bottom: 8px;">
           <div class="card">
             <h3>Create Story</h3>
-            <p style="margin-bottom: 12px;">Choose audience and format, then copy the command.</p>
+            <p style="margin-bottom: 12px;" id="mode_help">Choose Kid or Adult from the top mode switch; the prompt profile and command update together.</p>
             <label>Audience</label>
             <select id="audience">
               <option value="kid" {"selected" if episode.audience == "kid" else ""}>Kid: 2–5 years, gentle motion</option>
@@ -1305,10 +1665,21 @@ def _adult_dashboard_html(
               <option value="shorts" {"selected" if episode.aspect == "shorts" else ""}>Shorts / Reels — 9:16</option>
               <option value="landscape" {"selected" if episode.aspect == "landscape" else ""}>Landscape YouTube — 16:9</option>
             </select>
+            <label style="margin-top: 10px;">Content type</label>
+            <select id="content_type">
+              <option value="story">Story</option>
+              <option value="learning">Learning video</option>
+            </select>
             <div class="choice-row">
               <div class="choice"><strong>Kid rule</strong>Motion in every scene: smiles, toys, sparkles</div>
               <div class="choice"><strong>Adult rule</strong>2.5D for mood; motion for action scenes</div>
             </div>
+            <div class="choice" style="margin-bottom: 12px;">
+              <strong id="profile_title">Adult character pack ready</strong>
+              <span id="profile_copy">Sci-fi, fantasy, mystery and action characters are ready for mature story worlds.</span>
+            </div>
+            <label>Prompt base</label>
+            <textarea id="prompt_base" readonly style="min-height: 76px; font-size: 12px;">{escape(prompt_base)}</textarea>
             <label>Optional idea</label>
             <input id="idea" placeholder="Type a story idea…" style="font-family: system-ui; font-size: 13px;">
             <div class="flex items-center gap-8" style="margin-top: 8px;">
@@ -1343,13 +1714,10 @@ def _adult_dashboard_html(
           </div>
         </section>
         <div class="section-title">
-          Character References <span class="count">{len(episode.characters)}</span>
+          Selected Mode Character Library <span class="count" id="library_count">{len(episode.characters)}</span>
         </div>
-        <section class="grid" id="character-gallery">{character_cards}</section>
-        <div class="section-title">
-          Scene Prompts <span class="count">{len(episode.scenes)}</span>
-        </div>
-        <section class="grid" id="scene-gallery">{cards}</section>
+        <section>{mode_library}</section>
+        {mode_workspaces}
       </div>
     </div>
   </div>
@@ -1364,28 +1732,68 @@ def _adult_dashboard_html(
       setTimeout(() => btn.textContent = orig, 1000);
     }}
     function refreshSelectedCommand() {{
-      const audience = document.getElementById('audience').value;
+      const mode = document.getElementById('audience_mode').value;
+      const audienceSelect = document.getElementById('audience');
+      audienceSelect.value = mode;
+      const audience = mode;
       const aspect = document.getElementById('aspect').value;
+      const contentType = document.getElementById('content_type').value;
       const idea = document.getElementById('idea').value.trim();
+      const profiles = {{
+        kid: {{
+          title: 'Kid character pack ready',
+          copy: 'Animals, birds and tiny nature guides are ready for stories and learning videos.',
+          prompt: 'Kid prompt base: original 2-5 learning/story world, reusable animal and nature character library, gentle motion in every scene, soft rounded 3D cartoon shapes, simple emotions, no scary visuals, no text, logo or watermark.',
+          defaultIdea: contentType === 'learning' ? 'learning video about colors with Buzzy, Bella and friends' : 'story about sharing toys with Golu and friends',
+          count: 10
+        }},
+        adult: {{
+          title: 'Adult character pack ready',
+          copy: 'Sci-fi, fantasy, mystery and action characters are ready for mature story worlds.',
+          prompt: 'Adult cinematic prompt base: original mature genre story, reusable adult character library, cinematic lighting, 2.5D for atmosphere, motion video for action/discovery, no franchise imitation, no celebrity likeness, no copyrighted music, no logo or watermark.',
+          defaultIdea: contentType === 'learning' ? 'adult learning video explaining a science mystery with Dr. Noor and Rook-7' : 'cinematic adult story using Commander Ira, Dr. Noor, Rook-7, Queen Seren or Marshal Vale',
+          count: 5
+        }}
+      }};
+      const profile = profiles[audience];
+      document.body.className = `${{audience}}-preview`;
+      document.getElementById('mode_badge').textContent = audience;
+      document.getElementById('library_count').textContent = profile.count;
+      document.getElementById('mode_library_kid').classList.toggle('active', audience === 'kid');
+      document.getElementById('mode_library_adult').classList.toggle('active', audience === 'adult');
+      document.getElementById('workspace_panel_kid').classList.toggle('active', audience === 'kid');
+      document.getElementById('workspace_panel_adult').classList.toggle('active', audience === 'adult');
+      document.getElementById('profile_title').textContent = profile.title;
+      document.getElementById('profile_copy').textContent = profile.copy;
+      document.getElementById('prompt_base').value = profile.prompt;
       let command = `PYTHONPATH=src .venv/bin/python -m content_pipeline story-studio-create --audience ${{audience}} --aspect ${{aspect}} --date 2026-05-28`;
-      if (idea) {{
-        command += ` --idea "${{idea.replaceAll('"', '\\"')}}"`;
+      const finalIdea = idea || profile.defaultIdea;
+      if (finalIdea) {{
+        command += ` --idea "${{finalIdea.replaceAll('"', '\\"')}}"`;
       }}
       document.getElementById('selected_command').value = command;
     }}
-    document.getElementById('audience').addEventListener('change', refreshSelectedCommand);
+    document.getElementById('audience_mode').addEventListener('change', refreshSelectedCommand);
+    document.getElementById('audience').addEventListener('change', function(event) {{
+      document.getElementById('audience_mode').value = event.target.value;
+      refreshSelectedCommand();
+    }});
     document.getElementById('aspect').addEventListener('change', refreshSelectedCommand);
+    document.getElementById('content_type').addEventListener('change', refreshSelectedCommand);
     document.getElementById('idea').addEventListener('input', refreshSelectedCommand);
+    refreshSelectedCommand();
   </script>
 </body>
 </html>
 """
 
 
-def _character_card(character: CharacterReference, root: Path) -> str:
-    prompt_id = f"character_{character.id}"
+def _character_card(
+    character: CharacterReference, root: Path, page_root: Path | None = None, id_prefix: str = ""
+) -> str:
+    prompt_id = f"{id_prefix}character_{character.id}"
     emoji = _char_emoji(character.id)
-    media_html = _reference_media_html(character, root)
+    media_html = _reference_media_html(character, root, page_root or root)
     upload_html = _reference_upload_form(character)
     return f"""<article class="card char-card">
   <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
@@ -1417,16 +1825,16 @@ def _reference_upload_form(character: CharacterReference) -> str:
   </form>"""
 
 
-def _reference_media_html(character: CharacterReference, root: Path) -> str:
+def _reference_media_html(character: CharacterReference, root: Path, page_root: Path) -> str:
     media_path = _reference_media_path(character, root)
     if media_path:
-        relative = media_path.relative_to(root)
+        relative = Path(os.path.relpath(media_path, page_root / "ui"))
         if media_path.suffix.lower() in REFERENCE_VIDEO_EXTENSIONS:
             return (
-                f'<video class="character-img" src="../{escape(str(relative))}" '
+                f'<video class="character-img" src="{escape(relative.as_posix())}" '
                 'controls muted loop playsinline></video>'
             )
-        return f'<img class="character-img" src="../{escape(str(relative))}" alt="{escape(character.name)} reference">'
+        return f'<img class="character-img" src="{escape(relative.as_posix())}" alt="{escape(character.name)} reference">'
     return (
         '<div class="character-img" style="min-height: 180px; display: grid; place-items: center; '
         'padding: 18px; text-align: center; color: #64748b;">'
@@ -1459,19 +1867,44 @@ def _char_emoji(char_id: str) -> str:
         return "🐘"  # elephant
     elif "mimi" in char_id:
         return "🐦"  # bird
+    elif "foxy" in char_id:
+        return "🦊"  # fox
+    elif "coco" in char_id:
+        return "🐱"  # cat
+    elif "bobo" in char_id:
+        return "🐶"  # dog
+    elif "bella" in char_id:
+        return "🦋"  # butterfly
+    elif "buzzy" in char_id:
+        return "🐝"  # bee
     elif "ira" in char_id:
         return "🧑‍🚀"  # astronaut
+    elif "noor" in char_id:
+        return "🔬"  # scientist
+    elif "rook" in char_id:
+        return "🤖"  # android
+    elif "seren" in char_id:
+        return "👑"  # queen
+    elif "vale" in char_id:
+        return "🧭"  # marshal
     return "🌟"  # star (fallback)
 
 
-def _scene_card(scene: StoryScene, index: int) -> str:
-    openart_id = f"openart_{index:02d}"
-    meta_id = f"meta_{index:02d}"
+def _scene_card(scene: StoryScene, index: int, id_prefix: str = "") -> str:
+    openart_id = f"{id_prefix}openart_{index:02d}"
+    meta_id = f"{id_prefix}meta_{index:02d}"
+    split_prompts = _split_prompt_cards(scene, index, id_prefix)
     return f"""<article class="card scene">
   <div class="pill">Scene {index:02d}</div><div class="pill">{escape(scene.visual_mode)}</div>
   <h3>{escape(scene.title)}</h3>
   <p><strong>Narration:</strong> {escape(scene.narration)}</p>
   <p><strong>Save as:</strong> <code>{escape(scene.expected_clip_file)}</code></p>
+  <details open>
+    <summary class="char-summary">10-second clip prompts for Scene {index:02d}</summary>
+    <p style="font-size: 12px; color: #64748b; margin: 8px 0;">Create these {len(SPLIT_CLIP_LABELS)} clips first, then combine them as <code>{escape(scene.expected_clip_file)}</code> for assembly.</p>
+    {split_prompts}
+  </details>
+  <br>
   <label>OpenArt prompt</label>
   <textarea id="{openart_id}">{escape(scene.openart_prompt)}</textarea>
   <button onclick="copyText('{openart_id}')">Copy OpenArt Prompt</button>
@@ -1480,6 +1913,65 @@ def _scene_card(scene: StoryScene, index: int) -> str:
   <textarea id="{meta_id}">{escape(scene.meta_prompt)}</textarea>
   <button onclick="copyText('{meta_id}')">Copy Meta Prompt</button>
 </article>"""
+
+
+def _split_prompt_cards(scene: StoryScene, index: int, id_prefix: str = "") -> str:
+    cards: list[str] = []
+    for clip in _split_clip_prompts(scene, index):
+        prompt_id = f"{id_prefix}split_scene_{index:02d}_{clip['part_label'].lower()}"
+        cards.append(
+            f"""<div style="border: 1px solid #e2e8f0; border-radius: 12px; padding: 10px; margin: 10px 0; background: #f8fafc;">
+      <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 6px;">
+        <span class="pill">{escape(clip["clip_id"])}</span>
+        <span style="font-size: 12px;">Save as <code>{escape(clip["expected_clip_file"])}</code></span>
+      </div>
+      <textarea id="{prompt_id}" style="min-height: 170px; font-size: 12px;">{escape(clip["prompt"])}</textarea>
+      <button onclick="copyText('{prompt_id}')" class="btn-sm" style="margin-top: 6px;">Copy {escape(clip["clip_id"])} Prompt</button>
+    </div>"""
+        )
+    return "\n".join(cards)
+
+
+def _split_clip_prompts(scene: StoryScene, index: int) -> list[dict[str, Any]]:
+    beats = (
+        "Opening shot: establish the location and show the main character noticing the situation with gentle curiosity.",
+        "Close reaction: focus on the character's face, tiny body movement, soft smile, blinking eyes and emotional expression.",
+        "Main action begins: show the important movement from this scene clearly, slowly and safely for toddlers.",
+        "Playful continuation: keep the same character design while the action grows a little more interesting with soft background motion.",
+        "Ending hook: resolve this small beat with a happy pause or curious look that connects smoothly to the next scene.",
+    )
+    prompts: list[dict[str, Any]] = []
+    stem = Path(scene.expected_clip_file).stem
+    for offset, label in enumerate(SPLIT_CLIP_LABELS):
+        clip_id = f"Scene {index:02d}-{label}"
+        expected = f"{stem}_{label.lower()}.mp4"
+        prompt = "\n\n".join(
+            [
+                scene.openart_prompt,
+                (
+                    f"Create only {SPLIT_CLIP_SECONDS} seconds for {clip_id}. "
+                    f"This is part {offset + 1} of {len(SPLIT_CLIP_LABELS)} for the larger scene '{scene.title}'."
+                ),
+                f"Scene narration context: {scene.narration}",
+                f"Specific beat for this clip: {beats[offset]}",
+                (
+                    "Keep the camera movement gentle and continuous. Keep all character shapes, colors, accessories and faces "
+                    "consistent with the uploaded reference images. No captions, no subtitles, no text, no logo, no watermark."
+                ),
+            ]
+        )
+        prompts.append(
+            {
+                "clip_id": clip_id,
+                "part_label": label,
+                "scene": scene.id,
+                "scene_title": scene.title,
+                "duration_seconds": SPLIT_CLIP_SECONDS,
+                "expected_clip_file": expected,
+                "prompt": prompt,
+            }
+        )
+    return prompts
 
 
 def _subtitle_srt(episode: StoryEpisode) -> str:

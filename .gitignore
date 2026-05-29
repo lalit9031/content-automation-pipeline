@@ -7,3 +7,5 @@ __pycache__/
 output/*
 !output/.gitkeep
 credentials/
+.secrets/
+scripts/client_secret_*.json

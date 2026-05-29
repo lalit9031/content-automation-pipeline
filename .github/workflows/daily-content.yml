@@ -20,11 +20,14 @@ jobs:
       PROMPT_PROVIDER: mock
       IMAGE_PROVIDER: mock
       PUBLISH_LINKEDIN: "false"
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg espeak-ng
       - name: Install rendering dependencies
         run: pip install -e .
       - name: Run safe daily package generation
@@ -34,7 +37,12 @@ jobs:
             RUN_DATE="$(date -u +%F)"
           fi
           PYTHONPATH=src python -m content_pipeline run --date "$RUN_DATE"
+          PYTHONPATH=src python -m content_pipeline pm-daily-videos --date "$RUN_DATE" --tts-voice echo
       - uses: actions/upload-artifact@v4
         with:
           name: daily-content-artifacts
-          path: output/daily/
+          path: |
+            output/daily/
+            output/shorts/
+            output/youtubeVideo/
+            output/pm_video_agents/

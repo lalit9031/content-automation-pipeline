@@ -12,12 +12,17 @@ class Settings:
     prompt_provider: str = "mock"
     image_provider: str = "mock"
     openai_api_key: str = ""
+    openai_api_keys: tuple[str, ...] = ()
     openai_model: str = "gpt-5.4-mini"
+    openai_image_model: str = "gpt-image-1"
     anthropic_api_key: str = ""
     anthropic_model: str = ""
     gcp_project_id: str = ""
     gcp_location: str = "us-central1"
     imagen_model: str = "imagen-4.0-generate-001"
+    gemini_image_model: str = "gemini-2.5-flash-image"
+    image_max_dimension: int = 2048
+    image_max_bytes: int = 5 * 1024 * 1024
     publish_linkedin: bool = False
     linkedin_client_id: str = ""
     linkedin_client_secret: str = ""
@@ -35,6 +40,7 @@ class Settings:
     luma_image_model: str = "photon-1"
     luma_video_model: str = "ray-2"
     gemini_api_key: str = ""
+    gemini_api_keys: tuple[str, ...] = ()
     gemini_video_model: str = "veo-3.0-fast-generate-001"
     gemini_video_poll_seconds: int = 10
     gemini_video_price_per_second_usd: float = 0.15
@@ -42,6 +48,7 @@ class Settings:
     gemini_video_monthly_budget_usd: float = 25.0
     youtube_client_secrets_file: str = ""
     youtube_token_file: str = ""
+    youtube_channel_url: str = ""
     instagram_access_token: str = ""
     instagram_user_id: str = ""
     instagram_client_id: str = ""
@@ -60,13 +67,18 @@ class Settings:
             mode=os.getenv("PIPELINE_MODE", "mock").strip().lower(),
             prompt_provider=os.getenv("PROMPT_PROVIDER", "mock").strip().lower(),
             image_provider=os.getenv("IMAGE_PROVIDER", "mock").strip().lower(),
-            openai_api_key=os.getenv("OPENAI_API_KEY", ""),
+            openai_api_keys=(_openai_keys := _read_key_pool("OPENAI_API_KEY", 5)),
+            openai_api_key=_first_key(_openai_keys, os.getenv("OPENAI_API_KEY", "")),
             openai_model=os.getenv("OPENAI_MODEL", "gpt-5.4-mini"),
+            openai_image_model=os.getenv("OPENAI_IMAGE_MODEL", "gpt-image-1"),
             anthropic_api_key=os.getenv("ANTHROPIC_API_KEY", ""),
             anthropic_model=os.getenv("ANTHROPIC_MODEL", ""),
             gcp_project_id=os.getenv("GCP_PROJECT_ID", ""),
             gcp_location=os.getenv("GCP_LOCATION", "us-central1"),
             imagen_model=os.getenv("IMAGEN_MODEL", "imagen-4.0-generate-001"),
+            gemini_image_model=os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image"),
+            image_max_dimension=int(os.getenv("IMAGE_MAX_DIMENSION", "2048")),
+            image_max_bytes=int(os.getenv("IMAGE_MAX_BYTES", str(5 * 1024 * 1024))),
             publish_linkedin=_as_bool(os.getenv("PUBLISH_LINKEDIN", "false")),
             linkedin_client_id=os.getenv("LINKEDIN_CLIENT_ID", ""),
             linkedin_client_secret=os.getenv("LINKEDIN_CLIENT_SECRET", ""),
@@ -87,7 +99,11 @@ class Settings:
             luma_api_key=os.getenv("LUMAAI_API_KEY", ""),
             luma_image_model=os.getenv("LUMA_IMAGE_MODEL", "photon-1"),
             luma_video_model=os.getenv("LUMA_VIDEO_MODEL", "ray-2"),
-            gemini_api_key=os.getenv("GEMINI_API_KEY", "") or os.getenv("GOOGLE_API_KEY", ""),
+            gemini_api_keys=(_gemini_keys := _read_key_pool("GEMINI_API_KEY", 5, fallback_env="GOOGLE_API_KEY")),
+            gemini_api_key=_first_key(
+                _gemini_keys,
+                os.getenv("GEMINI_API_KEY", "") or os.getenv("GOOGLE_API_KEY", ""),
+            ),
             gemini_video_model=os.getenv("GEMINI_VIDEO_MODEL", "veo-3.0-fast-generate-001"),
             gemini_video_poll_seconds=int(os.getenv("GEMINI_VIDEO_POLL_SECONDS", "10")),
             gemini_video_price_per_second_usd=float(os.getenv("GEMINI_VIDEO_PRICE_PER_SECOND_USD", "0.15")),
@@ -95,6 +111,7 @@ class Settings:
             gemini_video_monthly_budget_usd=float(os.getenv("GEMINI_VIDEO_MONTHLY_BUDGET_USD", "25.0")),
             youtube_client_secrets_file=os.getenv("YOUTUBE_CLIENT_SECRETS_FILE", ""),
             youtube_token_file=os.getenv("YOUTUBE_TOKEN_FILE", ""),
+            youtube_channel_url=os.getenv("YOUTUBE_CHANNEL_URL", ""),
             instagram_access_token=os.getenv("INSTAGRAM_ACCESS_TOKEN", ""),
             instagram_user_id=os.getenv("INSTAGRAM_USER_ID", ""),
             instagram_client_id=os.getenv("INSTAGRAM_CLIENT_ID", ""),
@@ -116,3 +133,32 @@ def _load_dotenv(path: Path) -> None:
             continue
         key, value = line.split("=", 1)
         os.environ.setdefault(key.strip(), value.strip().strip("'\""))
+
+
+def _read_key_pool(prefix: str, total_slots: int, fallback_env: str | None = None) -> tuple[str, ...]:
+    keys: list[str] = []
+    primary = os.getenv(prefix, "").strip()
+    if primary:
+        keys.append(primary)
+    for index in range(2, total_slots + 1):
+        value = os.getenv(f"{prefix}_{index}", "").strip()
+        if value:
+            keys.append(value)
+    if not keys and fallback_env:
+        fallback = os.getenv(fallback_env, "").strip()
+        if fallback:
+            keys.append(fallback)
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for key in keys:
+        if key in seen:
+            continue
+        seen.add(key)
+        ordered.append(key)
+    return tuple(ordered)
+
+
+def _first_key(pool: tuple[str, ...], fallback: str) -> str:
+    if pool:
+        return pool[0]
+    return fallback
