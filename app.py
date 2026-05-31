@@ -183,7 +183,9 @@ def load_studio_state(output_dir: Path) -> dict[str, str]:
         "voice_library_language_filter",
         "voice_gender_filter",
         "reference_audio_root",
+        "reference_audio_default_language",
         "reference_audio_language_filter",
+        "reference_audio_selected_clip",
         "reference_audio_preview_path",
         "image_provider",
         "image_topic",
@@ -443,6 +445,14 @@ def render_frontdoor(settings: Settings) -> None:
             "reference_audio_preview_path",
             "",
         )
+        st.session_state["reference_audio_selected_clip"] = saved_studio_state.get(
+            "reference_audio_selected_clip",
+            "",
+        )
+        st.session_state["reference_audio_default_language"] = saved_studio_state.get(
+            "reference_audio_default_language",
+            "hindi",
+        )
         st.session_state["image_preview_path"] = ""
         st.session_state["music_preview_path"] = ""
     st.session_state.setdefault("voice_preset_choice", "english_explainer")
@@ -470,7 +480,9 @@ def render_frontdoor(settings: Settings) -> None:
     st.session_state.setdefault("voice_library_language_filter", "all")
     st.session_state.setdefault("voice_gender_filter", "all")
     st.session_state.setdefault("reference_audio_root", "")
+    st.session_state.setdefault("reference_audio_default_language", "hindi")
     st.session_state.setdefault("reference_audio_language_filter", "all")
+    st.session_state.setdefault("reference_audio_selected_clip", "")
     st.session_state.setdefault("reference_audio_preview_path", "")
     st.sidebar.subheader("Voice Studio")
     gender_options = voice_gender_options()
@@ -605,6 +617,11 @@ def render_frontdoor(settings: Settings) -> None:
         "Reference dataset folder",
         key="reference_audio_root",
         help="Point this to the downloaded Kaggle dataset folder with language subfolders of MP3 clips.",
+    )
+    st.sidebar.text_input(
+        "Reference bank language",
+        key="reference_audio_default_language",
+        help="Use this when the folder is flat, such as a single Hindi audio bank with numeric filenames.",
     )
     reference_audio_options = reference_audio_language_options()
     reference_audio_language_map = {value: label for value, label in reference_audio_options}
@@ -1256,7 +1273,10 @@ def render_frontdoor(settings: Settings) -> None:
 
         st.markdown("#### Reference audio explorer")
         reference_audio_root = resolve_project_path(st.session_state["reference_audio_root"])
-        reference_samples = scan_reference_audio_library(reference_audio_root)
+        reference_samples = scan_reference_audio_library(
+            reference_audio_root,
+            default_language=st.session_state["reference_audio_default_language"],
+        )
         available_languages = sorted({sample.language for sample in reference_samples})
         reference_language_options = reference_audio_language_options(available_languages or None)
         reference_language_map = {value: label for value, label in reference_language_options}
@@ -1273,33 +1293,76 @@ def render_frontdoor(settings: Settings) -> None:
             )
         else:
             selected_reference_language = st.session_state["reference_audio_language_filter"]
+            reference_query = st.text_input(
+                "Search reference clips",
+                value="",
+                placeholder="Search by filename or clip label",
+                key="reference_audio_search_query",
+            )
             filtered_reference_samples = [
                 sample
                 for sample in reference_samples
                 if selected_reference_language == "all" or sample.language == selected_reference_language
             ]
+            if reference_query.strip():
+                query = reference_query.strip().lower()
+                filtered_reference_samples = [
+                    sample
+                    for sample in filtered_reference_samples
+                    if query in Path(sample.path).name.lower()
+                    or query in sample.source_label.lower()
+                    or query in sample.collection.lower()
+                ]
             st.caption(
-                f"Found {len(reference_samples)} reference clips across {len(available_languages)} language folders. "
+                f"Found {len(reference_samples)} reference clips across {len({sample.collection for sample in reference_samples})} collection(s). "
                 f"Showing {len(filtered_reference_samples)} clip(s) for {reference_language_map.get(selected_reference_language, selected_reference_language)}."
             )
-            reference_cols = st.columns(2)
-            for index, sample in enumerate(filtered_reference_samples[:12]):
-                column = reference_cols[index % 2]
-                with column:
-                    st.markdown(
-                        f"""
-                        <div class="metric-box">
-                          <div class="metric-label">{escape(sample.language)}</div>
-                          <div class="metric-value">{escape(sample.source_label)}</div>
-                          <div style="margin-top:6px;color:#94a3b8;font-size:13px;line-height:1.45;">{escape(Path(sample.path).name)}</div>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
-                    st.audio(sample.path)
-                    st.caption(sample.path)
-            if len(filtered_reference_samples) > 12:
-                st.caption("Showing the first 12 matching clips only to keep the studio responsive.")
+            if filtered_reference_samples:
+                sample_lookup = {
+                    f"{Path(sample.path).name} · {sample.source_label} · {sample.language}": sample
+                    for sample in filtered_reference_samples
+                }
+                selected_sample_label = st.session_state.get("reference_audio_selected_clip", "")
+                if selected_sample_label not in sample_lookup:
+                    selected_sample_label = next(iter(sample_lookup))
+                selected_reference_sample_label = st.selectbox(
+                    "Pick a reference clip",
+                    options=list(sample_lookup.keys()),
+                    index=list(sample_lookup.keys()).index(selected_sample_label),
+                    key="reference_audio_selected_clip",
+                )
+                selected_reference_sample = sample_lookup[selected_reference_sample_label]
+                st.session_state["reference_audio_preview_path"] = selected_reference_sample.path
+                st.markdown(
+                    f"""
+                    <div class="metric-box">
+                      <div class="metric-label">Selected reference clip</div>
+                      <div class="metric-value">{escape(Path(selected_reference_sample.path).name)}</div>
+                      <div style="margin-top:6px;color:#94a3b8;font-size:13px;line-height:1.45;">Collection: {escape(selected_reference_sample.collection)} · Language: {escape(selected_reference_sample.language)}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                st.audio(selected_reference_sample.path)
+                st.caption(selected_reference_sample.path)
+                preview_grid = st.columns(2)
+                for index, sample in enumerate(filtered_reference_samples[:6]):
+                    column = preview_grid[index % 2]
+                    with column:
+                        st.markdown(
+                            f"""
+                            <div class="metric-box">
+                              <div class="metric-label">{escape(sample.language)}</div>
+                              <div class="metric-value">{escape(sample.source_label)}</div>
+                              <div style="margin-top:6px;color:#94a3b8;font-size:13px;line-height:1.45;">{escape(Path(sample.path).name)}</div>
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
+                if len(filtered_reference_samples) > 6:
+                    st.caption("Showing the first 6 matching clips as a quick preview; use search to narrow further.")
+            else:
+                st.info("No reference clips match the selected filters.")
 
         overview = selected_overview
         st.markdown(
@@ -1377,7 +1440,9 @@ def render_frontdoor(settings: Settings) -> None:
             "music_mood": str(st.session_state["music_mood"]),
             "music_duration_seconds": str(st.session_state["music_duration_seconds"]),
             "reference_audio_root": str(st.session_state["reference_audio_root"]),
+            "reference_audio_default_language": str(st.session_state["reference_audio_default_language"]),
             "reference_audio_language_filter": str(st.session_state["reference_audio_language_filter"]),
+            "reference_audio_selected_clip": str(st.session_state["reference_audio_selected_clip"]),
             "reference_audio_preview_path": str(st.session_state["reference_audio_preview_path"]),
         },
     )

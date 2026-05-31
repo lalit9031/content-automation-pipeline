@@ -228,6 +228,7 @@ class PipelineTest(unittest.TestCase):
         self.assertIn("Hindi story", labels)
         self.assertIn("Hindi devotional", labels)
         self.assertIn("Hindi bulletin", labels)
+        self.assertIn("Hindi explainer male", labels)
         self.assertIn("Hinglish teacher", labels)
         self.assertIn("कान्हा", texts)
         self.assertIn("Jira", texts)
@@ -277,6 +278,21 @@ class PipelineTest(unittest.TestCase):
             samples = scan_reference_audio_library(root)
 
             self.assertEqual(len(samples), 1)
+            self.assertEqual(samples[0].collection, "hindi")
+            self.assertEqual(samples[0].language, "hindi")
+            self.assertEqual(samples[0].path, str(sample))
+
+    def test_scan_reference_audio_library_labels_flat_collections_with_default_language(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            root = Path(temporary_dir) / "audio"
+            root.mkdir(parents=True, exist_ok=True)
+            sample = root / "001.mp3"
+            sample.write_bytes(b"fake-mp3-bytes")
+
+            samples = scan_reference_audio_library(root, default_language="hindi")
+
+            self.assertEqual(len(samples), 1)
+            self.assertEqual(samples[0].collection, "audio")
             self.assertEqual(samples[0].language, "hindi")
             self.assertEqual(samples[0].path, str(sample))
 

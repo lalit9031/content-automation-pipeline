@@ -80,6 +80,7 @@ class VoicePreviewPreset:
 
 @dataclass(frozen=True)
 class ReferenceAudioSample:
+    collection: str
     language: str
     path: str
     source_label: str
@@ -179,6 +180,18 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
         voice="nova",
         language="hi-IN",
         gender="female",
+        sample_text=(
+            "आज हम इस विषय को सरल और स्पष्ट तरीके से समझेंगे, ताकि हर कदम आसानी से याद रहे।"
+        ),
+    ),
+    VoicePreviewPreset(
+        key="hindi_explainer_male",
+        label="Hindi explainer male",
+        description="Professional Hindi narration with a steadier male tone.",
+        provider="openai",
+        voice="onyx",
+        language="hi-IN",
+        gender="male",
         sample_text=(
             "आज हम इस विषय को सरल और स्पष्ट तरीके से समझेंगे, ताकि हर कदम आसानी से याद रहे।"
         ),
@@ -361,11 +374,13 @@ def reference_audio_language_options(languages: list[str] | None = None) -> tupl
     return tuple((language, labels.get(language, language.title())) for language in seen)
 
 
-def scan_reference_audio_library(root: Path) -> list[ReferenceAudioSample]:
+def scan_reference_audio_library(root: Path, *, default_language: str = "unknown") -> list[ReferenceAudioSample]:
     if not root.exists():
         return []
     samples: list[ReferenceAudioSample] = []
-    for path in sorted(root.rglob("*")):
+    files = [path for path in root.rglob("*") if path.is_file()]
+    flat_collection = bool(files) and all(path.parent == root for path in files)
+    for path in sorted(files):
         if not path.is_file():
             continue
         if path.suffix.lower() not in {".mp3", ".wav", ".m4a", ".aac", ".ogg"}:
@@ -374,16 +389,29 @@ def scan_reference_audio_library(root: Path) -> list[ReferenceAudioSample]:
             relative = path.relative_to(root)
         except ValueError:
             relative = path
-        language = relative.parts[0] if len(relative.parts) > 1 else path.parent.name
+        collection = relative.parts[0] if len(relative.parts) > 1 else root.name
+        collection = collection.strip().lower() or "unknown"
+        language = relative.parts[0] if len(relative.parts) > 1 else default_language
         language = language.strip().lower() or "unknown"
         source_label = path.stem.replace("_", " ").replace("-", " ").strip() or path.name
         samples.append(
             ReferenceAudioSample(
+                collection=collection,
                 language=language,
                 path=str(path),
                 source_label=source_label,
             )
         )
+    if flat_collection:
+        samples = [
+            ReferenceAudioSample(
+                collection=root.name.lower() or "reference_audio",
+                language=(default_language or "unknown").strip().lower() or "unknown",
+                path=sample.path,
+                source_label=sample.source_label,
+            )
+            for sample in samples
+        ]
     return samples
 
 

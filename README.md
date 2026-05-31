@@ -323,6 +323,7 @@ For voice:
 - Install `edge-tts` in your environment if you want to use the free Indian voice path.
 - The Streamlit Voice Studio includes a `Voice gender` filter so you can quickly narrow the preset list and available voices to male, female, neutral, or all voices.
 - `REFERENCE_AUDIO_DIR` can point the Streamlit Audio tab at a local reference corpus such as the Kaggle Indian Languages Audio Dataset.
+- If your reference bank is a flat folder like `output/audio`, set the sidebar `Reference bank language` hint so the explorer can label and filter that collection sensibly.
 - The Streamlit Audio tab now includes a reference audio explorer that can filter and play local Hindi, Hinglish, and other Indian-language sample clips.
 
 Science video workspaces also write:
