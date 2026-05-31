@@ -128,6 +128,14 @@ def latest_daily_day(output_dir: Path) -> str | None:
     return days[-1] if days else None
 
 
+def recent_daily_days(output_dir: Path, limit: int = 14) -> list[str]:
+    daily_root = output_dir / "daily"
+    if not daily_root.exists():
+        return []
+    days = sorted((path.name for path in daily_root.iterdir() if path.is_dir()), reverse=True)
+    return days[:limit]
+
+
 def load_json(path: Path) -> dict[str, object] | None:
     if not path.exists():
         return None
@@ -175,6 +183,18 @@ def render_frontdoor(settings: Settings) -> None:
     if st.sidebar.button("Load latest day", use_container_width=True, disabled=not latest_day):
         st.session_state["run_day"] = default_day
         st.session_state["inspect_day"] = default_day
+        st.rerun()
+    recent_days = recent_daily_days(settings.output_dir)
+    selected_day = st.sidebar.selectbox(
+        "Recent days",
+        options=recent_days,
+        index=0 if recent_days else None,
+        disabled=not recent_days,
+    )
+    if st.sidebar.button("Load selected day", use_container_width=True, disabled=not recent_days):
+        selected = date.fromisoformat(selected_day)
+        st.session_state["run_day"] = selected
+        st.session_state["inspect_day"] = selected
         st.rerun()
     run_day = st.sidebar.date_input(
         "Run day",
