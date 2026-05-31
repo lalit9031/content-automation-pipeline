@@ -325,7 +325,6 @@ def apply_voice_preset_by_key(preset_key: str) -> None:
     if not preset:
         return
     st.session_state["voice_preset_choice"] = preset.key
-    st.session_state["voice_provider_choice"] = "edge"
     st.session_state["voice_name_choice"] = preset.voice
     st.session_state["voice_preview_text"] = preset.sample_text
 
@@ -799,7 +798,7 @@ def render_frontdoor(settings: Settings) -> None:
             index=0,
             key="voice_provider_choice",
         )
-        voice_provider_choice = "edge"
+        voice_provider_choice = st.session_state["voice_provider_choice"]
         voice_options = available_voice_options("edge", st.session_state["voice_gender_filter"])
         if not voice_options:
             voice_options = available_voice_options("edge")
@@ -845,7 +844,6 @@ def render_frontdoor(settings: Settings) -> None:
         apply_voice_preset = st.sidebar.button("Apply voice preset", use_container_width=True)
         if apply_voice_preset:
             preset = preset_map[st.session_state["voice_preset_choice"]]
-            st.session_state["voice_provider_choice"] = "edge"
             st.session_state["voice_name_choice"] = preset.voice
             st.session_state["voice_preview_text"] = preset.sample_text
             st.rerun()
@@ -1596,7 +1594,6 @@ def render_frontdoor(settings: Settings) -> None:
                                 language_hint=preset.language,
                             )
                             st.session_state["voice_preview_path"] = str(preview_output)
-                            st.session_state["voice_provider_choice"] = "edge"
                             st.session_state["voice_name_choice"] = preset.voice
                             st.session_state["voice_preview_text"] = preset.sample_text
                             st.success(f"Sample written to {preview_output}")
