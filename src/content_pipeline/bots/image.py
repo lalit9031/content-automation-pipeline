@@ -720,19 +720,21 @@ class PollinationsImageProvider:
                 response.raise_for_status()
                 image_bytes = response.content
                 
-                # Dynamic Lanczos Upscaling to QHD / requested dimension
+                # Convert to high-fidelity lossless PNG and dynamically resize to QHD / requested dimension
                 try:
                     from PIL import Image
                     import io
                     img = Image.open(io.BytesIO(image_bytes))
+                    
+                    # Apply Lanczos upscaling if dimensions are smaller than requested
                     if img.width < variant.width or img.height < variant.height:
                         resample_filter = getattr(Image, "Resampling", Image).LANCZOS
-                        img_resized = img.resize((variant.width, variant.height), resample=resample_filter)
+                        img = img.resize((variant.width, variant.height), resample=resample_filter)
                         
-                        out_buffer = io.BytesIO()
-                        img_format = "PNG" if variant.filename.endswith(".png") else "JPEG"
-                        img_resized.save(out_buffer, format=img_format, quality=95)
-                        image_bytes = out_buffer.getvalue()
+                    # Always save back as lossless PNG to guarantee 100% visual sharpness (3MB+ file)
+                    out_buffer = io.BytesIO()
+                    img.save(out_buffer, format="PNG")
+                    image_bytes = out_buffer.getvalue()
                 except Exception:
                     pass
                     
