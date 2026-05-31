@@ -227,6 +227,31 @@ def render_link_card(title: str, detail: str, link_label: str | None, link_url: 
     st.markdown(body, unsafe_allow_html=True)
 
 
+def render_health_banner(overview: dict[str, object]) -> None:
+    checks = [
+        ("Dashboard", bool(overview["dashboard_exists"])),
+        ("Audio", bool(overview["audio_exists"])),
+        ("Voice", bool(overview["voice_exists"])),
+    ]
+    healthy = sum(1 for _, ok in checks if ok)
+    missing = [name for name, ok in checks if not ok]
+    label = "All clear" if healthy == len(checks) else "Needs attention"
+    detail = "Everything is ready for the selected day." if not missing else "Missing: " + ", ".join(missing)
+    pill_bits = []
+    for name, ok in checks:
+        pill_bits.append(f'<span style="margin-right:12px;">{escape(name)}: {"ready" if ok else "missing"}</span>')
+    st.markdown(
+        f"""
+        <div class="action-card" style="margin:14px 0 16px;">
+          <h3>{escape(label)}</h3>
+          <p>{escape(detail)}</p>
+          <div class="action-link" style="color:#cbd5e1;">{''.join(pill_bits)}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def render_frontdoor(settings: Settings) -> None:
     latest_day = latest_daily_day(settings.output_dir)
     default_day = date.fromisoformat(latest_day) if latest_day else date.today()
@@ -515,6 +540,8 @@ def render_frontdoor(settings: Settings) -> None:
             "Open voice",
             selected_overview["voice_path"].as_uri() if selected_overview["voice_exists"] else None,
         )
+
+    render_health_banner(selected_overview)
 
     overview_cols = st.columns(4)
     with overview_cols[0]:
