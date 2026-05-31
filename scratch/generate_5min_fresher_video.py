@@ -256,7 +256,7 @@ def main():
     os.environ["IMAGE_PROVIDER"] = "free-ai"
     settings = Settings.from_environment(PROJECT_ROOT)
 
-    desktop_dir = Path("/Users/lalitprasadsingh/Desktop/fresher_ai_world_folder")
+    desktop_dir = Path("/Users/lalitprasadsingh/Desktop/antigravity/video_episodes/fresher_ai_world_folder")
     desktop_dir.mkdir(parents=True, exist_ok=True)
     images_dest_dir = desktop_dir / "images"
     images_dest_dir.mkdir(parents=True, exist_ok=True)

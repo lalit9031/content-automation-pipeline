@@ -1524,14 +1524,14 @@ def render_frontdoor(settings: Settings) -> None:
             )
 
             video_subject_slug = _slugify(video_subject)
-            antigravity_output_dir = Path("/Users/lalitprasadsingh/.gemini/antigravity/scratch/video_episodes") / video_subject_slug
+            antigravity_output_dir = Path("/Users/lalitprasadsingh/Desktop/antigravity/video_episodes") / video_subject_slug
 
             st.markdown(
                 f"""
                 <div class="metric-box" style="border: 1px solid rgba(56,189,248,0.3); background: rgba(15, 23, 42, 0.95); margin-top: 14px;">
                   <div class="metric-label" style="color: #38bdf8; font-weight: 800; font-size: 11px;">Target Output Folder</div>
                   <div class="metric-value" style="font-size: 14px; font-family: monospace; word-break: break-all; margin-top: 6px; color: #e2e8f0;">{antigravity_output_dir}</div>
-                  <div style="margin-top:8px;color:#94a3b8;font-size:12px;line-height:1.4;">Keeping your workspace extremely clean and organized under the main Antigravity folder!</div>
+                  <div style="margin-top:8px;color:#94a3b8;font-size:12px;line-height:1.4;">Keeping your workspace extremely clean and organized under the main Desktop Antigravity folder!</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -1582,7 +1582,7 @@ def render_frontdoor(settings: Settings) -> None:
                         )
 
                         if result.returncode == 0:
-                            desktop_src = Path("/Users/lalitprasadsingh/Desktop/fresher_ai_world_folder")
+                            desktop_src = Path("/Users/lalitprasadsingh/Desktop/antigravity/video_episodes/fresher_ai_world_folder")
                             if desktop_src.exists():
                                 if antigravity_output_dir.exists():
                                     shutil.rmtree(antigravity_output_dir)
