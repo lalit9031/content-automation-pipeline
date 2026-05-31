@@ -130,8 +130,8 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
         sample_text=(
             "Look look! A friendly robot is here! It is holding my hand and helping me win the career race! Yay!"
         ),
-        rate="+4%",
-        pitch="+0Hz",
+        rate="+8%",
+        pitch="+3Hz",
     ),
     VoicePreviewPreset(
         key="toddler_boy",

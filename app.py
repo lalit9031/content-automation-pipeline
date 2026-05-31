@@ -841,6 +841,15 @@ def render_frontdoor(settings: Settings) -> None:
         voice_options = available_voice_options("edge", st.session_state["voice_gender_filter"])
         if not voice_options:
             voice_options = available_voice_options("edge")
+        
+        # Inject selected preset voice if it is a native child/custom model not in the default list
+        preset_choice = st.session_state.get("voice_preset_choice")
+        if preset_choice:
+            preset_lookup = {p.key: p for p in voice_preview_presets()}
+            active_p = preset_lookup.get(preset_choice)
+            if active_p and active_p.voice not in [v for v, _ in voice_options]:
+                voice_options.append((active_p.voice, f"{active_p.voice} - Native Preset Voice"))
+                
         voice_option_values = [voice for voice, _ in voice_options]
         default_voice = st.session_state["voice_name_choice"] or settings.indian_tts_voice
         if default_voice not in voice_option_values:
