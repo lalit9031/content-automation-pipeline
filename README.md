@@ -315,7 +315,7 @@ The daily run also writes a combined dashboard at:
 
 For voice:
 
-- `VOICE_PROVIDER=edge` enables the free Edge TTS Indian voice path for science narration.
+- `VOICE_PROVIDER=edge` keeps the voice studio and narration paths on Edge TTS only.
 - `INDIAN_TTS_VOICE=en-IN-PrabhatNeural` picks the default Indian English narrator.
 - `krishna-voice-samples --engine edge` generates the free Indian sample pack.
 - `voice-status` prints the current voice provider, selected voice, and whether the daily bundle has real audio or manifest-only metadata.
@@ -325,7 +325,7 @@ For voice:
 - `REFERENCE_AUDIO_DIR` can point the Streamlit Audio tab at a local reference corpus such as the Kaggle Indian Languages Audio Dataset.
 - If your reference bank is a flat folder like `output/audio`, set the sidebar `Reference bank language` hint so the explorer can label and filter that collection sensibly.
 - The reference explorer now curates a smaller listening bank from large folders, so a 1,000-file directory will show a sampled set of about 20 to 30 clips instead of trying to render everything at once.
-- If OpenAI voice preview runs out of quota, the UI falls back to Edge TTS for the preview instead of crashing the page.
+- Voice previews now stay on Edge TTS only, so there is no OpenAI voice fallback path to manage.
 - The Streamlit Audio tab now includes a reference audio explorer that can filter and play local Hindi, Hinglish, and other Indian-language sample clips.
 
 Science video workspaces also write:

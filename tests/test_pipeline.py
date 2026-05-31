@@ -208,19 +208,13 @@ class PipelineTest(unittest.TestCase):
         self.assertIn("Jee-ra", normalized)
         self.assertIn("Skrum", normalized)
 
-    def test_available_voice_options_cover_edge_and_openai(self) -> None:
+    def test_available_voice_options_cover_edge_only(self) -> None:
         edge_options = available_voice_options("edge")
-        openai_options = available_voice_options("openai")
         edge_male_options = available_voice_options("edge", "male")
-        openai_female_options = available_voice_options("openai", "female")
 
         self.assertIn("en-IN-PrabhatNeural", [voice for voice, _ in edge_options])
         self.assertIn("en-IN-NeerjaNeural", [voice for voice, _ in edge_options])
-        self.assertIn("echo", [voice for voice, _ in openai_options])
-        self.assertIn("nova", [voice for voice, _ in openai_options])
         self.assertEqual(["en-IN-PrabhatNeural"], [voice for voice, _ in edge_male_options])
-        self.assertIn("fable", [voice for voice, _ in openai_female_options])
-        self.assertNotIn("echo", [voice for voice, _ in openai_female_options])
 
     def test_voice_preview_presets_include_hindi_and_hinglish(self) -> None:
         presets = voice_preview_presets()
@@ -239,7 +233,6 @@ class PipelineTest(unittest.TestCase):
         languages = voice_preview_language_options()
 
         self.assertIn(("all", "All languages"), languages)
-        self.assertIn(("en-US", "English"), languages)
         self.assertIn(("en-IN", "Hinglish"), languages)
         self.assertIn(("hi-IN", "Hindi"), languages)
 
@@ -251,7 +244,7 @@ class PipelineTest(unittest.TestCase):
         self.assertIn(("female", "Female voices"), genders)
         self.assertIn(("neutral", "Neutral voices"), genders)
 
-    def test_voice_preview_fallback_uses_edge_when_openai_quota_exhausted(self) -> None:
+    def test_voice_preview_fallback_uses_edge_when_selected_voice_fails(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_dir:
             preview_path = Path(temporary_dir) / "preview.mp3"
 
@@ -261,8 +254,8 @@ class PipelineTest(unittest.TestCase):
                 self.skipTest("Streamlit is not installed in the test environment")
 
             def fake_generate_voice_preview(text, output_path, *, provider, voice, openai_api_key=""):
-                if provider == "openai":
-                    raise RuntimeError("insufficient_quota")
+                if voice == "unsupported-voice":
+                    raise RuntimeError("voice_failed")
                 output_path.write_bytes(b"edge-fallback")
                 return output_path
 
@@ -270,9 +263,7 @@ class PipelineTest(unittest.TestCase):
                 output = streamlit_app._generate_voice_preview_with_fallback(
                     text="नमस्ते",
                     preview_path=preview_path,
-                    provider="openai",
-                    voice="onyx",
-                    openai_api_key="sk-test",
+                    voice="unsupported-voice",
                     gender_hint="male",
                 )
 
@@ -357,7 +348,7 @@ class PipelineTest(unittest.TestCase):
     def test_voice_daily_artifacts_write_status_bundle(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_dir:
             output = Path(temporary_dir) / "output"
-            settings = Settings(output_dir=output, voice_provider="openai", indian_tts_voice="en-IN-PrabhatNeural")
+            settings = Settings(output_dir=output, voice_provider="edge", indian_tts_voice="en-IN-PrabhatNeural")
 
             written = write_voice_daily_artifacts(output, settings, day="2026-05-26")
             status = voice_status(output, settings, day="2026-05-26")
@@ -365,7 +356,7 @@ class PipelineTest(unittest.TestCase):
             self.assertTrue((output / "daily" / "2026-05-26" / "voice_status.json").exists())
             self.assertTrue((output / "daily" / "2026-05-26" / "voice_status.html").exists())
             self.assertEqual(status["day"], "2026-05-26")
-            self.assertEqual(status["provider"], "openai")
+            self.assertEqual(status["provider"], "edge")
             self.assertEqual(status["voice"], "en-IN-PrabhatNeural")
             self.assertFalse(status["has_real_audio"])
             self.assertIn("generated_at", status)
@@ -389,7 +380,7 @@ class PipelineTest(unittest.TestCase):
     def test_audio_status_aggregates_daily_science_and_pm_audio(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_dir:
             output = Path(temporary_dir) / "output"
-            settings = Settings(output_dir=output, voice_provider="openai", indian_tts_voice="en-IN-PrabhatNeural")
+            settings = Settings(output_dir=output, voice_provider="edge", indian_tts_voice="en-IN-PrabhatNeural")
             write_voice_daily_artifacts(output, settings, day="2026-05-26")
 
             science_manifest = output / "science_stories" / "science_001" / "audio"
@@ -398,8 +389,8 @@ class PipelineTest(unittest.TestCase):
                 json.dumps(
                     {
                         "audio_status": "ready",
-                        "provider": "openai",
-                        "voice": "echo",
+                        "provider": "edge",
+                        "voice": "en-IN-PrabhatNeural",
                     }
                 )
                 + "\n",
@@ -411,8 +402,8 @@ class PipelineTest(unittest.TestCase):
             pm_manifest.joinpath("audio_manifest.json").write_text(
                 json.dumps(
                     {
-                        "narration_mode": "openai_tts",
-                        "tts_voice": "echo",
+                        "narration_mode": "edge_tts",
+                        "tts_voice": "en-IN-PrabhatNeural",
                     }
                 )
                 + "\n",
@@ -423,7 +414,7 @@ class PipelineTest(unittest.TestCase):
             html = render_audio_status_html(status)
 
             self.assertEqual(status["day"], "2026-05-26")
-            self.assertEqual(status["daily_voice_status"]["provider"], "openai")
+            self.assertEqual(status["daily_voice_status"]["provider"], "edge")
             self.assertEqual(status["science_audio"]["count"], 1)
             self.assertEqual(status["pm_audio"]["count"], 1)
             self.assertIn("Audio status", html)
@@ -1203,14 +1194,14 @@ class PipelineTest(unittest.TestCase):
             self.assertIn("THE PM AI QUESTION", svg_content)
             self.assertIn("no API cost", svg_content)
 
-    def test_selected_krishna_voice_records_creator_approved_builtin_voice(self) -> None:
+    def test_selected_krishna_voice_records_creator_approved_edge_voice(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_dir:
-            path = write_voice_selection(Path(temporary_dir), "sample_01_marin_warm.mp3")
+            path = write_voice_selection(Path(temporary_dir), "sample_01_prabhat_neural.mp3")
             selection = json.loads(path.read_text(encoding="utf-8"))
 
-            self.assertEqual(selection["voice"], "marin")
+            self.assertEqual(selection["voice"], "en-IN-PrabhatNeural")
             self.assertEqual(selection["selection_status"], "creator_approved")
-            self.assertEqual(selection["voice_source_mode"], "built_in_ai_voice")
+            self.assertEqual(selection["voice_source_mode"], "edge_tts")
             self.assertTrue(selection["disclosure_required"])
 
     def test_character_identity_pack_requires_supported_motion_provider(self) -> None:

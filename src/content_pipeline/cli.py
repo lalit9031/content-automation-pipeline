@@ -303,9 +303,9 @@ def main() -> int:
     )
     voice_parser.add_argument(
         "--engine",
-        choices=("openai", "edge"),
-        default="openai",
-        help="Use OpenAI narration samples or the free Edge TTS Indian voice samples.",
+        choices=("edge",),
+        default="edge",
+        help="Use the free Edge TTS Indian voice samples.",
     )
     voice_select_parser = subparsers.add_parser(
         "krishna-voice-select", help="Record the creator-approved Hindi narration voice."
@@ -313,7 +313,11 @@ def main() -> int:
     voice_select_parser.add_argument(
         "--sample",
         required=True,
-        choices=("sample_01_marin_warm.mp3", "sample_02_cedar_storyteller.mp3", "sample_03_coral_cheerful.mp3"),
+        choices=(
+            "sample_01_prabhat_neural.mp3",
+            "sample_02_neerja_neural.mp3",
+            "sample_03_swara_neural.mp3",
+        ),
     )
     voice_select_parser.add_argument("--destination", type=Path, default=Path("output"))
     agent_init_parser = subparsers.add_parser(
@@ -445,8 +449,9 @@ def main() -> int:
         "--minutes", type=int, default=30, help="Target video duration in minutes."
     )
     science_video_parser.add_argument(
-        "--tts-voice", default="echo",
-        help="OpenAI TTS voice (alloy, echo, fable, onyx, nova, shimmer).",
+        "--tts-voice",
+        default="en-IN-PrabhatNeural",
+        help="Edge TTS voice name for narration.",
     )
     science_video_parser.add_argument(
         "--skip-images", action="store_true", help="Skip AI image generation (use gradient placeholders)."
@@ -663,17 +668,7 @@ def main() -> int:
         action="store_true",
         help="Create scripts, subtitles and metadata without rendering MP4 previews.",
     )
-    pm_daily_parser.add_argument(
-        "--openai-tts",
-        action="store_true",
-        help="Use OpenAI TTS for narration. This is automatic when OPENAI_API_KEY is configured.",
-    )
-    pm_daily_parser.add_argument(
-        "--local-tts",
-        action="store_true",
-        help="Deprecated: PM videos now stay locked to OpenAI narration only.",
-    )
-    pm_daily_parser.add_argument("--tts-voice", default="echo")
+    pm_daily_parser.add_argument("--tts-voice", default="en-IN-PrabhatNeural")
     pm_daily_parser.add_argument(
         "--voice-sample",
         type=Path,
@@ -687,7 +682,7 @@ def main() -> int:
     pm_daily_parser.add_argument(
         "--preview-without-audio",
         action="store_true",
-        help="Render a review copy with silent narration if OpenAI TTS cannot be reached.",
+        help="Render a review copy with silent narration if Edge TTS cannot be reached.",
     )
     pm_plan_parser = subparsers.add_parser(
         "pm-slide-plan",
@@ -937,7 +932,7 @@ def main() -> int:
             generate_scene_images(workspace_dir, script, provider)
         if args.generate_audio:
             print(f"Generating {len(script.scenes)} narration audio files...")
-            generate_narration_audio(workspace_dir, script, settings, voice="echo")
+            generate_narration_audio(workspace_dir, script, settings, voice=settings.indian_tts_voice)
         if args.assemble_clips:
             print("Assembling scene clips...")
             assemble_scene_clips(workspace_dir, script)
@@ -1349,13 +1344,6 @@ def main() -> int:
         return 0
 
     if args.command == "pm-daily-videos":
-        if args.local_tts:
-            raise ValueError("PM videos are locked to OpenAI narration only; local TTS is disabled.")
-        use_openai_tts = bool(settings.openai_api_key)
-        if args.openai_tts and not settings.openai_api_key:
-            raise ValueError("OPENAI_API_KEY is required when --openai-tts is used.")
-        if not use_openai_tts:
-            raise ValueError("OPENAI_API_KEY is required for PM video narration.")
         scene_image_provider = None
         if settings.image_provider != "mock":
             try:
@@ -1369,7 +1357,7 @@ def main() -> int:
             youtube_count=args.youtube_count,
             render_videos=not args.no_render,
             template_mode=args.template_mode,
-            openai_api_key=settings.openai_api_key if use_openai_tts else "",
+            openai_api_key="",
             tts_voice=args.tts_voice,
             voice_sample_path=args.voice_sample,
             voiceover_file=args.voiceover_file,

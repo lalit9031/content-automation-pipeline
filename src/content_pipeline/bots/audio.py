@@ -26,26 +26,11 @@ HINDI_PRONUNCIATION_INSTRUCTIONS = (
     "अंग्रेज़ी प्रभाव वाला उच्चारण न करें। बच्चों की कृष्ण कहानी के लिए "
     "स्नेही, भावपूर्ण और स्पष्ट कथावाचक स्वर रखें।"
 )
-VOICE_VARIANTS = [
-    ("sample_01_marin_warm.mp3", "marin", " स्वर कोमल, मातृवत और शांत रखें।"),
-    ("sample_02_cedar_storyteller.mp3", "cedar", " स्वर भारतीय दादी-नानी की कहानी जैसा गर्म और सहज रखें।"),
-    ("sample_03_coral_cheerful.mp3", "coral", " स्वर थोड़ा अधिक हँसमुख और बच्चों को आकर्षित करने वाला रखें।"),
-]
-
 FREE_INDIAN_EDGE_VOICE_VARIANTS = [
     ("sample_01_prabhat_neural.mp3", "en-IN-PrabhatNeural", "Warm Indian English male voice for professional narration."),
     ("sample_02_neerja_neural.mp3", "en-IN-NeerjaNeural", "Warm Indian English female voice for clear storytelling."),
     ("sample_03_swara_neural.mp3", "hi-IN-SwaraNeural", "Clear Hindi female voice for family-friendly narration."),
 ]
-
-OPENAI_TTS_VOICES = (
-    "alloy",
-    "echo",
-    "fable",
-    "onyx",
-    "nova",
-    "shimmer",
-)
 
 MUSIC_PRESETS: dict[str, tuple[list[float], float]] = {
     "cinematic": ([174.0, 261.63, 392.0], 0.18),
@@ -91,9 +76,9 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
         key="english_explainer",
         label="English explainer",
         description="Clear English narration for tutorials and walkthroughs.",
-        provider="openai",
-        voice="echo",
-        language="en-US",
+        provider="edge",
+        voice="en-IN-PrabhatNeural",
+        language="en-IN",
         gender="male",
         sample_text=(
             "Let's break this workflow into simple steps. "
@@ -104,9 +89,9 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
         key="english_storyteller",
         label="English storyteller",
         description="Soft English narration with a warm storytelling flow.",
-        provider="openai",
-        voice="fable",
-        language="en-US",
+        provider="edge",
+        voice="en-IN-NeerjaNeural",
+        language="en-IN",
         gender="female",
         sample_text=(
             "Once upon a workflow, a small team learned to trust its process, refine every step, and ship with calm confidence."
@@ -176,8 +161,8 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
         key="hindi_explainer",
         label="Hindi explainer",
         description="Professional Hindi narration with a calm teaching tone.",
-        provider="openai",
-        voice="nova",
+        provider="edge",
+        voice="hi-IN-SwaraNeural",
         language="hi-IN",
         gender="female",
         sample_text=(
@@ -200,10 +185,10 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
         key="motivation_boost",
         label="Motivation boost",
         description="Bright, energetic English delivery for motivational clips.",
-        provider="openai",
-        voice="shimmer",
-        language="en-US",
-        gender="female",
+        provider="edge",
+        voice="en-IN-PrabhatNeural",
+        language="en-IN",
+        gender="male",
         sample_text=(
             "This is your reminder to keep going. Small improvements every day lead to a powerful result."
         ),
@@ -215,52 +200,34 @@ def generate_hindi_voice_samples(
     settings: Settings,
     destination: Path,
     *,
-    engine: str = "openai",
+    engine: str = "edge",
 ) -> list[Path]:
+    engine = (engine or "edge").strip().lower()
+    if engine != "edge":
+        raise ValueError("Edge TTS is the only supported engine for narration samples.")
     destination.mkdir(parents=True, exist_ok=True)
     files: list[Path] = []
-    if engine == "edge":
-        for filename, voice, additional_instruction in FREE_INDIAN_EDGE_VOICE_VARIANTS:
-            output_path = destination / filename
-            _run_async(
-                _write_edge_voice_sample(
-                    output_path,
-                    voice=voice,
-                    text=HINDI_PRONUNCIATION_TEXT,
-                    instructions=HINDI_PRONUNCIATION_INSTRUCTIONS + " " + additional_instruction,
-                )
-            )
-            files.append(output_path)
-        return files
-    if not settings.openai_api_key:
-        raise ValueError("OPENAI_API_KEY is required to generate narration samples.")
-    try:
-        from openai import OpenAI
-    except ImportError as exc:
-        raise RuntimeError("Install live dependencies with: pip install -e '.[live]'") from exc
-    client = OpenAI(api_key=settings.openai_api_key)
-    for filename, voice, additional_instruction in VOICE_VARIANTS:
-        result = client.audio.speech.create(
-            model="gpt-4o-mini-tts",
-            voice=voice,
-            input=HINDI_PRONUNCIATION_TEXT,
-            instructions=HINDI_PRONUNCIATION_INSTRUCTIONS + additional_instruction,
-        )
+    for filename, voice, additional_instruction in FREE_INDIAN_EDGE_VOICE_VARIANTS:
         output_path = destination / filename
-        output_path.write_bytes(result.read())
+        _run_async(
+            _write_edge_voice_sample(
+                output_path,
+                voice=voice,
+                text=HINDI_PRONUNCIATION_TEXT,
+                instructions=HINDI_PRONUNCIATION_INSTRUCTIONS + " " + additional_instruction,
+            )
+        )
         files.append(output_path)
     return files
 
 
 def build_voice_profile(
     *,
-    provider: str = "openai",
+    provider: str = "edge",
     language: str = "hi-IN",
     voice: str = "en-IN-PrabhatNeural",
 ) -> VoiceEngineProfile:
-    if provider == "edge":
-        return VoiceEngineProfile(name="edge-tts", language=language, voice=voice, rate="+0%", pitch="+0Hz")
-    return VoiceEngineProfile(name="openai-tts", language=language, voice=voice, rate="+0%", pitch="+0Hz")
+    return VoiceEngineProfile(name="edge-tts", language=language, voice=voice, rate="+0%", pitch="+0Hz")
 
 
 def _voice_gender(provider: str, voice: str) -> str:
@@ -272,25 +239,14 @@ def _voice_gender(provider: str, voice: str) -> str:
             "en-IN-NeerjaNeural": "female",
             "hi-IN-SwaraNeural": "female",
         },
-        "openai": {
-            "alloy": "neutral",
-            "echo": "male",
-            "fable": "female",
-            "onyx": "male",
-            "nova": "female",
-            "shimmer": "female",
-        },
     }
     return gender_map.get(provider, {}).get(voice, "neutral")
 
 
 def available_voice_options(provider: str, gender: str = "all") -> list[tuple[str, str]]:
-    provider = (provider or "").strip().lower()
+    provider = "edge"
     gender = (gender or "all").strip().lower()
-    if provider == "edge":
-        options = [(voice, f"{voice} - {description}") for _, voice, description in FREE_INDIAN_EDGE_VOICE_VARIANTS]
-    else:
-        options = [(voice, voice.title()) for voice in OPENAI_TTS_VOICES]
+    options = [(voice, f"{voice} - {description}") for _, voice, description in FREE_INDIAN_EDGE_VOICE_VARIANTS]
     if gender == "all":
         return options
     return [option for option in options if _voice_gender(provider, option[0]) == gender]
@@ -514,28 +470,8 @@ def generate_voice_preview(
     voice: str,
     openai_api_key: str = "",
 ) -> Path:
-    provider = (provider or "").strip().lower()
-    if provider == "edge":
-        return generate_indian_voiceover(text, output_path, voice=voice)
-    if not openai_api_key:
-        raise ValueError("OPENAI_API_KEY is required to generate an OpenAI voice preview.")
-    try:
-        from openai import OpenAI
-    except ImportError as exc:
-        raise RuntimeError("Install live dependencies with: pip install -e '.[live]'") from exc
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    client = OpenAI(api_key=openai_api_key)
-    result = client.audio.speech.create(
-        model="gpt-4o-mini-tts",
-        voice=voice,
-        input=normalize_voice_text(text),
-        instructions=(
-            "Speak clearly and naturally for narration preview. "
-            "Keep pacing steady and pronunciation crisp."
-        ),
-    )
-    output_path.write_bytes(result.read())
-    return output_path
+    _ = openai_api_key, provider
+    return generate_indian_voiceover(text, output_path, voice=voice)
 
 
 def generate_music_preview(output_path: Path, mood: str, *, duration_seconds: int = 8) -> Path:
@@ -679,8 +615,13 @@ def write_voice_daily_artifacts(output_dir: Path, settings: Settings, *, day: st
         "voice_samples_readme": readme_path,
     }
 
+    sample_generation_error = ""
     if settings.voice_provider == "edge":
-        generated = generate_hindi_voice_samples(settings, samples_dir, engine="edge")
+        try:
+            generated = generate_hindi_voice_samples(settings, samples_dir, engine="edge")
+        except RuntimeError as exc:
+            generated = []
+            sample_generation_error = str(exc)
         for path in generated:
             written[path.stem] = path
 
@@ -691,6 +632,11 @@ def write_voice_daily_artifacts(output_dir: Path, settings: Settings, *, day: st
         generated_at=datetime.now(timezone.utc).isoformat(),
         preview_text=preview_text,
     )
+    if sample_generation_error:
+        status["sample_generation_error"] = sample_generation_error
+        status["samples_manifest"]["note"] = (
+            f"{status['samples_manifest']['note']} Edge sample generation fallback: {sample_generation_error}"
+        )
     status_path = daily_dir / "voice_status.json"
     status_path.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     status_html_path = daily_dir / "voice_status.html"

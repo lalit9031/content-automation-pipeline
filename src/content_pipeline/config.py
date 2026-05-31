@@ -26,7 +26,7 @@ class Settings:
     gemini_image_max_attempts: int = 8
     gemini_image_retry_backoff_seconds: float = 120.0
     image_fallback_provider: str = "imagen"
-    voice_provider: str = "openai"
+    voice_provider: str = "edge"
     indian_tts_voice: str = "en-IN-PrabhatNeural"
     image_max_dimension: int = 2048
     image_max_bytes: int = 5 * 1024 * 1024
@@ -94,7 +94,7 @@ class Settings:
                 os.getenv("GEMINI_IMAGE_RETRY_BACKOFF_SECONDS", "120")
             ),
             image_fallback_provider=os.getenv("IMAGE_FALLBACK_PROVIDER", "imagen").strip().lower(),
-            voice_provider=os.getenv("VOICE_PROVIDER", "openai").strip().lower(),
+            voice_provider="edge",
             indian_tts_voice=os.getenv("INDIAN_TTS_VOICE", "en-IN-PrabhatNeural"),
             image_max_dimension=int(os.getenv("IMAGE_MAX_DIMENSION", "2048")),
             image_max_bytes=int(os.getenv("IMAGE_MAX_BYTES", str(5 * 1024 * 1024))),

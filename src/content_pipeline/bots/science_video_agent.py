@@ -140,8 +140,8 @@ def create_science_video_workspace(
         root,
         script,
         audio_status="pending",
-        provider="openai",
-        voice="echo",
+        provider="edge",
+        voice="en-IN-PrabhatNeural",
         generated_audio=[],
         fallback_count=0,
         notes="Narration audio will be generated later or replaced with silent placeholders if needed.",
@@ -212,15 +212,15 @@ def generate_narration_audio(
     workspace_dir: Path,
     script: ScienceStoryScript,
     settings: Settings,
-    voice: str = "echo",
+    voice: str = "en-IN-PrabhatNeural",
 ) -> list[Path]:
-    """Generate Hindi narration audio for each scene using OpenAI TTS.
+    """Generate narration audio for each scene using Edge TTS.
 
     Args:
         workspace_dir: Path to the workspace directory.
         script: The science story script.
-        settings: Pipeline settings (requires OPENAI_API_KEY).
-        voice: OpenAI TTS voice name.
+        settings: Pipeline settings.
+        voice: Edge TTS voice name.
 
     Returns:
         Paths to all generated MP3 files.
@@ -229,7 +229,7 @@ def generate_narration_audio(
     audio_dir.mkdir(parents=True, exist_ok=True)
 
     generated: list[Path] = []
-    use_edge_voice = settings.voice_provider == "edge" or not settings.openai_api_key
+    use_edge_voice = True
     audio_rows: list[dict[str, Any]] = []
     fallback_count = 0
     for index, scene in enumerate(script.scenes):
@@ -242,35 +242,19 @@ def generate_narration_audio(
                     "title": scene.title,
                     "audio_file": str(audio_path),
                     "status": "existing",
-                    "provider": "edge" if use_edge_voice else "openai",
+                    "provider": "edge",
                     "voice": settings.indian_tts_voice if use_edge_voice else voice,
                 }
             )
             continue
 
         try:
-            if use_edge_voice:
-                edge_voice = settings.indian_tts_voice if settings.indian_tts_voice else "en-IN-PrabhatNeural"
-                generate_indian_voiceover(
-                    normalize_voice_text(scene.narration_hi),
-                    audio_path,
-                    voice=edge_voice,
-                )
-            else:
-                if not settings.openai_api_key:
-                    raise ValueError("OPENAI_API_KEY is required for narration audio generation.")
-                try:
-                    from openai import OpenAI
-                except ImportError as exc:
-                    raise RuntimeError("Install live dependencies with: pip install -e '.[live]'") from exc
-                client = OpenAI(api_key=settings.openai_api_key)
-                result = client.audio.speech.create(
-                    model="gpt-4o-mini-tts",
-                    voice=voice,
-                    input=scene.narration_hi,
-                    instructions=HINDI_TTS_INSTRUCTIONS,
-                )
-                audio_path.write_bytes(result.read())
+            edge_voice = settings.indian_tts_voice if settings.indian_tts_voice else "en-IN-PrabhatNeural"
+            generate_indian_voiceover(
+                normalize_voice_text(scene.narration_hi),
+                audio_path,
+                voice=edge_voice,
+            )
             generated.append(audio_path)
             audio_rows.append(
                 {
@@ -278,7 +262,7 @@ def generate_narration_audio(
                     "title": scene.title,
                     "audio_file": str(audio_path),
                     "status": "generated",
-                    "provider": "edge" if use_edge_voice else "openai",
+                    "provider": "edge",
                     "voice": settings.indian_tts_voice if use_edge_voice else voice,
                 }
             )
@@ -305,12 +289,12 @@ def generate_narration_audio(
         workspace_dir,
         script,
         audio_status="ready" if generated else "empty",
-        provider="edge" if use_edge_voice else "openai",
+        provider="edge",
         voice=settings.indian_tts_voice if use_edge_voice else voice,
         generated_audio=audio_rows,
         fallback_count=fallback_count,
         notes=(
-            "Edge TTS is used when VOICE_PROVIDER=edge or when no OpenAI API key is configured. "
+            "Edge TTS is used for every science narration path. "
             "Silent fallback files are created only when narration generation fails."
         ),
     )
@@ -625,7 +609,7 @@ def create_science_video(
     settings: Settings,
     topic: str = "",
     target_minutes: int = 30,
-    tts_voice: str = "echo",
+    tts_voice: str = "en-IN-PrabhatNeural",
     skip_images: bool = False,
     skip_audio: bool = False,
     skip_assembly: bool = False,
@@ -636,7 +620,7 @@ def create_science_video(
         settings: Pipeline settings.
         topic: Science topic. Auto-selects if empty.
         target_minutes: Target video duration in minutes.
-        tts_voice: OpenAI TTS voice name.
+        tts_voice: Edge TTS voice name.
         skip_images: Skip image generation (use placeholders).
         skip_audio: Skip audio generation (use silence).
         skip_assembly: Skip final video assembly.

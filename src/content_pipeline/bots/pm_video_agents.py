@@ -17,6 +17,7 @@ except ImportError:  # pragma: no cover - optional dependency
     cairosvg = None
 
 from content_pipeline.bots.linkedin_video import render_video_linkedin_post
+from content_pipeline.bots.audio import generate_indian_voiceover, normalize_voice_text
 from content_pipeline.bots.image import ImageProvider, ImageVariant
 from content_pipeline.bots.pm_slide_router import build_slide_plan
 from content_pipeline.content_history import ContentHistory, record_history_entry, select_unused_topics
@@ -200,7 +201,7 @@ def create_daily_pm_video_batch(
     render_videos: bool = False,
     template_mode: str = "random",
     openai_api_key: str = "",
-    tts_voice: str = "echo",
+    tts_voice: str = "en-IN-PrabhatNeural",
     voice_sample_path: Path | None = None,
     voiceover_file: Path | None = None,
     youtube_channel_url: str = "",
@@ -310,7 +311,7 @@ def create_pm_video_workspace(
     episode: VideoEpisode,
     render_video: bool = False,
     openai_api_key: str = "",
-    tts_voice: str = "echo",
+    tts_voice: str = "en-IN-PrabhatNeural",
     voice_sample_path: Path | None = None,
     voiceover_file: Path | None = None,
     youtube_channel_url: str = "",
@@ -410,7 +411,7 @@ def render_pm_episode_preview(
     episode: VideoEpisode,
     agent: PMVideoAgent,
     openai_api_key: str = "",
-    tts_voice: str = "echo",
+    tts_voice: str = "en-IN-PrabhatNeural",
     voiceover_file: Path | None = None,
     preview_without_audio: bool = False,
     scene_image_provider: ImageProvider | None = None,
@@ -569,7 +570,7 @@ def _render_scene_audio(
     index: int,
     speed_boost: float,
     openai_api_key: str = "",
-    tts_voice: str = "echo",
+    tts_voice: str = "en-IN-PrabhatNeural",
     preview_without_audio: bool = False,
 ) -> Path:
     raw_dir = root / "audio" / "raw"
@@ -577,12 +578,8 @@ def _render_scene_audio(
     raw_dir.mkdir(parents=True, exist_ok=True)
     synced_dir.mkdir(parents=True, exist_ok=True)
     raw_path = raw_dir / f"scene_{index:02d}.mp3"
-    if not openai_api_key:
-        if preview_without_audio:
-            return _silent_scene_audio(root, clip.duration_seconds, index)
-        raise RuntimeError("OpenAI TTS is required for PM narration.")
     try:
-        _openai_tts(clip.narration, raw_path, openai_api_key, tts_voice)
+        _edge_tts(clip.narration, raw_path, tts_voice)
     except RuntimeError:
         if preview_without_audio:
             return _silent_scene_audio(root, clip.duration_seconds, index)
@@ -622,30 +619,16 @@ def _silent_scene_audio(root: Path, duration: int, index: int) -> Path:
     return output_path
 
 
-def _openai_tts(text: str, output_path: Path, api_key: str, voice: str) -> None:
+def _edge_tts(text: str, output_path: Path, voice: str) -> None:
     try:
-        from openai import OpenAI
-    except ImportError as exc:
-        raise RuntimeError("OpenAI package is required for polished PM narration.") from exc
-    try:
-        result = OpenAI(api_key=api_key).audio.speech.create(
-            model="gpt-4o-mini-tts",
+        generate_indian_voiceover(
+            normalize_voice_text(text),
+            output_path,
             voice=voice,
-            input=text,
-            instructions=(
-                "Speak in a warm, energetic Indian English male business educator voice. "
-                "Use the creator's supplied voice sample only as a style reference, not "
-                "as an exact clone: natural Indian cadence, confident but friendly tone, "
-                "clear PM trainer delivery, medium pace, crisp emphasis on key terms, "
-                "and no dramatic announcer style. Match a finished project management "
-                "YouTube explainer: clear, practical, trustworthy, and conversational. "
-                "Keep the pace engaging, never stretched, and pause briefly after questions."
-            ),
         )
     except Exception as exc:
-        raise RuntimeError("OpenAI TTS failed; refusing to render low-quality fallback narration.") from exc
-    output_path.write_bytes(result.read())
-    _require_valid_audio(output_path, "OpenAI TTS")
+        raise RuntimeError("Edge TTS failed; refusing to render low-quality fallback narration.") from exc
+    _require_valid_audio(output_path, "Edge TTS")
 
 
 def _local_say_tts(text: str, output_path: Path) -> None:
@@ -672,7 +655,7 @@ def _local_say_tts(text: str, output_path: Path) -> None:
         _require_valid_audio(output_path, "espeak-ng TTS")
         return
     if not say_executable:
-        raise RuntimeError("No local TTS engine found. Install espeak-ng or use --openai-tts.")
+        raise RuntimeError("No local TTS engine found. Install espeak-ng or use Edge TTS.")
     aiff_path = output_path.with_suffix(".aiff")
     subprocess.run(
         [say_executable, "-v", "Samantha", "-r", "185", "-o", str(aiff_path), text],
@@ -802,7 +785,8 @@ def _audio_reference_manifest(
     voiceover_file: Path | None,
     preview_without_audio: bool,
 ) -> dict[str, Any]:
-    narration_mode = "openai_tts" if openai_api_key else "preview_without_audio" if preview_without_audio else "unavailable"
+    _ = openai_api_key
+    narration_mode = "edge_tts" if not preview_without_audio else "preview_without_audio"
     return {
         "episode_id": episode.episode_id,
         "agent": agent.name,
@@ -816,14 +800,14 @@ def _audio_reference_manifest(
         "preview_without_audio": preview_without_audio,
         "voice_sample_copied": bool(voice_sample_path),
         "note": (
-            "PM narration is OpenAI-first. The stored sample is a creator reference, "
+            "PM narration is rendered with Edge TTS. The stored sample is a creator reference, "
             "and preview_without_audio enables a silent review path when rendering is not desired."
         ),
     }
 
 
 def _audio_reference_status_html(manifest: dict[str, Any]) -> str:
-    badge = "OpenAI narration" if manifest.get("narration_mode") == "openai_tts" else "Silent preview"
+    badge = "Edge narration" if manifest.get("narration_mode") == "edge_tts" else "Silent preview"
     return f"""<section style="background:#111827;border:1px solid #334155;border-radius:18px;padding:16px;color:#e2e8f0;">
   <div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#7dd3fc;font-weight:800;">PM audio</div>
   <div style="margin-top:6px;font-size:20px;font-weight:800;">{escape(badge)}</div>

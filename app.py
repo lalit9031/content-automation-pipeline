@@ -226,24 +226,17 @@ def apply_voice_preset_by_key(preset_key: str) -> None:
     if not preset:
         return
     st.session_state["voice_preset_choice"] = preset.key
-    st.session_state["voice_provider_choice"] = preset.provider
+    st.session_state["voice_provider_choice"] = "edge"
     st.session_state["voice_name_choice"] = preset.voice
     st.session_state["voice_preview_text"] = preset.sample_text
 
 
-def _voice_preview_fallback_voice(provider: str, gender: str) -> str:
-    provider = (provider or "").strip().lower()
+def _voice_preview_fallback_voice(gender: str) -> str:
     gender = (gender or "all").strip().lower()
-    if provider == "edge":
-        if gender == "male":
-            return "en-IN-PrabhatNeural"
-        if gender == "female":
-            return "en-IN-NeerjaNeural"
-        return "hi-IN-SwaraNeural"
     if gender == "male":
-        return "onyx"
+        return "en-IN-PrabhatNeural"
     if gender == "female":
-        return "nova"
+        return "en-IN-NeerjaNeural"
     return "echo"
 
 
@@ -251,22 +244,19 @@ def _generate_voice_preview_with_fallback(
     *,
     text: str,
     preview_path: Path,
-    provider: str,
     voice: str,
-    openai_api_key: str,
     gender_hint: str = "all",
 ) -> Path:
     try:
         return generate_voice_preview(
             text,
             preview_path,
-            provider=provider,
+            provider="edge",
             voice=voice,
-            openai_api_key=openai_api_key,
         )
     except Exception as exc:
-        if provider.strip().lower() == "openai":
-            fallback_voice = _voice_preview_fallback_voice("edge", gender_hint)
+        fallback_voice = _voice_preview_fallback_voice(gender_hint)
+        if voice != fallback_voice:
             try:
                 fallback_path = preview_path.with_name(f"{preview_path.stem}_edge{preview_path.suffix}")
                 generate_voice_preview(
@@ -274,11 +264,8 @@ def _generate_voice_preview_with_fallback(
                     fallback_path,
                     provider="edge",
                     voice=fallback_voice,
-                    openai_api_key="",
                 )
-                st.warning(
-                    "OpenAI voice preview could not run for this account, so the app fell back to Edge TTS."
-                )
+                st.warning("Voice preview could not run with the selected voice, so the app fell back to Edge TTS.")
                 return fallback_path
             except Exception:
                 pass
@@ -464,7 +451,7 @@ def render_frontdoor(settings: Settings) -> None:
     if st.session_state.get("_studio_output_dir") != str(ui_output_dir):
         st.session_state["_studio_output_dir"] = str(ui_output_dir)
         st.session_state["voice_preset_choice"] = saved_studio_state.get("voice_preset_choice", "english_explainer")
-        st.session_state["voice_provider_choice"] = saved_studio_state.get("voice_provider", settings.voice_provider)
+        st.session_state["voice_provider_choice"] = "edge"
         st.session_state["voice_name_choice"] = saved_studio_state.get("voice_name", settings.indian_tts_voice)
         st.session_state["voice_preview_text"] = saved_studio_state.get(
             "voice_preview_text",
@@ -515,7 +502,7 @@ def render_frontdoor(settings: Settings) -> None:
         st.session_state["image_preview_path"] = ""
         st.session_state["music_preview_path"] = ""
     st.session_state.setdefault("voice_preset_choice", "english_explainer")
-    st.session_state.setdefault("voice_provider_choice", settings.voice_provider)
+    st.session_state.setdefault("voice_provider_choice", "edge")
     st.session_state.setdefault("voice_name_choice", settings.indian_tts_voice)
     st.session_state.setdefault(
         "voice_preview_text",
@@ -579,28 +566,22 @@ def render_frontdoor(settings: Settings) -> None:
     apply_voice_preset = st.sidebar.button("Apply voice preset", use_container_width=True)
     if apply_voice_preset:
         preset = preset_map[st.session_state["voice_preset_choice"]]
-        st.session_state["voice_provider_choice"] = preset.provider
+        st.session_state["voice_provider_choice"] = "edge"
         st.session_state["voice_name_choice"] = preset.voice
         st.session_state["voice_preview_text"] = preset.sample_text
         st.rerun()
-    voice_provider_options = ("edge", "openai")
-    default_voice_provider = st.session_state["voice_provider_choice"]
-    if default_voice_provider not in voice_provider_options:
-        default_voice_provider = "edge"
-        st.session_state["voice_provider_choice"] = default_voice_provider
-    voice_provider_choice = st.sidebar.selectbox(
+    st.sidebar.selectbox(
         "Voice provider",
-        options=voice_provider_options,
-        index=voice_provider_options.index(default_voice_provider),
+        options=("edge",),
+        index=0,
         key="voice_provider_choice",
     )
-    voice_options = available_voice_options(voice_provider_choice, st.session_state["voice_gender_filter"])
+    voice_provider_choice = "edge"
+    voice_options = available_voice_options("edge", st.session_state["voice_gender_filter"])
     if not voice_options:
-        voice_options = available_voice_options(voice_provider_choice)
+        voice_options = available_voice_options("edge")
     voice_option_values = [voice for voice, _ in voice_options]
-    default_voice = st.session_state["voice_name_choice"] or (
-        settings.indian_tts_voice if voice_provider_choice == "edge" else "echo"
-    )
+    default_voice = st.session_state["voice_name_choice"] or settings.indian_tts_voice
     if default_voice not in voice_option_values:
         default_voice = voice_option_values[0]
     if st.session_state["voice_name_choice"] not in voice_option_values:
@@ -1290,13 +1271,11 @@ def render_frontdoor(settings: Settings) -> None:
                             preview_output = _generate_voice_preview_with_fallback(
                                 text=preset.sample_text,
                                 preview_path=preview_path,
-                                provider=preset.provider,
                                 voice=preset.voice,
-                                openai_api_key=ui_settings.openai_api_key,
                                 gender_hint=preset.gender,
                             )
                             st.session_state["voice_preview_path"] = str(preview_output)
-                            st.session_state["voice_provider_choice"] = preset.provider
+                            st.session_state["voice_provider_choice"] = "edge"
                             st.session_state["voice_name_choice"] = preset.voice
                             st.session_state["voice_preview_text"] = preset.sample_text
                             st.success(f"Sample written to {preview_output}")
@@ -1320,9 +1299,7 @@ def render_frontdoor(settings: Settings) -> None:
                 preview_output = _generate_voice_preview_with_fallback(
                     text=voice_preview_text,
                     preview_path=preview_file,
-                    provider=voice_provider_choice,
                     voice=voice_name_choice,
-                    openai_api_key=ui_settings.openai_api_key,
                     gender_hint=st.session_state["voice_gender_filter"],
                 )
                 st.session_state["voice_preview_path"] = str(preview_output)
@@ -1496,7 +1473,7 @@ def render_frontdoor(settings: Settings) -> None:
         ui_output_dir,
         {
             "voice_preset_choice": str(st.session_state["voice_preset_choice"]),
-            "voice_provider": str(st.session_state["voice_provider_choice"]),
+            "voice_provider": "edge",
             "voice_name": str(st.session_state["voice_name_choice"]),
             "voice_preview_text": str(st.session_state["voice_preview_text"]),
             "voice_preview_path": str(st.session_state["voice_preview_path"]),

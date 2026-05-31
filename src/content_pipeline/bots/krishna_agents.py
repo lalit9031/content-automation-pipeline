@@ -10,7 +10,7 @@ from typing import Any
 
 import requests
 
-from content_pipeline.bots.audio import VOICE_VARIANTS
+from content_pipeline.bots.audio import FREE_INDIAN_EDGE_VOICE_VARIANTS
 from content_pipeline.bots.image import ImageProvider, ImageVariant
 from content_pipeline.config import Settings
 
@@ -117,9 +117,9 @@ def agent_registry() -> list[AgentDefinition]:
 
 def voice_source_policy() -> dict[str, Any]:
     return {
-        "default_mode": "built_in_ai_voice",
+        "default_mode": "edge_tts",
         "currently_allowed": [
-            "OpenAI built-in voices with AI-generated voice disclosure.",
+            "Edge TTS built-in voices with AI-generated voice disclosure.",
             "The creator's own voice with explicit consent recorded.",
             "A hired narrator voice only with written permission and voice-model consent recorded.",
         ],
@@ -135,12 +135,12 @@ def voice_source_policy() -> dict[str, Any]:
             "AI voice disclosure in audience-facing metadata.",
         ],
         "reason": "Copyright or an open license for audio does not by itself grant permission to create a synthetic likeness of the speaker's voice.",
-        "source": "https://developers.openai.com/api/docs/guides/text-to-speech#custom-voices",
+        "source": "https://learn.microsoft.com/en-us/azure/ai-services/speech-service/text-to-speech",
     }
 
 
 def write_voice_selection(output_dir: Path, sample_filename: str) -> Path:
-    variants = {filename: voice for filename, voice, _ in VOICE_VARIANTS}
+    variants = {filename: voice for filename, voice, _ in FREE_INDIAN_EDGE_VOICE_VARIANTS}
     if sample_filename not in variants:
         raise ValueError(f"Unknown Krishna voice sample: {sample_filename}")
     path = output_dir / WORKFLOW_ID / "voice_selection.json"
@@ -149,13 +149,13 @@ def write_voice_selection(output_dir: Path, sample_filename: str) -> Path:
         "workflow_id": WORKFLOW_ID,
         "selected_sample": sample_filename,
         "voice": variants[sample_filename],
-        "model": "gpt-4o-mini-tts",
+        "model": "edge-tts",
         "selection_status": "creator_approved",
         "selected_on": date.today().isoformat(),
         "language": "Hindi",
         "pronunciation_terms": ["यशोदा", "गोकुल", "कान्हा"],
         "disclosure_required": "Narration is AI-generated.",
-        "voice_source_mode": "built_in_ai_voice",
+        "voice_source_mode": "edge_tts",
     }
     path.write_text(json.dumps(selection, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return path
