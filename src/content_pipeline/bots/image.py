@@ -689,12 +689,18 @@ class PollinationsImageProvider:
         import urllib.parse
         import requests
         import time
+        import random
 
         encoded_prompt = urllib.parse.quote(prompt)
-        url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width={variant.width}&height={variant.height}&nologo=true&private=true"
+        random_seed = random.randint(10000, 99999)
+        url = (
+            f"https://image.pollinations.ai/prompt/{encoded_prompt}"
+            f"?width={variant.width}&height={variant.height}"
+            f"&model=flux&seed={random_seed}"
+        )
         try:
             time.sleep(3)  # Anti-rate-limiting delay
-            response = requests.get(url, timeout=30)
+            response = requests.get(url, timeout=45)
             response.raise_for_status()
             return response.content
         except Exception:
@@ -783,13 +789,19 @@ def _assert_image_limits(
 
 
 def _png_dimensions(image_bytes: bytes) -> tuple[int, int]:
-    if len(image_bytes) < 24 or not image_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
-        raise ValueError("PNG image bytes were not valid.")
-    if image_bytes[12:16] != b"IHDR":
-        raise ValueError("PNG image bytes are missing IHDR metadata.")
-    width = struct.unpack(">I", image_bytes[16:20])[0]
-    height = struct.unpack(">I", image_bytes[20:24])[0]
-    return width, height
+    if len(image_bytes) >= 24 and image_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
+        if image_bytes[12:16] == b"IHDR":
+            width = struct.unpack(">I", image_bytes[16:20])[0]
+            height = struct.unpack(">I", image_bytes[20:24])[0]
+            return width, height
+    # Fallback to Pillow (PIL) for other formats (e.g. JPEGs returned from Pollinations)
+    try:
+        from PIL import Image
+        from io import BytesIO
+        img = Image.open(BytesIO(image_bytes))
+        return img.width, img.height
+    except Exception:
+        raise ValueError("Image bytes were not valid and could not be parsed.")
 
 
 def _response_image_bytes(response: object) -> bytes | None:
