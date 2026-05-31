@@ -80,10 +80,10 @@ def humanize_child_pacing_punctuation(text: str) -> str:
     instead of XML break tags, which the service rejects.
     """
     processed = text.strip()
-    processed = processed.replace("! ", "...!  ")
-    processed = processed.replace(", ", ", ...  ")
-    processed = processed.replace(". ", "...  ")
-    processed = processed.replace("? ", "...?  ")
+    processed = re.sub(r"!\s*", "...!  ", processed)
+    processed = re.sub(r",\s*", ", ...  ", processed)
+    processed = re.sub(r"\.\s*", "...  ", processed)
+    processed = re.sub(r"\?\s*", "...?  ", processed)
     return processed
 
 
@@ -93,12 +93,9 @@ def inject_dramatic_story_pauses_punctuation(text: str) -> str:
     (ellipses, commas, and extra spaces) to safely bypass Microsoft's tag block.
     """
     processed = text.strip()
-    processed = processed.replace(", ", ", ...  ")
-    processed = processed.replace(",", ", ...  ")
-    processed = processed.replace(". ", ". ...   ")
-    processed = processed.replace(".", ". ...   ")
-    processed = processed.replace("? ", "? ...   ")
-    processed = processed.replace("?", "? ...   ")
+    processed = re.sub(r",\s*", ", ...  ", processed)
+    processed = re.sub(r"\.\s*", ". ...   ", processed)
+    processed = re.sub(r"\?\s*", "? ...   ", processed)
     return processed
 
 
