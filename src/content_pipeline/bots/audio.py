@@ -122,30 +122,30 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
     VoicePreviewPreset(
         key="toddler_girl",
         label="3-4 Year Old Little Girl (Excited & Playful)",
-        description="Sharp, rapid, high-energy child voice with excitable, natural breathing pacing.",
+        description="Cute, native 3-year-old female child voice with natural toddler breathing pacing.",
         provider="edge",
-        voice="hi-IN-SwaraNeural",
-        language="hi-IN",
+        voice="en-US-AnaNeural",
+        language="en-US",
         gender="female",
         sample_text=(
             "Look look! A friendly robot is here! It is holding my hand and helping me win the career race! Yay!"
         ),
-        rate="+20%",
-        pitch="+11Hz",
+        rate="+4%",
+        pitch="+0Hz",
     ),
     VoicePreviewPreset(
         key="toddler_boy",
         label="3-4 Year Old Little Boy (High-Energy Cartoon)",
-        description="Playful, accelerated cartoon child voice with natural breathing pacing.",
+        description="Cute, native 4-year-old male child voice with natural toddler breathing pacing.",
         provider="edge",
-        voice="hi-IN-MadhurNeural",
-        language="hi-IN",
+        voice="en-US-EricNeural",
+        language="en-US",
         gender="male",
         sample_text=(
             "Wow! See that big shiny computer? The robot is typing so fast! Zoom zoom! We are running very fast!"
         ),
-        rate="+16%",
-        pitch="+8Hz",
+        rate="+2%",
+        pitch="+0Hz",
     ),
     VoicePreviewPreset(
         key="story_female",
@@ -429,6 +429,8 @@ def _voice_gender(provider: str, voice: str) -> str:
             "hi-IN-SwaraNeural": "female",
             "hi-IN-MadhurNeural": "male",
             "hi-IN-AaravNeural": "male",
+            "en-US-AnaNeural": "female",
+            "en-US-EricNeural": "male",
         },
     }
     return gender_map.get(provider, {}).get(voice, "neutral")
