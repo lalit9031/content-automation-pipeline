@@ -1595,6 +1595,159 @@ def render_frontdoor(settings: Settings) -> None:
                     except Exception as exc:
                         st.error(str(exc))
 
+        st.markdown("---")
+        st.markdown("### 🛠️ Deep-Dive: Behind the Scenes of this Video's Creation")
+
+        exp_prompts, exp_images, exp_overlays, exp_compilation = st.tabs([
+            "1. Prompt Engineering 📝",
+            "2. Image Generation 🖼️",
+            "3. High-Contrast Subtitles 💬",
+            "4. Video Compilation 🎬"
+        ])
+
+        with exp_prompts:
+            st.markdown(
+                """
+                <h4>The Secret to Visual Consistency: Style Prompt Injection</h4>
+                <p>To ensure all 35 scenes share a perfectly cohesive visual style, we created a <b>Master Style String</b> that is automatically appended to the end of every scene description:</p>
+                """,
+                unsafe_allow_html=True,
+            )
+            st.code(
+                "A premium, highly attractive 3D Pixar claymation character illustration, warm expressive characters, friendly and approachable software developer, beautifully rounded shapes, smooth modern tech surfaces with tactile glassmorphism textures, soft pastel purple and cyan highlights, subtle orange/gold glow, warm volumetric studio lighting, gentle depth of field, subtle glowing particles, high-detail textures, 8k resolution, cinematic composition, zero text, zero logos, no watermark.",
+                language="text"
+            )
+            st.markdown(
+                """
+                <p>By defining the character traits, color palettes, lighting details, and strict constraints (like <i>zero text</i> and <i>no watermark</i>), the image model renders uniform results across every scene!</p>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        with exp_images:
+            st.markdown(
+                """
+                <h4>Keyless, Reliable Image Downloads with Self-Healing Fallbacks</h4>
+                <p>Public APIs like <i>Pollinations.ai</i> can occasionally time out or experience high load. To solve this, we implemented a custom, robust downloader featuring:</p>
+                <ul>
+                  <li><b>Exponential Backoff Retries:</b> Automatically retries failed API calls up to 4 times, starting with a 6-second delay and doubling it on subsequent failures.</li>
+                  <li><b>Pillow Integrity Check:</b> Instantly attempts to open the downloaded image bytes using the Pillow library. If the image is corrupted or incomplete, it is rejected and retried.</li>
+                  <li><b>Premium Fallback Slide:</b> If all retries fail, it falls back to a sleek charcoal-to-indigo gradient background with glowing tech grids, ensuring the script never crashes.</li>
+                </ul>
+                """,
+                unsafe_allow_html=True,
+            )
+            st.code(
+                """
+def fetch_ai_image_with_retry(prompt: str, variant: ImageVariant, output_path: Path):
+    full_prompt = prompt.strip() + master_style
+    encoded_prompt = urllib.parse.quote(full_prompt)
+    url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width={variant.width}&height={variant.height}&nologo=true&private=true"
+    
+    max_retries = 4
+    delay = 6
+    for attempt in range(1, max_retries + 1):
+        try:
+            response = requests.get(url, timeout=60)
+            response.raise_for_status()
+            img = Image.open(BytesIO(response.content))
+            img.verify() # Verify image integrity
+            output_path.write_bytes(response.content)
+            return
+        except Exception as e:
+            time.sleep(delay)
+            delay *= 2
+    # Fallback if all retries fail
+    generate_premium_fallback_background(output_path)
+                """,
+                language="python"
+            )
+
+        with exp_overlays:
+            st.markdown(
+                """
+                <h4>Dynamic Subtitle Rendering via Pillow</h4>
+                <p>Standard FFmpeg text filters (like <code>drawtext</code>) require the external <code>libfreetype</code> library, which is often missing or uncompiled on local machines.</p>
+                <p>To bypass this limitation, we engineered a <b>Pillow-based caption overlay system</b> that draws subtitles directly onto the image before rendering the video:</p>
+                <ul>
+                  <li><b>Design:</b> Draws a sleek, semi-transparent dark-gray panel (70% opacity) with a thin cyan border and crisp white text.</li>
+                  <li><b>Outline:</b> Ensures perfect readability regardless of the background detail.</li>
+                  <li><b>Centering:</b> Calculates font bounding boxes dynamically to perfectly center the text within the lower third.</li>
+                </ul>
+                """,
+                unsafe_allow_html=True,
+            )
+            st.code(
+                """
+def overlay_lower_third_text(image_path: Path, output_path: Path, text: str):
+    img = Image.open(image_path).convert("RGBA")
+    draw = ImageDraw.Draw(img)
+    w, h = img.size
+    
+    # Calculate box coordinates and draw rounded caption banner
+    draw.rounded_rectangle(
+        [banner_x1, banner_y1, banner_x2, banner_y2],
+        radius=12,
+        fill=(17, 24, 39, 180),   # #111827 dark gray
+        outline=(56, 189, 248, 150), # #38bdf8 cyan outline
+        width=2
+    )
+    # Draw centered white text
+    draw.text((text_x, text_y), text, font=font, fill=(255, 255, 255, 255))
+    img.convert("RGB").save(output_path, "PNG")
+                """,
+                language="python"
+            )
+
+        with exp_compilation:
+            st.markdown(
+                """
+                <h4>Professional Narrator & Seamless Stream Concatenation</h4>
+                <p>Our video pipeline orchestrates three distinct automation systems to compile the final video:</p>
+                <ol>
+                  <li><b>Voiceover Rendering:</b> Uses Microsoft Edge TTS with the professional <code>en-IN-PrabhatNeural</code> voice, delivering the precise tone and cadence of an Indian teacher.</li>
+                  <li><b>Silent Video Loop:</b> Compiles silent, captioned video clips from the pristine storyboard images, adjusting the frames to match the exact millisecond duration of the corresponding audio clip.</li>
+                  <li><b>Lossless Concatenation:</b> Merges the audio and video tracks for each scene, then joins all 35 parts together using FFmpeg's high-speed <code>concat</code> stream copy filter to prevent any re-encoding loss.</li>
+                </ol>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        json_path = Path("/Users/lalitprasadsingh/.gemini/antigravity/scratch/content-automation-pipeline/scratch/fresher_scenes_data.json")
+        if json_path.exists():
+            st.markdown("---")
+            st.markdown("### 📋 Storyboard & Scene Explorer")
+            with open(json_path, "r", encoding="utf-8") as f:
+                scenes_data = json.load(f)
+                
+            selected_scene_num = st.selectbox(
+                "Select a Scene to Inspect",
+                options=[i for i in range(1, len(scenes_data) + 1)],
+                format_func=lambda x: f"Scene {x}: {scenes_data[x-1]['title']}"
+            )
+            
+            scene_info = scenes_data[selected_scene_num - 1]
+            
+            st.markdown(
+                f"""
+                <div class="metric-box" style="border: 1px solid rgba(168,85,247,0.3); background: rgba(15, 23, 42, 0.95); margin-bottom: 14px;">
+                  <div class="metric-label" style="color: #a855f7; font-weight: 800; font-size: 11px;">Scene {selected_scene_num} Info</div>
+                  <div class="metric-value" style="font-size: 18px; margin-top: 6px; color: #f8fafc;">{scene_info['title']}</div>
+                  <div style="margin-top:10px;color:#e2e8f0;font-size:13px;line-height:1.45;"><b>Narration Script:</b> <i>"{scene_info['narration']}"</i></div>
+                  <div style="margin-top:6px;color:#cbd5e1;font-size:13px;line-height:1.45;"><b>On-Screen Subtitle:</b> <code>{scene_info['on_screen_text']}</code></div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            
+            # Show the generated scene image!
+            scene_img_file = antigravity_output_dir / "images" / f"scene_{selected_scene_num:02d}.png"
+            if scene_img_file.exists():
+                st.image(str(scene_img_file), caption=f"Pristine 3D Illustration for Scene {selected_scene_num} ({scene_info['title']})", use_container_width=True)
+            else:
+                st.info("Image not generated or directory not compiled yet.")
+
+
     with tab_run:
         left, right = st.columns([1.2, 0.8])
         with left:
