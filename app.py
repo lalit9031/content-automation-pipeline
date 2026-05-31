@@ -280,6 +280,11 @@ def image_preview_status(path: Path | None) -> tuple[str, str]:
 
 def image_backend_status(settings: Settings, selected_provider: str) -> tuple[str, str]:
     provider = (selected_provider or "").strip().lower() or "unknown"
+    if provider == "gemini" and settings.gcp_project_id:
+        return (
+            "imagen active",
+            f"Gemini selection is routed to Imagen generate_images on project {settings.gcp_project_id}.",
+        )
     if provider != "gemini":
         return provider, f"{provider} selected for this preview."
     plan = gemini_image_package_plan(settings, packages_requested=1)

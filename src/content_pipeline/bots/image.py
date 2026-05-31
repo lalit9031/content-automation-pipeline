@@ -650,15 +650,23 @@ class OpenAIImageProvider:
 
 
 def image_provider(settings: Settings) -> ImageProvider:
-    if settings.image_provider == "mock":
+    provider_name = _resolved_image_provider_name(settings)
+    if provider_name == "mock":
         return MockImageProvider()
-    if settings.image_provider == "imagen":
+    if provider_name == "imagen":
         return ImagenProvider(settings)
-    if settings.image_provider == "gemini":
+    if provider_name == "gemini":
         return GeminiImageProvider(settings)
-    if settings.image_provider in {"openai", "chatgpt", "gpt-image"}:
+    if provider_name in {"openai", "chatgpt", "gpt-image"}:
         return OpenAIImageProvider(settings)
     raise ValueError(f"Unsupported IMAGE_PROVIDER: {settings.image_provider}")
+
+
+def _resolved_image_provider_name(settings: Settings) -> str:
+    provider_name = (settings.image_provider or "").strip().lower()
+    if provider_name == "gemini" and settings.gcp_project_id:
+        return "imagen"
+    return provider_name
 
 
 def generate_images(

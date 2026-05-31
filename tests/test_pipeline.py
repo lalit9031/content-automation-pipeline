@@ -370,6 +370,29 @@ class PipelineTest(unittest.TestCase):
             self.assertEqual(state, "fallback active")
             self.assertIn("Using mock", message)
 
+    def test_image_provider_routes_gemini_to_imagen_when_project_is_configured(self) -> None:
+        class FakeImagenProvider:
+            def __init__(self, settings) -> None:
+                self.settings = settings
+
+            def create(self, prompt, variant):  # pragma: no cover - not exercised
+                raise AssertionError("create should not be called in this routing test")
+
+        from content_pipeline.bots import image as image_module
+
+        settings = Settings(
+            output_dir=Path("output"),
+            image_provider="gemini",
+            gcp_project_id="Pixar-Video-Studio",
+            imagen_model="imagen-3.0-generate-002",
+        )
+
+        with patch.object(image_module, "ImagenProvider", FakeImagenProvider):
+            provider = image_module.image_provider(settings)
+
+        self.assertIsInstance(provider, FakeImagenProvider)
+        self.assertEqual(provider.settings.gcp_project_id, "Pixar-Video-Studio")
+
     def test_filter_voice_preview_presets_by_gender(self) -> None:
         presets = voice_preview_presets()
         male_presets = filter_voice_preview_presets(presets, gender="male")
