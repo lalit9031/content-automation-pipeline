@@ -327,6 +327,49 @@ class PipelineTest(unittest.TestCase):
             self.assertEqual(broken_state, "broken")
             self.assertIn("too small", broken_message)
 
+    def test_image_backend_status_reports_fallback_active_when_gemini_is_limited(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            output = Path(temporary_dir) / "output"
+            runtime = output / ".runtime"
+            runtime.mkdir(parents=True, exist_ok=True)
+            today = datetime.now(timezone.utc).date().isoformat()
+            runtime.joinpath("gemini_image_rate_limit.json").write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "usage_date": today,
+                        "keys": [
+                            {
+                                "next_available_at": 0.0,
+                                "cooldown_until": 0.0,
+                                "consecutive_failures": 0,
+                                "usage_date": today,
+                                "daily_generated": 1,
+                            }
+                        ],
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            try:
+                import app as streamlit_app
+            except ModuleNotFoundError:
+                self.skipTest("Streamlit is not installed in the test environment")
+
+            settings = Settings(
+                output_dir=output,
+                image_provider="gemini",
+                gemini_api_key="key-1",
+                gemini_image_daily_budget=1,
+                image_fallback_provider="mock",
+            )
+
+            state, message = streamlit_app.image_backend_status(settings, "gemini")
+
+            self.assertEqual(state, "fallback active")
+            self.assertIn("Using mock", message)
+
     def test_filter_voice_preview_presets_by_gender(self) -> None:
         presets = voice_preview_presets()
         male_presets = filter_voice_preview_presets(presets, gender="male")

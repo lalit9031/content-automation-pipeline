@@ -30,7 +30,7 @@ from content_pipeline.bots.audio import scan_reference_audio_library
 from content_pipeline.bots.audio import voice_gender_options
 from content_pipeline.bots.audio import voice_preview_language_options
 from content_pipeline.bots.audio import voice_preview_presets
-from content_pipeline.bots.image import ImageVariant, image_provider
+from content_pipeline.bots.image import ImageVariant, gemini_image_package_plan, image_provider
 from content_pipeline.bots.prompt import build_cinematic_image_prompt
 from content_pipeline.bots.prompt import build_image_style_pack
 from content_pipeline.config import Settings
@@ -276,6 +276,21 @@ def image_preview_status(path: Path | None) -> tuple[str, str]:
         return "ready", f"Preview stored at {path.name}."
     except (UnidentifiedImageError, OSError, ValueError, SyntaxError):
         return "broken", f"{path.name} could not be decoded as an image."
+
+
+def image_backend_status(settings: Settings, selected_provider: str) -> tuple[str, str]:
+    provider = (selected_provider or "").strip().lower() or "unknown"
+    if provider != "gemini":
+        return provider, f"{provider} selected for this preview."
+    plan = gemini_image_package_plan(settings, packages_requested=1)
+    recommended_provider = str(plan["recommended_provider"])
+    if recommended_provider != "gemini":
+        return "fallback active", f"Gemini is limited right now. Using {recommended_provider} for a single image preview."
+    if plan["daily_limit_reached"]:
+        return "gemini limited", "Gemini daily budget is exhausted, but the preview path will stay responsive."
+    if plan["stop_before_failure"]:
+        return "fallback ready", "Gemini is close to a limit. The fallback path is ready if needed."
+    return "gemini ready", "Gemini can handle one image preview now."
 
 
 def apply_voice_preset_by_key(preset_key: str) -> None:
@@ -1249,6 +1264,7 @@ def render_frontdoor(settings: Settings) -> None:
                 subject=st.session_state["image_subject"],
             )
             image_provider_choice = st.session_state["image_provider_choice"]
+            image_backend_state, image_backend_message = image_backend_status(settings, image_provider_choice)
             image_prompt = st.session_state["image_prompt"]
             image_preview_path = (
                 Path(st.session_state["image_preview_path"])
@@ -1259,9 +1275,9 @@ def render_frontdoor(settings: Settings) -> None:
             st.markdown(
                 f"""
                 <div class="metric-box">
-                  <div class="metric-label">Image backend</div>
-                  <div class="metric-value">{escape(settings.image_provider)}</div>
-                  <div style="margin-top:6px;color:#94a3b8;font-size:13px;line-height:1.4;">Project: {escape(settings.gcp_project_id or 'not set')}<br>Model: {escape(settings.imagen_model)}<br>Fallback: {escape(settings.image_fallback_provider)}</div>
+                  <div class="metric-label">Active backend</div>
+                  <div class="metric-value">{escape(image_backend_state)}</div>
+                  <div style="margin-top:6px;color:#94a3b8;font-size:13px;line-height:1.4;">{escape(image_backend_message)}<br>Project: {escape(settings.gcp_project_id or 'not set')}<br>Model: {escape(settings.imagen_model)}<br>Fallback: {escape(settings.image_fallback_provider)}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -1294,6 +1310,7 @@ def render_frontdoor(settings: Settings) -> None:
                 subject=st.session_state["image_subject"],
             )
             image_provider_choice = st.session_state["image_provider_choice"]
+            image_backend_state, image_backend_message = image_backend_status(settings, image_provider_choice)
             image_preview_path = (
                 Path(st.session_state["image_preview_path"])
                 if st.session_state.get("image_preview_path")
@@ -1303,9 +1320,9 @@ def render_frontdoor(settings: Settings) -> None:
             st.markdown(
                 f"""
                 <div class="metric-box">
-                  <div class="metric-label">Selected image provider</div>
-                  <div class="metric-value">{escape(image_provider_choice)}</div>
-                  <div style="margin-top:6px;color:#94a3b8;font-size:13px;line-height:1.4;">Topic: {escape(st.session_state['image_topic'])}<br>Subject: {escape(st.session_state['image_subject'])}</div>
+                  <div class="metric-label">Active backend</div>
+                  <div class="metric-value">{escape(image_backend_state)}</div>
+                  <div style="margin-top:6px;color:#94a3b8;font-size:13px;line-height:1.4;">{escape(image_backend_message)}<br>Topic: {escape(st.session_state['image_topic'])}<br>Subject: {escape(st.session_state['image_subject'])}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
