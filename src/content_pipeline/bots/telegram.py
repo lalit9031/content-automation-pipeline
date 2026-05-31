@@ -5,7 +5,23 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-import requests
+from typing import Any
+
+
+class _RequestsProxy:
+    """Lazily import requests so Telegram helpers remain importable in tests."""
+
+    def __getattr__(self, name: str) -> Any:
+        try:
+            import requests as real_requests
+        except ModuleNotFoundError as exc:
+            raise ModuleNotFoundError(
+                "requests is required for Telegram document uploads."
+            ) from exc
+        return getattr(real_requests, name)
+
+
+requests = _RequestsProxy()
 
 
 def compose_video_created_message(

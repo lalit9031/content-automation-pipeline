@@ -228,7 +228,15 @@ def build_voice_profile(
     language: str = "hi-IN",
     voice: str = "en-IN-PrabhatNeural",
 ) -> VoiceEngineProfile:
-    return VoiceEngineProfile(name="edge-tts", language=language, voice=voice, rate="+0%", pitch="+0Hz")
+    provider = (provider or "edge").strip().lower()
+    engine_name = "edge-tts" if provider == "edge" else "manifest-only"
+    return VoiceEngineProfile(
+        name=engine_name,
+        language=language,
+        voice=voice,
+        rate="+0%",
+        pitch="+0Hz",
+    )
 
 
 def _voice_gender(provider: str, voice: str) -> str:
@@ -247,7 +255,9 @@ def _voice_gender(provider: str, voice: str) -> str:
 
 
 def available_voice_options(provider: str, gender: str = "all") -> list[tuple[str, str]]:
-    provider = "edge"
+    provider = (provider or "edge").strip().lower()
+    if provider != "edge":
+        raise ValueError("Voice options are available for provider='edge' only.")
     gender = (gender or "all").strip().lower()
     options = [(voice, f"{voice} - {description}") for _, voice, description in FREE_INDIAN_EDGE_VOICE_VARIANTS]
     if gender == "all":
@@ -473,7 +483,10 @@ def generate_voice_preview(
     voice: str,
     openai_api_key: str = "",
 ) -> Path:
-    _ = openai_api_key, provider
+    provider = (provider or "edge").strip().lower()
+    _ = openai_api_key
+    if provider != "edge":
+        raise ValueError("Voice preview generation currently supports provider='edge' only.")
     return generate_indian_voiceover(text, output_path, voice=voice)
 
 

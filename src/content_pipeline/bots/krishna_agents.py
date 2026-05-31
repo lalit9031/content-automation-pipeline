@@ -8,11 +8,25 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-import requests
-
 from content_pipeline.bots.audio import FREE_INDIAN_EDGE_VOICE_VARIANTS
 from content_pipeline.bots.image import ImageProvider, ImageVariant
 from content_pipeline.config import Settings
+
+
+class _RequestsProxy:
+    """Lazily import requests so the module remains importable in tests."""
+
+    def __getattr__(self, name: str) -> Any:
+        try:
+            import requests as real_requests
+        except ModuleNotFoundError as exc:
+            raise ModuleNotFoundError(
+                "requests is required for Krishna agent network features."
+            ) from exc
+        return getattr(real_requests, name)
+
+
+requests = _RequestsProxy()
 
 
 WORKFLOW_ID = "kanha_ki_nanhi_leela"

@@ -83,10 +83,12 @@ from content_pipeline.bots.video import (
     subtitles_for_scenes,
 )
 from content_pipeline.bots.audio import audio_status
+from content_pipeline.bots.audio import build_voice_profile
 from content_pipeline.bots.audio import ReferenceAudioSample
 from content_pipeline.bots.audio import curate_reference_audio_bank
 from content_pipeline.bots.audio import available_voice_options
 from content_pipeline.bots.audio import generate_music_preview
+from content_pipeline.bots.audio import generate_voice_preview
 from content_pipeline.bots.audio import filter_voice_preview_presets
 from content_pipeline.bots.audio import normalize_voice_text
 from content_pipeline.bots.audio import render_audio_status_html
@@ -244,6 +246,10 @@ class PipelineTest(unittest.TestCase):
         self.assertIn("hi-IN-MadhurNeural", [voice for voice, _ in edge_options])
         self.assertIn("en-IN-PrabhatNeural", [voice for voice, _ in edge_male_options])
         self.assertIn("hi-IN-MadhurNeural", [voice for voice, _ in edge_male_options])
+
+    def test_available_voice_options_rejects_non_edge_provider(self) -> None:
+        with self.assertRaises(ValueError):
+            available_voice_options("openai")
 
     def test_voice_preview_presets_include_hindi_and_hinglish(self) -> None:
         presets = voice_preview_presets()
@@ -598,6 +604,26 @@ class PipelineTest(unittest.TestCase):
             self.assertIn("Last generated", (output / "daily" / "2026-05-26" / "voice_status.html").read_text())
             self.assertIn("Pronunciation preview", (output / "daily" / "2026-05-26" / "voice_status.html").read_text())
             self.assertIn("Missing sample audio", (output / "daily" / "2026-05-26" / "voice_status.html").read_text())
+
+    def test_voice_profile_reflects_provider_mode(self) -> None:
+        edge_profile = build_voice_profile(provider="edge", voice="en-IN-PrabhatNeural")
+        manifest_profile = build_voice_profile(provider="mock", voice="en-IN-PrabhatNeural")
+
+        self.assertEqual(edge_profile.name, "edge-tts")
+        self.assertEqual(manifest_profile.name, "manifest-only")
+
+    def test_voice_preview_is_edge_only(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            output = Path(temporary_dir) / "preview.mp3"
+
+            with self.assertRaises(ValueError):
+                generate_voice_preview(
+                    "Hello world",
+                    output,
+                    provider="openai",
+                    voice="alloy",
+                    openai_api_key="test-key",
+                )
 
     def test_audio_status_aggregates_daily_science_and_pm_audio(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_dir:

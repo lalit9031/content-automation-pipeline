@@ -20,8 +20,6 @@ import time
 from pathlib import Path
 from typing import Any
 
-import requests
-
 from content_pipeline.config import Settings
 from content_pipeline.models import ContentPackage
 from content_pipeline.storage import LocalDailyStorage
@@ -32,6 +30,22 @@ CANVA_API_BASE = "https://api.canva.com/rest/v1"
 TOKEN_URL = f"{CANVA_API_BASE}/oauth/token"
 DEFAULT_POLL_INTERVAL = 2  # seconds
 MAX_POLL_ATTEMPTS = 60  # ~2 minutes max
+
+
+class _RequestsProxy:
+    """Lazily import requests so the module stays importable without it."""
+
+    def __getattr__(self, name: str) -> Any:
+        try:
+            import requests as real_requests
+        except ModuleNotFoundError as exc:
+            raise ModuleNotFoundError(
+                "requests is required for Canva features. Install it with the live extras."
+            ) from exc
+        return getattr(real_requests, name)
+
+
+requests = _RequestsProxy()
 
 
 # ---------------------------------------------------------------------------

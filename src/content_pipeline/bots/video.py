@@ -7,10 +7,24 @@ from dataclasses import dataclass
 from html import escape
 from pathlib import Path
 
-import cairosvg
-
 from content_pipeline.models import ContentPackage, LongFormVideoScript
 from content_pipeline.storage import LocalDailyStorage
+
+
+class _CairoSVGProxy:
+    """Lazily import cairosvg so the module remains importable without it."""
+
+    def __getattr__(self, name: str):
+        try:
+            import cairosvg as real_cairosvg
+        except ModuleNotFoundError as exc:
+            raise ModuleNotFoundError(
+                "cairosvg is required for video preview rendering."
+            ) from exc
+        return getattr(real_cairosvg, name)
+
+
+cairosvg = _CairoSVGProxy()
 
 
 WIDTH = 1280

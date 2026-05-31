@@ -8,9 +8,23 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-import requests
-
 from content_pipeline.config import Settings
+
+
+class _RequestsProxy:
+    """Lazily import requests so the module stays importable without it."""
+
+    def __getattr__(self, name: str) -> Any:
+        try:
+            import requests as real_requests
+        except ModuleNotFoundError as exc:
+            raise ModuleNotFoundError(
+                "requests is required for motion-provider network features."
+            ) from exc
+        return getattr(real_requests, name)
+
+
+requests = _RequestsProxy()
 
 
 @dataclass(frozen=True)

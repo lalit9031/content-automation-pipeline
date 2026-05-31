@@ -78,7 +78,7 @@ class PMVideoAgentsTest(unittest.TestCase):
         first_prompt = plan.slides[0].image_prompt
         final_prompt = plan.slides[-1].image_prompt
 
-        self.assertIn("Hero scene, bold YouTube learning-video cover image", first_prompt)
+        self.assertIn("Hero scene, bold YouTube learning video cover", first_prompt)
         self.assertIn('Renderer-only headline: "AGILE METRICS IN THE AI ERA"', first_prompt)
         self.assertIn('Renderer-only hook: "The PM AI question"', first_prompt)
         self.assertIn("Absolutely no large readable text", first_prompt)
