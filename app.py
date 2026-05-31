@@ -180,10 +180,17 @@ def day_overview(day_root: Path) -> dict[str, object]:
     voice_path = day_root / "voice_status.html"
     if day_root.exists():
         file_count = sum(1 for path in day_root.rglob("*") if path.is_file())
+        files = [path for path in day_root.rglob("*") if path.is_file()]
     else:
         file_count = 0
+        files = []
+    suffix_counts: dict[str, int] = {}
+    for path in files:
+        suffix = path.suffix.lower() or "[no extension]"
+        suffix_counts[suffix] = suffix_counts.get(suffix, 0) + 1
     return {
         "file_count": file_count,
+        "suffix_counts": suffix_counts,
         "dashboard_exists": dashboard_path.exists(),
         "audio_exists": audio_path.exists(),
         "voice_exists": voice_path.exists(),
@@ -413,6 +420,16 @@ def render_frontdoor(settings: Settings) -> None:
     latest_dashboard = latest_dir / "daily_dashboard.html" if latest_dir else None
     latest_audio = latest_dir / "audio_status.html" if latest_dir else None
     latest_voice = latest_dir / "voice_status.html" if latest_dir else None
+    latest_overview = day_overview(latest_dir) if latest_dir else {
+        "file_count": 0,
+        "suffix_counts": {},
+        "dashboard_exists": False,
+        "audio_exists": False,
+        "voice_exists": False,
+        "dashboard_path": None,
+        "audio_path": None,
+        "voice_path": None,
+    }
     selected_day_dir = ui_settings.output_dir / "daily" / inspect_date
     selected_overview = day_overview(selected_day_dir)
 
@@ -588,7 +605,7 @@ def render_frontdoor(settings: Settings) -> None:
             st.subheader("Run the daily pipeline")
             st.write("This triggers the same daily content generation flow your CLI uses.")
             st.caption(
-                f"Latest day: {latest_day or 'none yet'} · Files in latest run: {latest_file_count}"
+                f"Latest day: {latest_day or 'none yet'} · Files in latest run: {latest_overview['file_count']}"
             )
 
             if "last_run_error" in st.session_state:
@@ -690,6 +707,20 @@ def render_frontdoor(settings: Settings) -> None:
             else:
                 for path in all_files:
                     st.markdown(f"- `{path.relative_to(day_root)}`")
+            st.markdown(
+                f"""
+                <div class="status-strip">
+                  {status_pill("Files", str(selected_overview["file_count"]))}
+                  {status_pill("HTML", str(selected_overview["suffix_counts"].get(".html", 0)))}
+                  {status_pill("JSON", str(selected_overview["suffix_counts"].get(".json", 0)))}
+                  {status_pill("Images", str(sum(
+                      count for suffix, count in selected_overview["suffix_counts"].items()
+                      if suffix in {".png", ".jpg", ".jpeg", ".webp", ".svg"}
+                  )))}
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
         else:
             st.info("No daily artifacts found yet for this day.")
 
