@@ -268,6 +268,45 @@ def render_health_banner(overview: dict[str, object]) -> None:
     )
 
 
+def render_preview_panel(overview: dict[str, object], day_root: Path) -> None:
+    st.markdown("#### Latest output preview")
+    preview_cols = st.columns(3)
+    items = [
+        (
+            "Dashboard",
+            day_root / "daily_dashboard.html",
+            overview["dashboard_exists"],
+            "Open the daily dashboard HTML",
+        ),
+        (
+            "Audio",
+            day_root / "audio_status.html",
+            overview["audio_exists"],
+            "Open the unified audio summary",
+        ),
+        (
+            "Voice",
+            day_root / "voice_status.html",
+            overview["voice_exists"],
+            "Open the voice bundle summary",
+        ),
+    ]
+    for column, (title, path, exists, detail) in zip(preview_cols, items):
+        with column:
+            st.markdown(
+                f"""
+                <div class="metric-box">
+                  <div class="metric-label">{escape(title)}</div>
+                  <div class="metric-value">{'ready' if exists else 'missing'}</div>
+                  <div style="margin-top:6px;color:#94a3b8;font-size:13px;line-height:1.4;">{escape(detail)}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            if exists:
+                st.markdown(f"[Open {title.lower()}]({path.as_uri()})")
+
+
 def render_frontdoor(settings: Settings) -> None:
     latest_day = latest_daily_day(settings.output_dir)
     default_day = date.fromisoformat(latest_day) if latest_day else date.today()
@@ -558,6 +597,7 @@ def render_frontdoor(settings: Settings) -> None:
         )
 
     render_health_banner(selected_overview)
+    render_preview_panel(selected_overview, selected_day_dir)
 
     overview_cols = st.columns(4)
     with overview_cols[0]:
