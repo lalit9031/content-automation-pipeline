@@ -396,15 +396,8 @@ def render_frontdoor(settings: Settings) -> None:
     latest_dashboard = latest_dir / "daily_dashboard.html" if latest_dir else None
     latest_audio = latest_dir / "audio_status.html" if latest_dir else None
     latest_voice = latest_dir / "voice_status.html" if latest_dir else None
-    latest_overview = day_overview(latest_dir) if latest_dir else {
-        "file_count": 0,
-        "dashboard_exists": False,
-        "audio_exists": False,
-        "voice_exists": False,
-        "dashboard_path": None,
-        "audio_path": None,
-        "voice_path": None,
-    }
+    selected_day_dir = ui_settings.output_dir / "daily" / inspect_date
+    selected_overview = day_overview(selected_day_dir)
 
     st.markdown(
         f"""
@@ -412,6 +405,7 @@ def render_frontdoor(settings: Settings) -> None:
           {status_pill("Prompt provider", settings.prompt_provider)}
           {status_pill("Image provider", settings.image_provider)}
           {status_pill("Voice provider", settings.voice_provider)}
+          {status_pill("Selected day", inspect_date)}
           {status_pill("Latest day", latest_day or "none yet")}
         </div>
         """,
@@ -475,20 +469,20 @@ def render_frontdoor(settings: Settings) -> None:
     with overview_cols[1]:
         render_overview_card(
             "Artifacts",
-            str(latest_overview["file_count"]),
-            "Total files in the latest daily folder.",
+            str(selected_overview["file_count"]),
+            "Total files in the selected daily folder.",
         )
     with overview_cols[2]:
         render_overview_card(
             "Dashboard",
-            "ready" if latest_overview["dashboard_exists"] else "missing",
-            "The daily dashboard HTML for the latest run.",
+            "ready" if selected_overview["dashboard_exists"] else "missing",
+            "The daily dashboard HTML for the selected run.",
         )
     with overview_cols[3]:
         render_overview_card(
             "Audio bundle",
-            "ready" if latest_overview["audio_exists"] else "missing",
-            "The unified audio status front door for the latest run.",
+            "ready" if selected_overview["audio_exists"] else "missing",
+            "The unified audio status front door for the selected run.",
         )
 
     if run_clicked:
@@ -570,8 +564,8 @@ def render_frontdoor(settings: Settings) -> None:
 
         with right:
             st.subheader("Quick launch")
-            current_day_dir = ui_settings.output_dir / "daily" / inspect_date
-            overview = day_overview(current_day_dir)
+            current_day_dir = selected_day_dir
+            overview = selected_overview
             dashboard_path = overview["dashboard_path"]
             audio_path = overview["audio_path"]
             voice_path = overview["voice_path"]
@@ -632,8 +626,8 @@ def render_frontdoor(settings: Settings) -> None:
             else:
                 st.write("No voice bundle found for this day.")
 
-        day_root = ui_settings.output_dir / "daily" / inspect_date
-        overview = day_overview(day_root)
+        day_root = selected_day_dir
+        overview = selected_overview
         st.markdown(
             f"""
             <div class="status-strip">
