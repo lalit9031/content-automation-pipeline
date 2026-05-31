@@ -1289,8 +1289,8 @@ def render_frontdoor(settings: Settings) -> None:
             unsafe_allow_html=True,
         )
 
-    tab_studio, tab_run, tab_dashboard, tab_audio, tab_files = st.tabs(
-        ["Studio", "Run", "Dashboard", "Audio", "Files"]
+    tab_studio, tab_video, tab_run, tab_dashboard, tab_audio, tab_files = st.tabs(
+        ["Studio", "Video Studio 🎬", "Run", "Dashboard", "Audio", "Files"]
     )
 
     with tab_studio:
@@ -1482,6 +1482,118 @@ def render_frontdoor(settings: Settings) -> None:
             if music_preview_path.exists():
                 st.audio(str(music_preview_path))
                 st.caption(str(music_preview_path))
+
+    with tab_video:
+        st.markdown(
+            """
+            <div class="hero" style="background: linear-gradient(135deg, rgba(168,85,247,0.15), rgba(56,189,248,0.15)); border: 1px solid rgba(168,85,247,0.3); margin-bottom: 24px;">
+              <h1 style="font-size: 32px;">🎬 Premium Video Studio</h1>
+              <p style="margin-top: 6px; font-size: 14px;">Generate, render, and orchestrate stunning 5-minute premium explainer videos featuring cohesive 3D Pixar character illustrations.</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        left_col, right_col = st.columns([1.1, 0.9])
+
+        with left_col:
+            st.markdown("### Configure Video Project")
+            video_topic = st.text_input(
+                "Video Topic",
+                value="How Freshers Can Survive in the AI World",
+                key="video_studio_topic",
+            )
+            video_subject = st.text_input(
+                "Video Subject (Folder Name)",
+                value="How Freshers Can Survive in the AI World",
+                key="video_studio_subject",
+            )
+            video_voice = st.selectbox(
+                "Voiceover Voice",
+                options=["en-IN-PrabhatNeural", "en-IN-NeerjaNeural", "en-US-GuyNeural", "en-US-JennyNeural"],
+                index=0,
+                key="video_studio_voice",
+            )
+            video_scenes = st.number_input(
+                "Number of Scenes",
+                min_value=5,
+                max_value=35,
+                value=35,
+                step=1,
+                key="video_studio_scenes",
+            )
+
+            video_subject_slug = _slugify(video_subject)
+            antigravity_output_dir = Path("/Users/lalitprasadsingh/.gemini/antigravity/scratch/video_episodes") / video_subject_slug
+
+            st.markdown(
+                f"""
+                <div class="metric-box" style="border: 1px solid rgba(56,189,248,0.3); background: rgba(15, 23, 42, 0.95); margin-top: 14px;">
+                  <div class="metric-label" style="color: #38bdf8; font-weight: 800; font-size: 11px;">Target Output Folder</div>
+                  <div class="metric-value" style="font-size: 14px; font-family: monospace; word-break: break-all; margin-top: 6px; color: #e2e8f0;">{antigravity_output_dir}</div>
+                  <div style="margin-top:8px;color:#94a3b8;font-size:12px;line-height:1.4;">Keeping your workspace extremely clean and organized under the main Antigravity folder!</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        with right_col:
+            st.markdown("### Video Compilation")
+            final_video_file = antigravity_output_dir / "fresher_survive_ai_world.mp4"
+
+            if final_video_file.exists():
+                st.success("✨ Premium Explainer Video is fully compiled!")
+                st.video(str(final_video_file))
+                st.caption(f"Video Path: {final_video_file}")
+
+                # Display premium storyboard gallery
+                st.markdown("#### 🎞️ Premium Storyboard Gallery")
+                images_dir = antigravity_output_dir / "images"
+                if images_dir.exists():
+                    image_files = sorted(list(images_dir.glob("scene_*.png")))
+                    if image_files:
+                        img_cols = st.columns(2)
+                        for idx, img_path in enumerate(image_files[:6]):  # Show first 6 scenes in right panel
+                            col_idx = idx % 2
+                            with img_cols[col_idx]:
+                                st.image(str(img_path), caption=f"Scene {idx+1}", use_container_width=True)
+                        if len(image_files) > 6:
+                            st.caption(f"Showing first 6 of {len(image_files)} scenes. All images are saved in the images/ subdirectory.")
+            else:
+                st.info("No compiled video found for this topic yet. Click below to compile the full video!")
+
+            if st.button("Compile Full 3D Explainer Video", type="primary", use_container_width=True, key="btn_compile_video"):
+                with st.spinner("Rendering Edge TTS voiceovers, captions, and compiling clips using FFmpeg..."):
+                    try:
+                        antigravity_output_dir.mkdir(parents=True, exist_ok=True)
+                        
+                        import subprocess
+                        import sys
+                        import shutil
+
+                        python_executable = sys.executable
+                        script_path = "/Users/lalitprasadsingh/.gemini/antigravity/scratch/content-automation-pipeline/scratch/generate_5min_fresher_video.py"
+
+                        result = subprocess.run(
+                            [python_executable, script_path],
+                            capture_output=True,
+                            text=True,
+                            cwd="/Users/lalitprasadsingh/.gemini/antigravity/scratch/content-automation-pipeline"
+                        )
+
+                        if result.returncode == 0:
+                            desktop_src = Path("/Users/lalitprasadsingh/Desktop/fresher_ai_world_folder")
+                            if desktop_src.exists():
+                                if antigravity_output_dir.exists():
+                                    shutil.rmtree(antigravity_output_dir)
+                                shutil.copytree(desktop_src, antigravity_output_dir)
+                                st.success("🎉 Video compiled and successfully saved under your Antigravity folder!")
+                            st.rerun()
+                        else:
+                            st.error(f"Compilation failed with error code {result.returncode}")
+                            st.code(result.stderr)
+                    except Exception as exc:
+                        st.error(str(exc))
 
     with tab_run:
         left, right = st.columns([1.2, 0.8])
