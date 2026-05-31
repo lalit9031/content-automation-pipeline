@@ -464,6 +464,34 @@ class PipelineTest(unittest.TestCase):
         self.assertIsInstance(provider, FakeImagenProvider)
         self.assertEqual(provider.settings.gcp_project_id, "Pixar-Video-Studio")
 
+    def test_pollinations_image_provider(self) -> None:
+        from content_pipeline.bots import image as image_module
+        settings = Settings(
+            output_dir=Path("output"),
+            image_provider="free-ai",
+        )
+        provider = image_module.image_provider(settings)
+        self.assertEqual(provider.__class__.__name__, "PollinationsImageProvider")
+        self.assertEqual(provider.extension, ".png")
+
+    def test_pollinations_fallback_on_error(self) -> None:
+        from content_pipeline.bots import image as image_module
+        from unittest.mock import patch, MagicMock
+
+        settings = Settings(
+            output_dir=Path("output"),
+            image_provider="free-ai",
+        )
+        provider = image_module.image_provider(settings)
+        
+        # Mock requests.get to raise an exception
+        with patch("requests.get", side_effect=Exception("API failure")):
+            variant = image_module.ImageVariant("1:1", 1080, 1080, "test_landscape")
+            result_bytes = provider.create("A bright idea", variant)
+            
+            # Should have gracefully fallen back to the mock SVG provider
+            self.assertTrue(result_bytes.startswith(b"<svg"))
+
     def test_filter_voice_preview_presets_by_gender(self) -> None:
         presets = voice_preview_presets()
         male_presets = filter_voice_preview_presets(presets, gender="male")

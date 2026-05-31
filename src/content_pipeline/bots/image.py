@@ -666,10 +666,33 @@ class OpenAIImageProvider:
         raise RuntimeError(f"OpenAI image generation failed for all configured keys: {last_error}")
 
 
+class PollinationsImageProvider:
+    extension = ".png"
+
+    def __init__(self, settings: Settings) -> None:
+        self.settings = settings
+        self.fallback_provider = MockImageProvider()
+
+    def create(self, prompt: str, variant: ImageVariant) -> bytes:
+        import urllib.parse
+        import requests
+
+        encoded_prompt = urllib.parse.quote(prompt)
+        url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width={variant.width}&height={variant.height}&nologo=true&private=true"
+        try:
+            response = requests.get(url, timeout=30)
+            response.raise_for_status()
+            return response.content
+        except Exception:
+            return self.fallback_provider.create(prompt, variant)
+
+
 def image_provider(settings: Settings) -> ImageProvider:
     provider_name = _resolved_image_provider_name(settings)
     if provider_name == "mock":
         return MockImageProvider()
+    if provider_name in {"free-ai", "pollinations"}:
+        return PollinationsImageProvider(settings)
     if provider_name == "imagen":
         return ImagenProvider(settings)
     if provider_name == "gemini":
