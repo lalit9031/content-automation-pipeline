@@ -617,7 +617,7 @@ def render_frontdoor(settings: Settings) -> None:
             height=180,
             help="Edit the prompt here before generating the image preview.",
         )
-        if st.sidebar.button("Generate image preview", use_container_width=True):
+        if st.sidebar.button("Generate 1 image preview", use_container_width=True):
             try:
                 image_settings = replace(settings, output_dir=ui_output_dir)
                 provider = image_provider(replace(image_settings, image_provider=st.session_state["image_provider_choice"]))
@@ -1156,6 +1156,7 @@ def render_frontdoor(settings: Settings) -> None:
     )
 
     with tab_studio:
+        image_request_note = "Single image only. Each click sends one request and returns one preview."
         if show_image_controls:
             st.subheader("Image studio")
             image_style_pack = build_image_style_pack(
@@ -1164,6 +1165,17 @@ def render_frontdoor(settings: Settings) -> None:
             )
             image_provider_choice = st.session_state["image_provider_choice"]
             image_prompt = st.session_state["image_prompt"]
+            st.markdown(
+                f"""
+                <div class="metric-box">
+                  <div class="metric-label">Image backend</div>
+                  <div class="metric-value">{escape(settings.image_provider)}</div>
+                  <div style="margin-top:6px;color:#94a3b8;font-size:13px;line-height:1.4;">Project: {escape(settings.gcp_project_id or 'not set')}<br>Model: {escape(settings.imagen_model)}<br>Fallback: {escape(settings.image_fallback_provider)}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            st.caption(image_request_note)
             st.caption("Tip: keep the prompt vivid, specific, and free of text, logos, and watermarks.")
             if st.session_state["image_preview_path"]:
                 preview_path = Path(st.session_state["image_preview_path"])
@@ -1192,7 +1204,8 @@ def render_frontdoor(settings: Settings) -> None:
             st.caption(
                 "Audio mode keeps the full image editor hidden, but you can still generate one confirmation image from the current prompt."
             )
-            if st.button("Generate image preview", key="studio_quick_image_preview", use_container_width=True):
+            st.caption(image_request_note)
+            if st.button("Generate 1 image preview", key="studio_quick_image_preview", use_container_width=True):
                 try:
                     image_settings = replace(settings, output_dir=ui_output_dir)
                     provider = image_provider(
