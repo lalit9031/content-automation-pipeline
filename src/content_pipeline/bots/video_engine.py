@@ -180,12 +180,13 @@ def generate_auto_2_5d_clips(
             generated.append(clip_path)
             continue
 
-        # 1. Generate still image
-        image_bytes = image_provider.create(clip.prompt, variant)
+        # 1. Generate still image if it doesn't exist
         still_path = clip_path.with_suffix(".png")
-        still_path.parent.mkdir(parents=True, exist_ok=True)
-        # The provider may return SVG or PNG bytes; convert SVG to PNG
-        _ = _ensure_png_bytes(image_bytes, still_path)
+        if not still_path.exists():
+            image_bytes = image_provider.create(clip.prompt, variant)
+            still_path.parent.mkdir(parents=True, exist_ok=True)
+            # The provider may return SVG or PNG bytes; convert SVG to PNG
+            _ = _ensure_png_bytes(image_bytes, still_path)
 
         # 2. Create Ken Burns MP4 from still
         frames = clip.duration_seconds * 25
