@@ -188,10 +188,8 @@ def generate_auto_2_5d_clips(
             # The provider may return SVG or PNG bytes; convert SVG to PNG
             _ = _ensure_png_bytes(image_bytes, still_path)
 
-        # 2. Create Ken Burns MP4 from still
+        # 2. Create clean, pin-sharp 2D MP4 from still (avoids zoompan pixelation/stretch)
         frames = clip.duration_seconds * 25
-        gentle_zoom = 0.0005  # slower than the default for a more premium feel
-        max_zoom = 1.04
         subprocess.run(
             [
                 executable,
@@ -202,10 +200,10 @@ def generate_auto_2_5d_clips(
                 str(still_path),
                 "-vf",
                 (
-                    f"zoompan=z='min(zoom+{gentle_zoom},{max_zoom})':"
-                    f"x='iw/2-(iw/zoom/2)+6*sin(on/22)':"
-                    f"y='ih/2-(ih/zoom/2)-on/12':"
-                    f"d={frames}:s={episode.width}x{episode.height}:fps=25,"
+                    f"scale={episode.width}:{episode.height}:"
+                    "force_original_aspect_ratio=decrease,"
+                    f"pad={episode.width}:{episode.height}:"
+                    "(ow-iw)/2:(oh-ih)/2,"
                     "format=yuv420p"
                 ),
                 "-frames:v",
