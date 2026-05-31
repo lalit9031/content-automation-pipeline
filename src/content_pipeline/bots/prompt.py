@@ -31,10 +31,13 @@ EDITORIAL_STYLE = (
 )
 
 CINEMATIC_IMAGE_STYLE = (
-    "Create a vibrant, cinematic 3D supporting illustration with rounded shapes, "
-    "soft volumetric lighting, pastel purple and cyan highlights, floating modular "
-    "cards, clean modern tech surfaces, subtle sparkles, and strong depth. "
-    "Keep it readable and polished, with no text, logos, or watermarks."
+    "Style: Premium 3D character illustration with warm, expressive characters, friendly and approachable. "
+    "Shapes and curves are beautifully rounded, smooth modern tech surfaces with tactile glassmorphism textures. "
+    "Features a software developer or project manager sitting at a sleek minimalist glass desk, looking with an inspired smile at a floating, semi-transparent holographic UI dashboard in front of them showing glowing colorful charts and flowchart nodes. "
+    "Includes a friendly little robotic AI assistant with glowing yellow eyes floating nearby. "
+    "Color Palette: Soft pastel purple and cyan highlights, subtle orange/gold glow, deep blue-grey background studio environment. "
+    "Lighting: Soft volumetric studio lighting, gentle depth of field, subtle glowing particles, dramatic contrast. "
+    "Absolutely no large readable text inside the image. Reserve a clean typography-safe area for text overlays."
 )
 
 THUMBNAIL_IMAGE_STYLE = (

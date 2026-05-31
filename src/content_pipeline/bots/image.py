@@ -54,6 +54,18 @@ class MockImageProvider:
             or _prompt_field(prompt, "Opening hook text")
             or "Practical PM AI playbook"
         )
+        desc_title = escape(
+            _prompt_field(prompt, "Renderer-only desc title")
+            or "Local renderer baseline"
+        )
+        desc_l1 = escape(
+            _prompt_field(prompt, "Renderer-only desc line1")
+            or "Clean text, deterministic layout,"
+        )
+        desc_l2 = escape(
+            _prompt_field(prompt, "Renderer-only desc line2")
+            or "no API cost, less cinematic realism."
+        )
         concepts = _prompt_concepts(prompt)
         concept_rows = "\n".join(
             f"""    <g transform="translate(0 {index * 82})">
@@ -97,9 +109,9 @@ class MockImageProvider:
   </g>
   <g transform="translate(78 370)">
     <rect x="0" y="0" width="570" height="170" rx="34" fill="#0f172a" fill-opacity="0.74" stroke="#38bdf8" stroke-width="2"/>
-    <text x="38" y="58" fill="#e5e7eb" font-family="Arial, sans-serif" font-size="28" font-weight="800">Local renderer baseline</text>
-    <text x="38" y="100" fill="#cbd5e1" font-family="Arial, sans-serif" font-size="23">Clean text, deterministic layout,</text>
-    <text x="38" y="134" fill="#cbd5e1" font-family="Arial, sans-serif" font-size="23">no API cost, less cinematic realism.</text>
+    <text x="38" y="58" fill="#e5e7eb" font-family="Arial, sans-serif" font-size="28" font-weight="800">{desc_title}</text>
+    <text x="38" y="100" fill="#cbd5e1" font-family="Arial, sans-serif" font-size="23">{desc_l1}</text>
+    <text x="38" y="134" fill="#cbd5e1" font-family="Arial, sans-serif" font-size="23">{desc_l2}</text>
   </g>
   <g transform="translate(780 190)" filter="url(#shadow)">
     <circle cx="210" cy="155" r="142" fill="#020617" stroke="#38bdf8" stroke-width="3"/>
@@ -838,6 +850,10 @@ def _prompt_topic(prompt: str) -> str:
 
 
 def _prompt_concepts(prompt: str) -> list[str]:
+    match = re.search(r'Renderer-only concepts:\s*"([^"\n]+)"', prompt, flags=re.IGNORECASE)
+    if match:
+        return [c.strip() for c in match.group(1).split(",")]
+
     known = [
         "Cycle Time",
         "Escaped Defects",

@@ -190,6 +190,16 @@ def generate_auto_2_5d_clips(
 
         # 2. Create clean, pin-sharp 2D MP4 from still (avoids zoompan pixelation/stretch)
         frames = clip.duration_seconds * 25
+        
+        # Draw clean on-screen text as a professional lower-third overlay
+        clean_text = clip.on_screen_text.replace("'", "").replace(":", "")
+        text_filter = ""
+        if clean_text:
+            text_filter = (
+                f",drawtext=text='{clean_text}':fontcolor=white:fontsize=42:font='Arial':"
+                "box=1:boxcolor=black@0.65:boxborderw=18:x=(w-text_w)/2:y=h-100"
+            )
+            
         subprocess.run(
             [
                 executable,
@@ -203,8 +213,8 @@ def generate_auto_2_5d_clips(
                     f"scale={episode.width}:{episode.height}:"
                     "force_original_aspect_ratio=decrease,"
                     f"pad={episode.width}:{episode.height}:"
-                    "(ow-iw)/2:(oh-ih)/2,"
-                    "format=yuv420p"
+                    f"(ow-iw)/2:(oh-ih)/2,"
+                    f"format=yuv420p{text_filter}"
                 ),
                 "-frames:v",
                 str(frames),
