@@ -187,9 +187,9 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
     VoicePreviewPreset(
         key="hindi_explainer_male",
         label="Hindi explainer male",
-        description="Professional Hindi narration with a steadier male tone.",
-        provider="openai",
-        voice="onyx",
+        description="Professional Hindi-style narration with a steadier male tone.",
+        provider="edge",
+        voice="en-IN-PrabhatNeural",
         language="hi-IN",
         gender="male",
         sample_text=(
