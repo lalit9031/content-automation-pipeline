@@ -74,7 +74,109 @@ class ReferenceAudioSample:
     source_label: str
 
 
+def humanize_child_pacing_punctuation(text: str) -> str:
+    """
+    Injects realistic toddler breathing pauses using punctuation (ellipses and spaces)
+    instead of XML break tags, which the service rejects.
+    """
+    processed = text.strip()
+    processed = processed.replace("! ", "...!  ")
+    processed = processed.replace(", ", ", ...  ")
+    processed = processed.replace(". ", "...  ")
+    processed = processed.replace("? ", "...?  ")
+    return processed
+
+
+def inject_dramatic_story_pauses_punctuation(text: str) -> str:
+    """
+    Translates dramatic storytelling XML pauses into natural punctuation pacing
+    (ellipses, commas, and extra spaces) to safely bypass Microsoft's tag block.
+    """
+    processed = text.strip()
+    processed = processed.replace(", ", ", ...  ")
+    processed = processed.replace(",", ", ...  ")
+    processed = processed.replace(". ", ". ...   ")
+    processed = processed.replace(".", ". ...   ")
+    processed = processed.replace("? ", "? ...   ")
+    processed = processed.replace("?", "? ...   ")
+    return processed
+
+
 VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
+    VoicePreviewPreset(
+        key="indian_english_corporate_male",
+        label="Professional Corporate Man (Mature Deep Tone)",
+        description="Warm, mature corporate male voice with authoritative pacing and senior resonance.",
+        provider="edge",
+        voice="en-IN-PrabhatNeural",
+        language="en-IN",
+        gender="male",
+        sample_text=(
+            "Good morning, and welcome to this comprehensive industry analysis. "
+            "Today, we are examining a critical market paradigm shift: "
+            "How the next generation of freshers is leveraging artificial intelligence to outpace traditional career trajectories."
+        ),
+        rate="-6%",
+        pitch="-4Hz",
+    ),
+    VoicePreviewPreset(
+        key="toddler_girl",
+        label="3-4 Year Old Little Girl (Excited & Playful)",
+        description="Sharp, rapid, high-energy child voice with excitable, natural breathing pacing.",
+        provider="edge",
+        voice="hi-IN-SwaraNeural",
+        language="hi-IN",
+        gender="female",
+        sample_text=(
+            "Look look! A friendly robot is here! It is holding my hand and helping me win the career race! Yay!"
+        ),
+        rate="+20%",
+        pitch="+11Hz",
+    ),
+    VoicePreviewPreset(
+        key="toddler_boy",
+        label="3-4 Year Old Little Boy (High-Energy Cartoon)",
+        description="Playful, accelerated cartoon child voice with natural breathing pacing.",
+        provider="edge",
+        voice="hi-IN-MadhurNeural",
+        language="hi-IN",
+        gender="male",
+        sample_text=(
+            "Wow! See that big shiny computer? The robot is typing so fast! Zoom zoom! We are running very fast!"
+        ),
+        rate="+16%",
+        pitch="+8Hz",
+    ),
+    VoicePreviewPreset(
+        key="story_female",
+        label="Soothing Female Storyteller (Warm & Patient Audio)",
+        description="Calm, maternal, soothing story narration voice for bedside or educational tellings.",
+        provider="edge",
+        voice="en-IN-NeerjaNeural",
+        language="en-IN",
+        gender="female",
+        sample_text=(
+            "Once upon a time, in a world moving faster than light, a young fresher stood at the edge of a massive career race. "
+            "The stadium was filled with heavy competition, and the old corporate walls looked impossibly tall."
+        ),
+        rate="-12%",
+        pitch="-2Hz",
+    ),
+    VoicePreviewPreset(
+        key="story_male",
+        label="Deep Charismatic Male Storyteller (Calm & Authoritative)",
+        description="Deep, grandfatherly baritone storyteller pacing for documentaries and motivational clips.",
+        provider="edge",
+        voice="en-IN-PrabhatNeural",
+        language="en-IN",
+        gender="male",
+        sample_text=(
+            "Once upon a time, in a world moving faster than light, a young fresher stood at the edge of a massive career race. "
+            "The stadium was filled with heavy competition, and the old corporate walls looked impossibly tall."
+        ),
+        rate="-15%",
+        pitch="-4Hz",
+    ),
     VoicePreviewPreset(
         key="english_explainer",
         label="English explainer",
@@ -550,37 +652,71 @@ def generate_indian_voiceover(
     pitch: str | None = None,
 ) -> Path:
     # Resolve rate and pitch dynamically based on the active preset
-    if rate is None or pitch is None:
-        selected_preset = None
-        # Try to read active preset choice if in streamlit context
+    selected_preset = None
+    
+    # 1. Try to read active preset choice if in streamlit context
+    try:
+        import streamlit as st
+        if "voice_preset_choice" in st.session_state:
+            choice = st.session_state["voice_preset_choice"]
+            for p in VOICE_PREVIEW_PRESETS:
+                if p.key == choice:
+                    selected_preset = p
+                    break
+    except Exception:
+        pass
+        
+    # 2. Bypassing Streamlit: Fallback to reading the studio state JSON in background compiles
+    if selected_preset is None:
         try:
-            import streamlit as st
-            if "voice_preset_choice" in st.session_state:
-                choice = st.session_state["voice_preset_choice"]
-                for p in VOICE_PREVIEW_PRESETS:
-                    if p.key == choice:
-                        selected_preset = p
-                        break
+            # Walk up output_path or search in Path.cwd() to locate .runtime/studio_state.json
+            state_path = None
+            for parent in [output_path.parent] + list(output_path.parents):
+                candidate = parent / ".runtime" / "studio_state.json"
+                if candidate.exists():
+                    state_path = candidate
+                    break
+            if not state_path:
+                candidate = Path.cwd() / "output" / ".runtime" / "studio_state.json"
+                if candidate.exists():
+                    state_path = candidate
+            
+            if state_path and state_path.exists():
+                import json
+                state_data = json.loads(state_path.read_text(encoding="utf-8"))
+                choice = state_data.get("voice_preset_choice")
+                if choice:
+                    for p in VOICE_PREVIEW_PRESETS:
+                        if p.key == choice:
+                            selected_preset = p
+                            break
         except Exception:
             pass
             
-        # Fall back to matching by voice name if no active preset session is found
-        if selected_preset is None:
-            for p in VOICE_PREVIEW_PRESETS:
-                if p.voice == voice:
-                    selected_preset = p
-                    break
-                    
-        if selected_preset is not None:
-            if rate is None:
-                rate = selected_preset.rate
-            if pitch is None:
-                pitch = selected_preset.pitch
-        else:
-            if rate is None:
-                rate = "+0%"
-            if pitch is None:
-                pitch = "+0Hz"
+    # 3. Fall back to matching by voice name if no active preset session/JSON state is found
+    if selected_preset is None or (selected_preset.voice != voice and voice != "en-IN-PrabhatNeural"):
+        # If the loaded preset doesn't match the voice (and it's not the default), fallback to voice matching
+        for p in VOICE_PREVIEW_PRESETS:
+            if p.voice == voice:
+                selected_preset = p
+                break
+                
+    if selected_preset is not None:
+        if rate is None:
+            rate = selected_preset.rate
+        if pitch is None:
+            pitch = selected_preset.pitch
+            
+        # Apply specialized breathing and dramatic pacing filters if applicable!
+        if selected_preset.key in ("toddler_girl", "toddler_boy"):
+            text = humanize_child_pacing_punctuation(text)
+        elif selected_preset.key in ("story_female", "story_male"):
+            text = inject_dramatic_story_pauses_punctuation(text)
+    else:
+        if rate is None:
+            rate = "+0%"
+        if pitch is None:
+            pitch = "+0Hz"
 
     _run_async(_write_edge_voice_sample(output_path, voice=voice, text=text, rate=rate, pitch=pitch))
     return output_path

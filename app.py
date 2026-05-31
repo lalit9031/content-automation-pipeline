@@ -1445,11 +1445,21 @@ def render_frontdoor(settings: Settings) -> None:
                 value="How Freshers Can Survive in the AI World",
                 key="video_studio_subject",
             )
-            video_voice = st.selectbox(
-                "Voiceover Voice",
-                options=["en-IN-PrabhatNeural", "en-IN-NeerjaNeural", "en-US-GuyNeural", "en-US-JennyNeural"],
-                index=0,
-                key="video_studio_voice",
+            preset_options = voice_preview_presets()
+            preset_keys = [p.key for p in preset_options]
+            preset_labels = {p.key: f"{p.label}" for p in preset_options}
+            
+            # Find default preset based on current active voice_preset_choice or corporate
+            default_preset_key = st.session_state.get("voice_preset_choice", "indian_english_corporate_male")
+            if default_preset_key not in preset_keys:
+                default_preset_key = "indian_english_corporate_male" if "indian_english_corporate_male" in preset_keys else preset_keys[0]
+                
+            video_voice_preset = st.selectbox(
+                "Voiceover Narrator Style (Preset)",
+                options=preset_keys,
+                index=preset_keys.index(default_preset_key),
+                format_func=lambda k: preset_labels.get(k, k),
+                key="video_studio_voice_preset",
             )
             video_scenes = st.number_input(
                 "Number of Scenes",
@@ -1511,8 +1521,9 @@ def render_frontdoor(settings: Settings) -> None:
                         python_executable = sys.executable
                         script_path = "/Users/lalitprasadsingh/.gemini/antigravity/scratch/content-automation-pipeline/scratch/generate_5min_fresher_video.py"
 
+                        selected_preset_key = st.session_state.get("video_studio_voice_preset", "indian_english_corporate_male")
                         result = subprocess.run(
-                            [python_executable, script_path],
+                            [python_executable, script_path, "--preset", selected_preset_key],
                             capture_output=True,
                             text=True,
                             cwd="/Users/lalitprasadsingh/.gemini/antigravity/scratch/content-automation-pipeline"

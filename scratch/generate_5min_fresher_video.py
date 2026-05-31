@@ -11,8 +11,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from content_pipeline.config import Settings
 from content_pipeline.bots.image import image_provider, ImageVariant, MockImageProvider
-import re
-from content_pipeline.bots.audio import generate_indian_voiceover
+from content_pipeline.bots.audio import generate_indian_voiceover, VOICE_PREVIEW_PRESETS
 
 from PIL import Image, ImageDraw, ImageFont
 import urllib.parse
@@ -252,7 +251,38 @@ def _ensure_png_bytes(image_bytes: bytes, png_path: Path) -> Path:
 
 
 def main():
-    print("Initializing 5-minute premium explainer video generation...")
+    import argparse
+    parser = argparse.ArgumentParser(description="Generate 5-minute premium explainer video.")
+    parser.add_argument("--preset", type=str, default="indian_english_corporate_male", help="Voice preset key or voice name.")
+    args = parser.parse_known_args()[0]
+    preset_choice = args.preset
+
+    print(f"Initializing 5-minute premium explainer video generation with preset '{preset_choice}'...")
+    
+    # Resolve the preset parameters
+    selected_preset = None
+    for p in VOICE_PREVIEW_PRESETS:
+        if p.key == preset_choice:
+            selected_preset = p
+            break
+            
+    if selected_preset is None:
+        for p in VOICE_PREVIEW_PRESETS:
+            if p.voice == preset_choice:
+                selected_preset = p
+                break
+                
+    if selected_preset is not None:
+        resolved_voice = selected_preset.voice
+        resolved_rate = selected_preset.rate
+        resolved_pitch = selected_preset.pitch
+        print(f"Using voice preset: '{selected_preset.label}' -> Voice: {resolved_voice}, Rate: {resolved_rate}, Pitch: {resolved_pitch}")
+    else:
+        resolved_voice = preset_choice or "en-IN-PrabhatNeural"
+        resolved_rate = "+0%"
+        resolved_pitch = "+0Hz"
+        print(f"Fallback to raw voice: {resolved_voice}, Rate: {resolved_rate}, Pitch: {resolved_pitch}")
+
     os.environ["IMAGE_PROVIDER"] = "free-ai"
     settings = Settings.from_environment(PROJECT_ROOT)
 
@@ -328,11 +358,17 @@ def main():
             _ensure_png_bytes(image_bytes, still_path)
             print(f"-> Slide image generated and saved to {still_path} (Size: {still_path.stat().st_size / 1024:.1f} KB)")
 
-        # Narration Audio (Indian Teacher Voice: en-IN-PrabhatNeural)
+        # Narration Audio using dynamically resolved preset speed, pitch, and voice name
         audio_filename = f"scene_{index:02d}.mp3"
         audio_path = audio_dest_dir / audio_filename
-        print("-> Rendering Edge TTS audio...")
-        generate_indian_voiceover(narration, audio_path, voice="en-IN-PrabhatNeural")
+        print(f"-> Rendering Edge TTS audio (Voice: {resolved_voice}, Rate: {resolved_rate}, Pitch: {resolved_pitch})...")
+        generate_indian_voiceover(
+            narration,
+            audio_path,
+            voice=resolved_voice,
+            rate=resolved_rate,
+            pitch=resolved_pitch,
+        )
         
         # Sync Duration
         duration = _audio_duration(audio_path)
