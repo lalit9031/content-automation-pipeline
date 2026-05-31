@@ -172,8 +172,20 @@ def render_frontdoor(settings: Settings) -> None:
 
     st.sidebar.header("Studio Controls")
     output_dir_input = st.sidebar.text_input("Output directory", value=str(settings.output_dir))
-    run_day = st.sidebar.date_input("Run day", value=default_day)
-    inspect_day = st.sidebar.date_input("Inspect day", value=default_day)
+    if st.sidebar.button("Load latest day", use_container_width=True, disabled=not latest_day):
+        st.session_state["run_day"] = default_day
+        st.session_state["inspect_day"] = default_day
+        st.rerun()
+    run_day = st.sidebar.date_input(
+        "Run day",
+        value=st.session_state.get("run_day", default_day),
+        key="run_day",
+    )
+    inspect_day = st.sidebar.date_input(
+        "Inspect day",
+        value=st.session_state.get("inspect_day", default_day),
+        key="inspect_day",
+    )
     show_json = st.sidebar.checkbox("Show raw JSON", value=False)
 
     ui_settings = replace(settings, output_dir=resolve_output_dir(output_dir_input))
