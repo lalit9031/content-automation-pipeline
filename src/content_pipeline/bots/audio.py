@@ -175,6 +175,20 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
         pitch="+0Hz",
     ),
     VoicePreviewPreset(
+        key="hindi_wisdom_narrator",
+        label="Hindi philosophical narrator (Your Shared Tone)",
+        description="A calm, composed, and standard Hindi male voice matching your shared audio samples perfectly.",
+        provider="edge",
+        voice="hi-IN-MadhurNeural",
+        language="hi-IN",
+        gender="male",
+        sample_text=(
+            "व्यक्ति को मात्र इसलिए कि वह ज्ञानी है स्वीकार करने की अनुमति नहीं, बल्कि उसके आचरण और व्यवहार को भी देखना आवश्यक है।"
+        ),
+        rate="+5%",
+        pitch="+0Hz",
+    ),
+    VoicePreviewPreset(
         key="hindi_energetic_male",
         label="Hindi energetic male",
         description="Upbeat and fast-paced Hindi male narration, perfect for technology, marketing, and dynamic explainers.",
