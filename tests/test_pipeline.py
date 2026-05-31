@@ -1452,6 +1452,20 @@ class PipelineTest(unittest.TestCase):
             self.assertIn("THE PM AI QUESTION", svg_content)
             self.assertIn("no API cost", svg_content)
 
+    def test_krishna_planned_images_pace_requests_between_shots(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            output = Path(temporary_dir) / "output"
+            with patch("content_pipeline.bots.krishna_agents.time.sleep") as sleep_mock:
+                images = generate_planned_images(
+                    bal_krishna_image_plan(),
+                    MockImageProvider(),
+                    output,
+                    request_delay_seconds=2.5,
+                )
+
+            self.assertEqual(len(images), 2)
+            sleep_mock.assert_called_once_with(2.5)
+
     def test_selected_krishna_voice_records_creator_approved_edge_voice(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_dir:
             path = write_voice_selection(Path(temporary_dir), "sample_01_prabhat_neural.mp3")

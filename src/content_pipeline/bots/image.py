@@ -685,6 +685,7 @@ def generate_images(
     *,
     max_dimension: int = 2048,
     max_bytes: int = 5 * 1024 * 1024,
+    request_delay_seconds: float = 0.0,
 ) -> list[str]:
     files: list[str] = []
     batch_provider = provider
@@ -703,12 +704,14 @@ def generate_images(
                     batch_provider = provider.fallback_provider
                 else:
                     raise
-    for variant in VARIANTS:
+    for index, variant in enumerate(VARIANTS):
         filename = variant.filename + batch_provider.extension
         image_bytes = batch_provider.create(package.image_prompt, variant)
         _assert_image_limits(image_bytes, batch_provider.extension, filename, max_dimension, max_bytes)
         storage.write_bytes(package.date, filename, image_bytes)
         files.append(filename)
+        if request_delay_seconds > 0 and index + 1 < len(VARIANTS):
+            time.sleep(request_delay_seconds)
     return files
 
 

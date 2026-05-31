@@ -31,6 +31,7 @@ import logging
 import shutil
 import subprocess
 import textwrap
+import time
 from dataclasses import asdict
 from datetime import datetime, timezone
 from html import escape
@@ -168,6 +169,8 @@ def generate_scene_images(
     workspace_dir: Path,
     script: ScienceStoryScript,
     image_provider: ImageProvider,
+    *,
+    request_delay_seconds: float = 0.0,
 ) -> list[Path]:
     """Generate cinematic still images for each scene.
 
@@ -199,6 +202,8 @@ def generate_scene_images(
             # Create a placeholder gradient image
             _create_placeholder_image(image_path, scene, index)
             generated.append(image_path)
+        if request_delay_seconds > 0 and index + 1 < len(script.scenes):
+            time.sleep(request_delay_seconds)
 
     return generated
 
@@ -642,7 +647,12 @@ def create_science_video(
     if not skip_images:
         log.info("Generating scene images...")
         provider = _get_image_provider(settings)
-        generate_scene_images(workspace_dir, script, provider)
+        generate_scene_images(
+            workspace_dir,
+            script,
+            provider,
+            request_delay_seconds=settings.image_request_delay_seconds,
+        )
 
     # Step 4: Generate audio
     if not skip_audio:

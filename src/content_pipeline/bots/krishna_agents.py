@@ -416,15 +416,19 @@ def generate_planned_images(
     plan: ImagePlan,
     provider: ImageProvider,
     output_dir: Path,
+    *,
+    request_delay_seconds: float = 0.0,
 ) -> list[Path]:
     root = output_dir / plan.project_id
     variant = ImageVariant("9:16", 1080, 1920, "unused")
     outputs: list[Path] = []
-    for shot in plan.shots:
+    for index, shot in enumerate(plan.shots):
         path = root / f"{shot.output_basename}{provider.extension}"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(provider.create(shot.prompt, variant))
         outputs.append(path)
+        if request_delay_seconds > 0 and index + 1 < len(plan.shots):
+            time.sleep(request_delay_seconds)
     return outputs
 
 
