@@ -455,7 +455,7 @@ class PipelineTest(unittest.TestCase):
             output_dir=Path("output"),
             image_provider="gemini",
             gcp_project_id="Pixar-Video-Studio",
-            imagen_model="imagen-3.0-generate-002",
+            imagen_model="imagen-4.0-generate-001",
         )
 
         with patch.object(image_module, "ImagenProvider", FakeImagenProvider):

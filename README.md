@@ -101,7 +101,7 @@ IMAGE_FALLBACK_PROVIDER=mock
 
 GCP_PROJECT_ID=your_google_cloud_project_id_from_the_Pixar-Video-Studio_project
 GCP_LOCATION=us-central1
-IMAGEN_MODEL=imagen-3.0-generate-002
+IMAGEN_MODEL=imagen-4.0-generate-001
 ```
 
 Google Application Default Credentials must also be configured for Vertex AI.

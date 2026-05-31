@@ -134,6 +134,8 @@ class ImagenProvider:
             location=settings.gcp_location,
         )
         self.model = settings.imagen_model
+        if self.model == "imagen-3.0-generate-002":
+            self.model = "imagen-4.0-generate-001"
 
     def create(self, prompt: str, variant: ImageVariant) -> bytes:
         config = self.generate_images_config(
@@ -176,6 +178,8 @@ class GeminiImageProvider:
         self.settings = settings
         self.clients = clients
         self.model = settings.imagen_model
+        if self.model == "imagen-3.0-generate-002":
+            self.model = "imagen-4.0-generate-001"
         self.fallback_provider = _fallback_image_provider(settings)
         state_path = settings.output_dir / ".runtime" / "gemini_image_rate_limit.json"
         self.limiter = limiter or GeminiImageLimiter(

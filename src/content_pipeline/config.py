@@ -19,7 +19,7 @@ class Settings:
     anthropic_model: str = ""
     gcp_project_id: str = ""
     gcp_location: str = "us-central1"
-    imagen_model: str = "imagen-3.0-generate-002"
+    imagen_model: str = "imagen-4.0-generate-001"
     gemini_image_model: str = "gemini-2.5-flash-image"
     gemini_image_daily_budget: int = 0
     gemini_image_min_interval_seconds: float = 30.0
@@ -84,7 +84,7 @@ class Settings:
             anthropic_model=os.getenv("ANTHROPIC_MODEL", ""),
             gcp_project_id=os.getenv("GCP_PROJECT_ID", ""),
             gcp_location=os.getenv("GCP_LOCATION", "us-central1"),
-            imagen_model=os.getenv("IMAGEN_MODEL", "imagen-3.0-generate-002"),
+            imagen_model=os.getenv("IMAGEN_MODEL", "imagen-4.0-generate-001"),
             gemini_image_model=os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image"),
             gemini_image_daily_budget=int(os.getenv("GEMINI_IMAGE_DAILY_BUDGET", "0")),
             gemini_image_min_interval_seconds=float(
