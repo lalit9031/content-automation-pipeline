@@ -23,6 +23,7 @@ from content_pipeline.bots.audio import available_voice_options
 from content_pipeline.bots.audio import generate_music_preview
 from content_pipeline.bots.audio import generate_voice_preview
 from content_pipeline.bots.audio import normalize_voice_text
+from content_pipeline.bots.audio import voice_preview_presets
 from content_pipeline.bots.image import ImageVariant, image_provider
 from content_pipeline.bots.prompt import build_cinematic_image_prompt
 from content_pipeline.bots.prompt import build_image_style_pack
@@ -161,6 +162,7 @@ def load_studio_state(output_dir: Path) -> dict[str, str]:
         return {}
     state: dict[str, str] = {}
     for key in (
+        "voice_preset_choice",
         "voice_provider",
         "voice_name",
         "voice_preview_text",
@@ -373,6 +375,7 @@ def render_frontdoor(settings: Settings) -> None:
     saved_studio_state = load_studio_state(ui_output_dir)
     if st.session_state.get("_studio_output_dir") != str(ui_output_dir):
         st.session_state["_studio_output_dir"] = str(ui_output_dir)
+        st.session_state["voice_preset_choice"] = saved_studio_state.get("voice_preset_choice", "english_explainer")
         st.session_state["voice_provider_choice"] = saved_studio_state.get("voice_provider", settings.voice_provider)
         st.session_state["voice_name_choice"] = saved_studio_state.get("voice_name", settings.indian_tts_voice)
         st.session_state["voice_preview_text"] = saved_studio_state.get(
@@ -399,6 +402,25 @@ def render_frontdoor(settings: Settings) -> None:
     st.session_state.setdefault("image_preview_path", "")
     st.session_state.setdefault("music_preview_path", "")
     st.sidebar.subheader("Voice Studio")
+    preset_options = voice_preview_presets()
+    preset_map = {preset.key: preset for preset in preset_options}
+    preset_default = st.session_state.get("voice_preset_choice", preset_options[0].key)
+    if preset_default not in preset_map:
+        preset_default = preset_options[0].key
+    st.sidebar.selectbox(
+        "Voice preset",
+        options=[preset.key for preset in preset_options],
+        index=[preset.key for preset in preset_options].index(preset_default),
+        format_func=lambda value: f"{preset_map[value].label} - {preset_map[value].description}",
+        key="voice_preset_choice",
+    )
+    apply_voice_preset = st.sidebar.button("Apply voice preset", use_container_width=True)
+    if apply_voice_preset:
+        preset = preset_map[st.session_state["voice_preset_choice"]]
+        st.session_state["voice_provider_choice"] = preset.provider
+        st.session_state["voice_name_choice"] = preset.voice
+        st.session_state["voice_preview_text"] = preset.sample_text
+        st.rerun()
     voice_provider_options = ("edge", "openai")
     default_voice_provider = st.session_state["voice_provider_choice"]
     if default_voice_provider not in voice_provider_options:
@@ -431,6 +453,10 @@ def render_frontdoor(settings: Settings) -> None:
         value=st.session_state["voice_preview_text"],
         height=140,
         key="voice_preview_text",
+    )
+    current_voice_preset = preset_map[st.session_state["voice_preset_choice"]]
+    st.sidebar.caption(
+        f"Preset: {current_voice_preset.label} · Script language: {current_voice_preset.language}"
     )
     st.sidebar.subheader("Image Studio")
     image_provider_options = ("mock", "gemini", "imagen", "openai")
@@ -1093,6 +1119,7 @@ def render_frontdoor(settings: Settings) -> None:
     save_studio_state(
         ui_output_dir,
         {
+            "voice_preset_choice": str(st.session_state["voice_preset_choice"]),
             "voice_provider": str(st.session_state["voice_provider_choice"]),
             "voice_name": str(st.session_state["voice_name_choice"]),
             "voice_preview_text": str(st.session_state["voice_preview_text"]),

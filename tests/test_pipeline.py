@@ -87,6 +87,7 @@ from content_pipeline.bots.audio import available_voice_options
 from content_pipeline.bots.audio import generate_music_preview
 from content_pipeline.bots.audio import normalize_voice_text
 from content_pipeline.bots.audio import render_audio_status_html
+from content_pipeline.bots.audio import voice_preview_presets
 from content_pipeline.bots.audio import voice_status
 from content_pipeline.bots.audio import write_voice_daily_artifacts
 from content_pipeline.bots.youtube import upload_youtube_video
@@ -208,6 +209,16 @@ class PipelineTest(unittest.TestCase):
         self.assertIn("en-IN-NeerjaNeural", [voice for voice, _ in edge_options])
         self.assertIn("echo", [voice for voice, _ in openai_options])
         self.assertIn("nova", [voice for voice, _ in openai_options])
+
+    def test_voice_preview_presets_include_hindi_and_hinglish(self) -> None:
+        presets = voice_preview_presets()
+        labels = {preset.label for preset in presets}
+        texts = "\n".join(preset.sample_text for preset in presets)
+
+        self.assertIn("Hindi story", labels)
+        self.assertIn("Hinglish teacher", labels)
+        self.assertIn("कान्हा", texts)
+        self.assertIn("Jira", texts)
 
     def test_music_preview_writes_wav_file(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_dir:

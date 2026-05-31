@@ -66,6 +66,77 @@ class VoiceEngineProfile:
     style: str = ""
 
 
+@dataclass(frozen=True)
+class VoicePreviewPreset:
+    key: str
+    label: str
+    description: str
+    provider: str
+    voice: str
+    language: str
+    sample_text: str
+
+
+VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
+    VoicePreviewPreset(
+        key="english_explainer",
+        label="English explainer",
+        description="Clear English narration for tutorials and walkthroughs.",
+        provider="openai",
+        voice="echo",
+        language="en-US",
+        sample_text=(
+            "Let's break this workflow into simple steps. "
+            "We will explain the idea clearly, show the challenge, and then walk through the fix."
+        ),
+    ),
+    VoicePreviewPreset(
+        key="hindi_story",
+        label="Hindi story",
+        description="Pure Hindi narration for stories and devotional content.",
+        provider="edge",
+        voice="hi-IN-SwaraNeural",
+        language="hi-IN",
+        sample_text=(
+            "आज हम एक सरल कहानी सुनेंगे। गोकुल की सुबह में कान्हा मुस्कुराते हैं और यशोदा मैया स्नेह से उन्हें पुकारती हैं।"
+        ),
+    ),
+    VoicePreviewPreset(
+        key="hinglish_teacher",
+        label="Hinglish teacher",
+        description="Friendly Hindi-English mix for learning content.",
+        provider="edge",
+        voice="en-IN-NeerjaNeural",
+        language="en-IN",
+        sample_text=(
+            "Aaj hum simple steps mein samjhenge kaise AI, Jira, aur Scrum ko smart way se use karte hain."
+        ),
+    ),
+    VoicePreviewPreset(
+        key="hindi_explainer",
+        label="Hindi explainer",
+        description="Professional Hindi narration with a calm teaching tone.",
+        provider="openai",
+        voice="nova",
+        language="hi-IN",
+        sample_text=(
+            "आज हम इस विषय को सरल और स्पष्ट तरीके से समझेंगे, ताकि हर कदम आसानी से याद रहे।"
+        ),
+    ),
+    VoicePreviewPreset(
+        key="motivation_boost",
+        label="Motivation boost",
+        description="Bright, energetic English delivery for motivational clips.",
+        provider="openai",
+        voice="shimmer",
+        language="en-US",
+        sample_text=(
+            "This is your reminder to keep going. Small improvements every day lead to a powerful result."
+        ),
+    ),
+)
+
+
 def generate_hindi_voice_samples(
     settings: Settings,
     destination: Path,
@@ -123,6 +194,10 @@ def available_voice_options(provider: str) -> list[tuple[str, str]]:
     if provider == "edge":
         return [(voice, f"{voice} - {description}") for _, voice, description in FREE_INDIAN_EDGE_VOICE_VARIANTS]
     return [(voice, voice.title()) for voice in OPENAI_TTS_VOICES]
+
+
+def voice_preview_presets() -> tuple[VoicePreviewPreset, ...]:
+    return VOICE_PREVIEW_PRESETS
 
 
 def normalize_voice_text(text: str) -> str:
