@@ -336,6 +336,33 @@ def status_pill(label: str, value: str) -> str:
     """
 
 
+def copy_prompt_button(prompt: str, *, button_id: str) -> str:
+    escaped_prompt = json.dumps(prompt)
+    return f"""
+    <button
+      id="{escape(button_id)}"
+      style="
+        width: 100%;
+        padding: 10px 14px;
+        border-radius: 14px;
+        border: 1px solid #334155;
+        background: linear-gradient(180deg, rgba(15,23,42,.95), rgba(15,23,42,.78));
+        color: #e2e8f0;
+        font-weight: 800;
+        cursor: pointer;
+      "
+      onclick='navigator.clipboard.writeText({escaped_prompt}).then(() => {{
+        const el = document.getElementById("{escape(button_id)}");
+        if (el) {{
+          const prev = el.textContent;
+          el.textContent = "Copied prompt";
+          setTimeout(() => {{ el.textContent = prev || "Copy prompt"; }}, 1200);
+        }}
+      }}); return false;'
+    >Copy prompt</button>
+    """
+
+
 def audio_file_list(paths: list[Path]) -> None:
     if not paths:
         st.info("No audio files found yet. Run the pipeline or open a day with generated samples.")
@@ -1177,6 +1204,8 @@ def render_frontdoor(settings: Settings) -> None:
             )
             st.caption(image_request_note)
             st.caption("Tip: keep the prompt vivid, specific, and free of text, logos, and watermarks.")
+            st.text_area("Current image prompt", value=image_prompt, height=170, disabled=True)
+            components.html(copy_prompt_button(image_prompt, button_id="copy-full-image-prompt"), height=52)
             if st.session_state["image_preview_path"]:
                 preview_path = Path(st.session_state["image_preview_path"])
                 if preview_path.exists():
@@ -1205,6 +1234,8 @@ def render_frontdoor(settings: Settings) -> None:
                 "Audio mode keeps the full image editor hidden, but you can still generate one confirmation image from the current prompt."
             )
             st.caption(image_request_note)
+            st.text_area("Current image prompt", value=st.session_state["image_prompt"], height=170, disabled=True)
+            components.html(copy_prompt_button(st.session_state["image_prompt"], button_id="copy-quick-image-prompt"), height=52)
             if st.button("Generate 1 image preview", key="studio_quick_image_preview", use_container_width=True):
                 try:
                     image_settings = replace(settings, output_dir=ui_output_dir)
