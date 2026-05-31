@@ -227,6 +227,15 @@ def render_link_card(title: str, detail: str, link_label: str | None, link_url: 
     st.markdown(body, unsafe_allow_html=True)
 
 
+def _health_hint(name: str) -> str:
+    hints = {
+        "Dashboard": "Run the pipeline or inspect another day that already has a daily dashboard.",
+        "Audio": "Open the audio tab after a run, or generate the day again if audio artifacts are missing.",
+        "Voice": "Voice status appears after the daily voice bundle is written for that day.",
+    }
+    return hints.get(name, "Check the selected day and rerun the pipeline if needed.")
+
+
 def render_health_banner(overview: dict[str, object]) -> None:
     checks = [
         ("Dashboard", bool(overview["dashboard_exists"])),
@@ -240,12 +249,19 @@ def render_health_banner(overview: dict[str, object]) -> None:
     pill_bits = []
     for name, ok in checks:
         pill_bits.append(f'<span style="margin-right:12px;">{escape(name)}: {"ready" if ok else "missing"}</span>')
+    hint_bits = ""
+    if missing:
+        hint_bits = "".join(
+            f'<li style="margin-top:6px;">{escape(name)}: {escape(_health_hint(name))}</li>'
+            for name in missing
+        )
     st.markdown(
         f"""
         <div class="action-card" style="margin:14px 0 16px;">
           <h3>{escape(label)}</h3>
           <p>{escape(detail)}</p>
           <div class="action-link" style="color:#cbd5e1;">{''.join(pill_bits)}</div>
+          {"<ul style='margin:10px 0 0 18px;color:#cbd5e1;line-height:1.5;'>" + hint_bits + "</ul>" if hint_bits else ""}
         </div>
         """,
         unsafe_allow_html=True,
