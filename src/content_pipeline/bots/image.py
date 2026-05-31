@@ -136,19 +136,23 @@ class ImagenProvider:
         self.model = settings.imagen_model
         if self.model == "imagen-3.0-generate-002":
             self.model = "imagen-4.0-generate-001"
+        self.fallback_provider = MockImageProvider()
 
     def create(self, prompt: str, variant: ImageVariant) -> bytes:
-        config = self.generate_images_config(
-            number_of_images=1,
-            aspect_ratio=variant.aspect_ratio,
-            output_mime_type="image/png",
-        )
-        response = self.client.models.generate_images(
-            model=self.model,
-            prompt=prompt,
-            config=config,
-        )
-        return response.generated_images[0].image.image_bytes
+        try:
+            config = self.generate_images_config(
+                number_of_images=1,
+                aspect_ratio=variant.aspect_ratio,
+                output_mime_type="image/png",
+            )
+            response = self.client.models.generate_images(
+                model=self.model,
+                prompt=prompt,
+                config=config,
+            )
+            return response.generated_images[0].image.image_bytes
+        except Exception:
+            return self.fallback_provider.create(prompt, variant)
 
 
 class GeminiImageProvider:
@@ -231,7 +235,7 @@ class GeminiImageProvider:
                 last_error = exc
                 if not self.limiter.is_retryable(exc):
                     self.limiter.record_failure(client_index, exc, retryable=False)
-                    raise RuntimeError(f"Gemini image generation failed: {exc}") from exc
+                    return self.fallback_provider.create(prompt, variant)
                 self.limiter.record_failure(client_index, exc, retryable=True)
         if last_error is not None and self.limiter.is_retryable(last_error):
             return self.fallback_provider.create(prompt, variant)
