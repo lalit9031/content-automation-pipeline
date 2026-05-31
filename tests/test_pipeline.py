@@ -188,6 +188,17 @@ class PipelineTest(unittest.TestCase):
         self.assertIn("no text, logos, or watermarks", prompt)
         self.assertIn("hero image", prompt)
 
+    def test_cinematic_image_prompt_sanitizes_brand_names(self) -> None:
+        prompt = build_cinematic_image_prompt(
+            "Jira workflow management",
+            "a team reviewing a Jira board",
+            "PM leaders",
+        )
+
+        self.assertNotIn("Jira", prompt)
+        self.assertIn("project dashboard", prompt)
+        self.assertIn("project dashboard workflow management", prompt)
+
     def test_image_style_pack_builds_storyboard_and_thumbnail_prompts(self) -> None:
         pack = build_image_style_pack("Agile project management", subject="a team board")
 

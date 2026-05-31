@@ -62,11 +62,36 @@ class ImageStylePack:
         return asdict(self)
 
 
+_IMAGE_BRAND_REPLACEMENTS = (
+    ("Jira", "project dashboard"),
+    ("jira", "project dashboard"),
+    ("Confluence", "project knowledge board"),
+    ("confluence", "project knowledge board"),
+    ("Trello", "task board"),
+    ("trello", "task board"),
+    ("Slack", "team chat workspace"),
+    ("slack", "team chat workspace"),
+    ("Asana", "project tracker"),
+    ("asana", "project tracker"),
+    ("Notion", "workspace page"),
+    ("notion", "workspace page"),
+)
+
+
+def _sanitize_image_prompt_text(value: str) -> str:
+    sanitized = value
+    for source, replacement in _IMAGE_BRAND_REPLACEMENTS:
+        sanitized = sanitized.replace(source, replacement)
+    return sanitized
+
+
 class PromptProvider(Protocol):
     def generate(self, day: str, avoid_topics: list[str] | None = None) -> ContentPackage: ...
 
 
 def build_cinematic_image_prompt(topic: str, subject: str = "", audience: str = "professional audiences") -> str:
+    topic = _sanitize_image_prompt_text(topic)
+    subject = _sanitize_image_prompt_text(subject)
     focus = f" about {subject}" if subject else ""
     return (
         f"A vivid supporting illustration for {topic}{focus}, optimized for {audience}. "
@@ -76,6 +101,8 @@ def build_cinematic_image_prompt(topic: str, subject: str = "", audience: str = 
 
 
 def build_thumbnail_prompt(topic: str, subject: str = "", audience: str = "YouTube viewers") -> str:
+    topic = _sanitize_image_prompt_text(topic)
+    subject = _sanitize_image_prompt_text(subject)
     focus = f" featuring {subject}" if subject else ""
     return (
         f"A striking thumbnail concept for {topic}{focus}, designed for {audience}. "
@@ -89,6 +116,7 @@ def build_storyboard_prompts(
     *,
     scene_count: int = 35,
 ) -> list[dict[str, str]]:
+    topic = _sanitize_image_prompt_text(topic)
     scene_templates = [
         "Intro: a vibrant opening frame introducing {topic} with glowing modular elements and a cinematic tech atmosphere.",
         "Traditional setup: a grounded pre-AI workspace showing the old way of handling {topic}.",

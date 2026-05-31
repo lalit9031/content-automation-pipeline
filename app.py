@@ -288,12 +288,12 @@ def image_backend_status(settings: Settings, selected_provider: str) -> tuple[st
     if provider != "gemini":
         return provider, f"{provider} selected for this preview."
     plan = gemini_image_package_plan(settings, packages_requested=1)
-    recommended_provider = str(plan["recommended_provider"])
+    recommended_provider = str(plan.get("recommended_provider") or settings.image_fallback_provider or "imagen")
     if recommended_provider != "gemini":
         return "fallback active", f"Gemini is limited right now. Using {recommended_provider} for a single image preview."
-    if plan["daily_limit_reached"]:
+    if bool(plan.get("daily_limit_reached")):
         return "gemini limited", "Gemini daily budget is exhausted, but the preview path will stay responsive."
-    if plan["stop_before_failure"]:
+    if bool(plan.get("stop_before_failure")):
         return "fallback ready", "Gemini is close to a limit. The fallback path is ready if needed."
     return "gemini ready", "Gemini can handle one image preview now."
 
