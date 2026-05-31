@@ -325,6 +325,32 @@ class PipelineTest(unittest.TestCase):
             mock_image.assert_not_called()
             mock_caption.assert_called()
 
+    def test_render_image_preview_renders_svg_text_payload_even_with_png_suffix(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            preview_path = Path(temporary_dir) / "svg_text.png"
+            preview_path.write_text(
+                '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="#07152f"/></svg>',
+                encoding="utf-8",
+            )
+
+            try:
+                import app as streamlit_app
+            except ModuleNotFoundError:
+                self.skipTest("Streamlit is not installed in the test environment")
+
+            with patch.object(streamlit_app.components, "html") as mock_html, patch.object(
+                streamlit_app.st, "error"
+            ) as mock_error, patch.object(streamlit_app.st, "warning") as mock_warning, patch.object(
+                streamlit_app.st, "image"
+            ) as mock_image:
+                streamlit_app.render_image_preview(preview_path)
+
+            self.assertTrue(preview_path.exists())
+            mock_html.assert_called()
+            mock_error.assert_not_called()
+            mock_warning.assert_not_called()
+            mock_image.assert_not_called()
+
     def test_image_preview_status_reports_ready_missing_and_broken(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_dir:
             ready_path = Path(temporary_dir) / "ready.png"

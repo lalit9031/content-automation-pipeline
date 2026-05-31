@@ -214,9 +214,20 @@ def _slugify(value: str) -> str:
     return slug or "preview"
 
 
+def _svg_preview_text(path: Path) -> str | None:
+    try:
+        raw = path.read_text(encoding="utf-8", errors="ignore").lstrip("\ufeff").lstrip()
+    except OSError:
+        return None
+    if raw.startswith("<svg") or raw.startswith("<?xml") and "<svg" in raw[:256]:
+        return raw
+    return None
+
+
 def render_image_preview(path: Path) -> None:
-    if path.suffix.lower() == ".svg":
-        components.html(path.read_text(encoding="utf-8"), height=720, scrolling=False)
+    svg_text = _svg_preview_text(path) if path.exists() else None
+    if path.suffix.lower() == ".svg" or svg_text is not None:
+        components.html(svg_text or path.read_text(encoding="utf-8"), height=720, scrolling=False)
         return
 
     if not path.exists():
@@ -265,6 +276,8 @@ def image_preview_status(path: Path | None) -> tuple[str, str]:
         return "missing", "No preview path set yet."
     if not path.exists():
         return "missing", f"No preview file found at {path.name}."
+    if _svg_preview_text(path) is not None:
+        return "ready", f"SVG preview stored at {path.name}."
     if path.stat().st_size < 1024:
         return "broken", f"{path.name} is too small to be a valid image."
     try:
