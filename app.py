@@ -5,6 +5,7 @@ import os
 import sys
 from dataclasses import replace
 from datetime import date
+from html import escape
 from pathlib import Path
 from collections.abc import Mapping
 
@@ -146,6 +147,15 @@ def file_chip(label: str, path: Path) -> str:
     """
 
 
+def status_pill(label: str, value: str) -> str:
+    return f"""
+    <div class="status-pill">
+      <span class="status-pill-label">{escape(label)}</span>
+      <span class="status-pill-value">{escape(value)}</span>
+    </div>
+    """
+
+
 def audio_file_list(paths: list[Path]) -> None:
     if not paths:
         st.info("No audio files found yet. Run the pipeline or open a day with generated samples.")
@@ -173,27 +183,104 @@ def render_frontdoor(settings: Settings) -> None:
     st.markdown(
         """
         <style>
+          :root {
+            --bg: #020617;
+            --panel: rgba(15, 23, 42, 0.9);
+            --panel-strong: rgba(15, 23, 42, 0.98);
+            --line: #334155;
+            --text: #f8fafc;
+            --muted: #94a3b8;
+            --accent: #38bdf8;
+            --accent-2: #a855f7;
+            --accent-3: #f59e0b;
+          }
+          .stApp {
+            background:
+              radial-gradient(circle at top left, rgba(56,189,248,0.14), transparent 26%),
+              radial-gradient(circle at top right, rgba(168,85,247,0.12), transparent 22%),
+              linear-gradient(180deg, #020617 0%, #0f172a 100%);
+          }
           .hero {
-            padding: 24px;
+            padding: 28px;
             border-radius: 24px;
-            background: linear-gradient(135deg, rgba(15,23,42,.92), rgba(2,6,23,.92));
-            border: 1px solid #334155;
-            margin-bottom: 18px;
+            background: linear-gradient(135deg, rgba(15,23,42,.94), rgba(2,6,23,.98));
+            border: 1px solid var(--line);
+            margin-bottom: 16px;
+            box-shadow: 0 20px 45px rgba(2, 6, 23, 0.35);
           }
           .hero h1 {
             margin: 0;
-            font-size: 34px;
+            font-size: 38px;
             letter-spacing: -0.03em;
-            color: #f8fafc;
+            color: var(--text);
           }
           .hero p {
             margin-top: 8px;
-            color: #94a3b8;
+            color: var(--muted);
             line-height: 1.5;
+          }
+          .status-strip {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+            margin: 14px 0 20px;
+          }
+          .status-pill {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            padding: 14px 16px;
+            border-radius: 18px;
+            background: rgba(15, 23, 42, 0.82);
+            border: 1px solid var(--line);
+          }
+          .status-pill-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: .12em;
+            color: var(--muted);
+            font-weight: 800;
+          }
+          .status-pill-value {
+            color: var(--text);
+            font-size: 16px;
+            font-weight: 800;
+            word-break: break-word;
+          }
+          .action-strip {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 12px;
+            margin: 4px 0 16px;
+          }
+          .action-card {
+            padding: 18px;
+            border-radius: 20px;
+            background: linear-gradient(180deg, rgba(15,23,42,.94), rgba(15,23,42,.78));
+            border: 1px solid var(--line);
+            box-shadow: 0 12px 30px rgba(2, 6, 23, 0.25);
+          }
+          .action-card h3 {
+            margin: 0;
+            color: var(--text);
+            font-size: 18px;
+          }
+          .action-card p {
+            margin: 8px 0 14px;
+            color: var(--muted);
+            line-height: 1.45;
+          }
+          .action-link a {
+            color: #cffafe;
+            text-decoration: none;
+            font-weight: 800;
+          }
+          .action-link a:hover {
+            text-decoration: underline;
           }
           .metric-box, .file-chip, .panel-box {
             background: rgba(15, 23, 42, 0.85);
-            border: 1px solid #334155;
+            border: 1px solid var(--line);
             border-radius: 18px;
             padding: 16px;
           }
@@ -201,20 +288,20 @@ def render_frontdoor(settings: Settings) -> None:
             font-size: 12px;
             letter-spacing: .08em;
             text-transform: uppercase;
-            color: #94a3b8;
+            color: var(--muted);
           }
           .metric-value {
             margin-top: 6px;
             font-size: 22px;
             font-weight: 800;
-            color: #f8fafc;
+            color: var(--text);
           }
           .file-chip + .file-chip { margin-top: 10px; }
           .file-chip-label {
             font-size: 12px;
             text-transform: uppercase;
             letter-spacing: .08em;
-            color: #7dd3fc;
+            color: var(--accent);
             font-weight: 800;
           }
           .file-chip-path {
@@ -232,14 +319,92 @@ def render_frontdoor(settings: Settings) -> None:
         <section class="hero">
           <h1>Content Pipeline Studio</h1>
           <p>
-            A friendly front door for your daily pipeline, unified audio status, blocker memory,
-            and image style tooling. Run it locally, inspect the artifacts, and open the daily
-            dashboard without bouncing between the CLI and output folders.
+            A control center for your daily pipeline, unified audio status, blocker memory,
+            and image style tooling. Run the daily build, jump straight into the newest run,
+            and inspect the artifacts without hunting through folders.
           </p>
         </section>
         """,
         unsafe_allow_html=True,
     )
+
+    latest_dir = ui_settings.output_dir / "daily" / latest_day if latest_day else None
+    latest_dashboard = latest_dir / "daily_dashboard.html" if latest_dir else None
+    latest_audio = latest_dir / "audio_status.html" if latest_dir else None
+    latest_voice = latest_dir / "voice_status.html" if latest_dir else None
+    latest_file_count = 0
+    if latest_dir and latest_dir.exists():
+        latest_file_count = sum(1 for path in latest_dir.rglob("*") if path.is_file())
+
+    st.markdown(
+        f"""
+        <div class="status-strip">
+          {status_pill("Prompt provider", settings.prompt_provider)}
+          {status_pill("Image provider", settings.image_provider)}
+          {status_pill("Voice provider", settings.voice_provider)}
+          {status_pill("Latest day", latest_day or "none yet")}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    action_cols = st.columns(3)
+    with action_cols[0]:
+        st.markdown(
+            """
+            <div class="action-card">
+              <h3>Run the pipeline</h3>
+              <p>Generate today’s daily artifacts with the same flow used by the CLI.</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        run_clicked = st.button("Run pipeline", type="primary", use_container_width=True)
+    with action_cols[1]:
+        st.markdown(
+            """
+            <div class="action-card">
+              <h3>Latest dashboard</h3>
+              <p>Open the newest dashboard if a run already exists in the output folder.</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        if latest_dashboard and latest_dashboard.exists():
+            st.markdown(
+                f'<div class="action-link"><a href="{latest_dashboard.as_uri()}" target="_blank">Open latest dashboard</a></div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            st.caption("No dashboard yet.")
+    with action_cols[2]:
+        st.markdown(
+            """
+            <div class="action-card">
+              <h3>Audio front door</h3>
+              <p>Jump straight into voice, science audio, and PM audio status.</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        if latest_audio and latest_audio.exists():
+            st.markdown(
+                f'<div class="action-link"><a href="{latest_audio.as_uri()}" target="_blank">Open audio front door</a></div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            st.caption("No audio front door yet.")
+
+    if run_clicked:
+        with st.spinner(f"Generating the daily run for {run_date}..."):
+            try:
+                result = run_linkedin_mvp(run_date, ui_settings)
+            except Exception as exc:
+                st.session_state["last_run_error"] = str(exc)
+            else:
+                st.session_state["last_run_result"] = result
+                st.session_state["last_run_day"] = run_date
+                st.success(f"Pipeline complete for {run_date}")
 
     col_a, col_b, col_c, col_d = st.columns(4)
     with col_a:
@@ -292,16 +457,9 @@ def render_frontdoor(settings: Settings) -> None:
         with left:
             st.subheader("Run the daily pipeline")
             st.write("This triggers the same daily content generation flow your CLI uses.")
-            if st.button("Run pipeline", type="primary", use_container_width=True):
-                with st.spinner(f"Generating the daily run for {run_date}..."):
-                    try:
-                        result = run_linkedin_mvp(run_date, ui_settings)
-                    except Exception as exc:
-                        st.session_state["last_run_error"] = str(exc)
-                    else:
-                        st.session_state["last_run_result"] = result
-                        st.session_state["last_run_day"] = run_date
-                        st.success(f"Pipeline complete for {run_date}")
+            st.caption(
+                f"Latest day: {latest_day or 'none yet'} · Files in latest run: {latest_file_count}"
+            )
 
             if "last_run_error" in st.session_state:
                 st.error(st.session_state["last_run_error"])
