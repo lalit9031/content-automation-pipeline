@@ -149,6 +149,25 @@ def load_json(path: Path) -> dict[str, object] | None:
     return data if isinstance(data, dict) else None
 
 
+def load_voice_studio_state(output_dir: Path) -> dict[str, str]:
+    path = output_dir / ".runtime" / "voice_studio_state.json"
+    payload = load_json(path)
+    if not payload:
+        return {}
+    state: dict[str, str] = {}
+    for key in ("voice_provider", "voice_name", "voice_preview_text"):
+        value = payload.get(key)
+        if isinstance(value, str) and value:
+            state[key] = value
+    return state
+
+
+def save_voice_studio_state(output_dir: Path, state: dict[str, str]) -> None:
+    path = output_dir / ".runtime" / "voice_studio_state.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(state, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
 def file_chip(label: str, path: Path) -> str:
     return f"""
     <div class="file-chip">
@@ -323,22 +342,29 @@ def render_frontdoor(settings: Settings) -> None:
 
     st.sidebar.header("Studio Controls")
     output_dir_input = st.sidebar.text_input("Output directory", value=str(settings.output_dir))
+    ui_output_dir = resolve_output_dir(output_dir_input)
+    saved_voice_state = load_voice_studio_state(ui_output_dir)
     st.sidebar.subheader("Voice Studio")
     voice_provider_options = ("edge", "openai")
-    default_voice_provider = settings.voice_provider if settings.voice_provider in voice_provider_options else "edge"
+    default_voice_provider = saved_voice_state.get("voice_provider") or settings.voice_provider
+    if default_voice_provider not in voice_provider_options:
+        default_voice_provider = "edge"
+    st.session_state.setdefault("voice_provider_choice", default_voice_provider)
     voice_provider_choice = st.sidebar.selectbox(
         "Voice provider",
         options=voice_provider_options,
         index=voice_provider_options.index(default_voice_provider),
+        key="voice_provider_choice",
     )
     voice_options = available_voice_options(voice_provider_choice)
     voice_option_values = [voice for voice, _ in voice_options]
-    default_voice = (
+    default_voice = saved_voice_state.get("voice_name") or (
         settings.indian_tts_voice if voice_provider_choice == "edge" else "echo"
     )
     if default_voice not in voice_option_values:
         default_voice = voice_option_values[0]
-    if "voice_name_choice" not in st.session_state or st.session_state["voice_name_choice"] not in voice_option_values:
+    st.session_state.setdefault("voice_name_choice", default_voice)
+    if st.session_state["voice_name_choice"] not in voice_option_values:
         st.session_state["voice_name_choice"] = default_voice
     voice_name_choice = st.sidebar.selectbox(
         "Voice name",
@@ -351,10 +377,19 @@ def render_frontdoor(settings: Settings) -> None:
         "Voiceover script preview",
         value=st.session_state.get(
             "voice_preview_text",
-            "AI for PM teams using Jira and Scrum. The A.I. flow should sound clear and calm.",
+            saved_voice_state.get("voice_preview_text")
+            or "AI for PM teams using Jira and Scrum. The A.I. flow should sound clear and calm.",
         ),
         height=140,
         key="voice_preview_text",
+    )
+    save_voice_studio_state(
+        ui_output_dir,
+        {
+            "voice_provider": voice_provider_choice,
+            "voice_name": voice_name_choice,
+            "voice_preview_text": voice_preview_text,
+        },
     )
     if st.sidebar.button("Load latest day", use_container_width=True, disabled=not latest_day):
         st.session_state["run_day"] = default_day
@@ -387,7 +422,7 @@ def render_frontdoor(settings: Settings) -> None:
     )
     show_json = st.sidebar.checkbox("Show raw JSON", value=False)
 
-    ui_settings = replace(settings, output_dir=resolve_output_dir(output_dir_input))
+    ui_settings = replace(settings, output_dir=ui_output_dir)
     ui_settings = replace(
         ui_settings,
         voice_provider=voice_provider_choice,
