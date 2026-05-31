@@ -947,6 +947,55 @@ class PipelineTest(unittest.TestCase):
 
             self.assertTrue(image_bytes.startswith(b"<svg"))
 
+    def test_gemini_image_provider_falls_back_when_all_keys_are_stuck_waiting(self) -> None:
+        class FakeClient:
+            def __init__(self) -> None:
+                self.models = types.SimpleNamespace(generate_content=self.generate_content)
+
+            def generate_content(self, **kwargs):
+                raise AssertionError("Gemini client should not be called when keys are waiting too long")
+
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            output = Path(temporary_dir) / "output"
+            runtime = output / ".runtime"
+            runtime.mkdir(parents=True, exist_ok=True)
+            future = datetime.now(timezone.utc).timestamp() + 600
+            today = datetime.now(timezone.utc).date().isoformat()
+            runtime.joinpath("gemini_image_rate_limit.json").write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "usage_date": today,
+                        "keys": [
+                            {
+                                "next_available_at": future,
+                                "cooldown_until": future,
+                                "consecutive_failures": 3,
+                                "usage_date": today,
+                                "daily_generated": 0,
+                            }
+                        ],
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            settings = Settings(
+                output_dir=output,
+                image_provider="gemini",
+                gemini_api_key="key-1",
+                gemini_image_daily_budget=0,
+                image_fallback_provider="mock",
+            )
+            provider = GeminiImageProvider(
+                settings,
+                clients=[FakeClient()],
+            )
+
+            image_bytes = provider.create("Prompt text", ImageVariant("1:1", 1080, 1080, "unused"))
+
+            self.assertTrue(image_bytes.startswith(b"<svg"))
+
     def test_linkedin_authorization_requests_personal_post_scope(self) -> None:
         settings = Settings(
             output_dir=Path("output"),

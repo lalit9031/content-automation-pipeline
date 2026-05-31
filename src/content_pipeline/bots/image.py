@@ -197,7 +197,9 @@ class GeminiImageProvider:
             raise
         last_error: Exception | None = None
         for _ in range(self.limiter.max_attempts):
-            client_index = self.limiter.acquire_key()
+            client_index = self.limiter.acquire_key(max_wait_seconds=5.0)
+            if client_index is None:
+                return self.fallback_provider.create(prompt, variant)
             client = self.clients[client_index]
             try:
                 response = client.models.generate_content(
@@ -274,7 +276,7 @@ class GeminiImageLimiter:
                 f"Next request allowed at {datetime.fromtimestamp(next_allowed_at, tz=timezone.utc).isoformat()}."
             )
 
-    def acquire_key(self) -> int:
+    def acquire_key(self, *, max_wait_seconds: float | None = 5.0) -> int | None:
         while True:
             with self._lock:
                 self._reset_daily_if_needed()
@@ -286,6 +288,8 @@ class GeminiImageLimiter:
                     state.next_available_at = now + self.min_interval_seconds
                     self._save_locked()
                     return index
+                if max_wait_seconds is not None and wait_seconds > max_wait_seconds:
+                    return None
             self._sleep(wait_seconds)
 
     def record_success(self, index: int) -> None:
