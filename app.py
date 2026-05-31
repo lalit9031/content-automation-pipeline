@@ -442,6 +442,25 @@ def render_frontdoor(settings: Settings) -> None:
         )
         st.session_state["image_preview_path"] = ""
         st.session_state["music_preview_path"] = ""
+    st.session_state.setdefault("voice_preset_choice", "english_explainer")
+    st.session_state.setdefault("voice_provider_choice", settings.voice_provider)
+    st.session_state.setdefault("voice_name_choice", settings.indian_tts_voice)
+    st.session_state.setdefault(
+        "voice_preview_text",
+        "AI for PM teams using Jira and Scrum. The A.I. flow should sound clear and calm.",
+    )
+    st.session_state.setdefault("image_provider_choice", settings.image_provider)
+    st.session_state.setdefault("image_topic", "Agile project management")
+    st.session_state.setdefault("image_subject", "a team reviewing a glowing workflow board")
+    st.session_state.setdefault(
+        "image_prompt",
+        build_cinematic_image_prompt(
+            st.session_state["image_topic"],
+            st.session_state["image_subject"],
+        ),
+    )
+    st.session_state.setdefault("music_mood", "cinematic")
+    st.session_state.setdefault("music_duration_seconds", 8)
     st.session_state.setdefault("image_preview_path", "")
     st.session_state.setdefault("music_preview_path", "")
     st.session_state.setdefault("voice_preview_path", "")
