@@ -215,6 +215,9 @@ class PipelineTest(unittest.TestCase):
             self.assertIn("preview_excerpt", status)
             self.assertIn("A.I.", status["preview_excerpt"])
             self.assertIn("P.M.", status["preview_excerpt"])
+            self.assertIn("expected_sample_files", status)
+            self.assertIn("missing_sample_files", status)
+            self.assertEqual(len(status["expected_sample_files"]), len(status["missing_sample_files"]))
             self.assertEqual(written["voice_status"], output / "daily" / "2026-05-26" / "voice_status.json")
             self.assertEqual(
                 written["voice_status_html"],
@@ -224,6 +227,7 @@ class PipelineTest(unittest.TestCase):
             self.assertIn("Voice status", (output / "daily" / "2026-05-26" / "voice_status.html").read_text())
             self.assertIn("Last generated", (output / "daily" / "2026-05-26" / "voice_status.html").read_text())
             self.assertIn("Pronunciation preview", (output / "daily" / "2026-05-26" / "voice_status.html").read_text())
+            self.assertIn("Missing sample audio", (output / "daily" / "2026-05-26" / "voice_status.html").read_text())
 
     def test_audio_status_aggregates_daily_science_and_pm_audio(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_dir:

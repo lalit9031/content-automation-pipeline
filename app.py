@@ -768,6 +768,16 @@ def render_frontdoor(settings: Settings) -> None:
                     if isinstance(p, str)
                 ]
                 audio_file_list(sample_files)
+                missing_files = [
+                    Path(p)
+                    for p in voice_payload.get("missing_sample_files", [])
+                    if isinstance(p, str)
+                ]
+                if missing_files:
+                    st.warning("Some sample audio files are missing for this day.")
+                    st.markdown("**Missing sample audio**")
+                    for path in missing_files:
+                        st.caption(str(path))
             else:
                 st.write("No voice bundle found for this day.")
 

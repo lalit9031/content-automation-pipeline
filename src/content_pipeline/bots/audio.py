@@ -311,6 +311,13 @@ def _build_voice_status_payload(
     samples_dir = daily_dir / "indian_voice_samples"
     manifest_path = samples_dir / "voice_samples_manifest.json"
     sample_files = sorted(samples_dir.glob("sample_*.mp3"))
+    expected_sample_files = [str(samples_dir / filename) for filename, _, _ in FREE_INDIAN_EDGE_VOICE_VARIANTS]
+    expected_sample_names = [filename for filename, _, _ in FREE_INDIAN_EDGE_VOICE_VARIANTS]
+    missing_sample_files = [
+        str(samples_dir / filename)
+        for filename in expected_sample_names
+        if not (samples_dir / filename).exists()
+    ]
     preview_text = preview_text or normalize_voice_text(
         "AI for PM teams using Jira and Scrum. The A.I. flow should sound clear and calm."
     )
@@ -329,6 +336,8 @@ def _build_voice_status_payload(
         "has_real_audio": bool(sample_files),
         "sample_count": len(sample_files),
         "sample_files": [str(path) for path in sample_files],
+        "expected_sample_files": expected_sample_files,
+        "missing_sample_files": missing_sample_files,
         "voice_profile": asdict(profile),
         "samples_manifest": {
             "provider": settings.voice_provider,
@@ -387,6 +396,14 @@ def render_audio_status_html(status: dict[str, Any]) -> str:
     daily = status.get("daily_voice_status", {})
     science = status.get("science_audio", {})
     pm = status.get("pm_audio", {})
+    missing_samples = daily.get("missing_sample_files", [])
+    missing_audio_text = ""
+    if missing_samples:
+        missing_audio_text = (
+            f'<div style="margin-top:8px;color:#fca5a5;font-size:12px;">'
+            f'Missing sample audio: {escape(", ".join(str(path) for path in missing_samples))}'
+            f'</div>'
+        )
     return f"""<section style="background:#0f172a;border:1px solid #334155;border-radius:18px;padding:16px;color:#e2e8f0;">
   <div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#7dd3fc;font-weight:800;">Audio status</div>
   <div style="margin-top:6px;font-size:20px;font-weight:800;">{escape(str(status.get('day') or 'unknown'))}</div>
@@ -396,6 +413,7 @@ def render_audio_status_html(status: dict[str, Any]) -> str:
       <div style="margin-top:6px;font-weight:700;">{escape(str(daily.get('provider') or 'unknown'))} · {escape(str(daily.get('voice') or 'unknown'))}</div>
       <div style="margin-top:4px;color:#94a3b8;">{escape('real audio' if daily.get('has_real_audio') else 'manifest only')}</div>
       <div style="margin-top:4px;color:#94a3b8;">Last generated: {escape(str(daily.get('generated_at') or 'unknown'))}</div>
+      {missing_audio_text}
     </div>
     <div style="background:#111827;border:1px solid #334155;border-radius:14px;padding:12px;">
       <div style="font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;">Science audio</div>
