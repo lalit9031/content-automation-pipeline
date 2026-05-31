@@ -270,6 +270,12 @@ def render_health_banner(overview: dict[str, object]) -> None:
 
 def render_preview_panel(overview: dict[str, object], day_root: Path) -> None:
     st.markdown("#### Latest output preview")
+    st.caption(
+        "Total files: "
+        f"{overview['file_count']} · HTML: {overview['suffix_counts'].get('.html', 0)} · "
+        f"JSON: {overview['suffix_counts'].get('.json', 0)} · Images: "
+        f"{sum(count for suffix, count in overview['suffix_counts'].items() if suffix in {'.png', '.jpg', '.jpeg', '.webp', '.svg'})}"
+    )
     preview_cols = st.columns(3)
     items = [
         (
@@ -298,6 +304,7 @@ def render_preview_panel(overview: dict[str, object], day_root: Path) -> None:
                 <div class="metric-box">
                   <div class="metric-label">{escape(title)}</div>
                   <div class="metric-value">{'ready' if exists else 'missing'}</div>
+                  <div style="margin-top:4px;color:#7dd3fc;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;">{escape(path.name)}</div>
                   <div style="margin-top:6px;color:#94a3b8;font-size:13px;line-height:1.4;">{escape(detail)}</div>
                 </div>
                 """,
