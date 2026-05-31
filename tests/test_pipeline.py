@@ -4,11 +4,21 @@ import sys
 import tempfile
 import types
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
 from content_pipeline.bots.canva import CanvaAuth, render_canva_video
+from content_pipeline.bots.blocker_agent import record_blocker
 from content_pipeline.bots.infographic import infographic_svg
+from content_pipeline.bots.image import (
+    GeminiImageLimiter,
+    GeminiImageProvider,
+    ImageVariant,
+    MockImageProvider,
+    gemini_image_package_plan,
+    gemini_image_status,
+)
 from content_pipeline.bots.linkedin import (
     LinkedInClient,
     assert_publish_allowed,
@@ -16,7 +26,6 @@ from content_pipeline.bots.linkedin import (
     published_post_receipt,
     record_published_post,
 )
-from content_pipeline.bots.image import MockImageProvider
 from content_pipeline.bots.krishna_agents import (
     agent_registry,
     assert_character_design_approved,
@@ -43,6 +52,7 @@ from content_pipeline.bots.policy import (
     review_publication,
 )
 from content_pipeline.bots.prompt import OpenAIPromptProvider, _fit_long_form_duration
+from content_pipeline.bots.prompt import build_image_style_pack
 from content_pipeline.bots.krishna_studio import (
     assemble_manual_episode,
     butter_heist_short_episode,
@@ -55,6 +65,7 @@ from content_pipeline.bots.story_studio import (
     recent_stories,
     save_reference_media_upload,
 )
+from content_pipeline.bots.prompt import build_cinematic_image_prompt
 from content_pipeline.bots.gemini_video import (
     build_gemini_requests,
     gemini_budget_report,
@@ -70,6 +81,11 @@ from content_pipeline.bots.video import (
     scenes_for_package,
     subtitles_for_scenes,
 )
+from content_pipeline.bots.audio import audio_status
+from content_pipeline.bots.audio import normalize_voice_text
+from content_pipeline.bots.audio import render_audio_status_html
+from content_pipeline.bots.audio import voice_status
+from content_pipeline.bots.audio import write_voice_daily_artifacts
 from content_pipeline.bots.youtube import upload_youtube_video
 from content_pipeline.config import Settings
 from content_pipeline.models import ContentPackage, LongFormVideoScript
@@ -82,21 +98,176 @@ class PipelineTest(unittest.TestCase):
     def test_mock_mvp_writes_expected_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_dir:
             output = Path(temporary_dir) / "output"
+            record_blocker(
+                output,
+                command="gemini-image-plan",
+                issue="Gemini daily budget is low",
+                solution="Use the fallback provider after the safe threshold.",
+                component="image",
+                source_title="Internal runbook",
+                source_url="https://example.com/runbook",
+            )
             result = run_linkedin_mvp("2026-05-26", Settings(output_dir=output))
             daily = output / "daily" / "2026-05-26"
 
             self.assertEqual(result["mode"], "mock")
             self.assertEqual(result["publishing"]["status"], "prepared")
+            self.assertTrue((daily / "blocker_status.json").exists())
+            self.assertTrue((daily / "blocker_journal_snapshot.json").exists())
+            self.assertTrue((daily / "blocker_suggestions.json").exists())
+            self.assertTrue((daily / "image_style_pack.json").exists())
+            self.assertTrue((daily / "image_storyboard_prompts.json").exists())
+            self.assertTrue((daily / "thumbnail_prompt.txt").exists())
+            self.assertTrue((daily / "voice_profile.json").exists())
+            self.assertTrue((daily / "voice_normalization_preview.txt").exists())
+            self.assertTrue((daily / "indian_voice_samples" / "voice_samples_manifest.json").exists())
+            self.assertTrue((daily / "audio_status.json").exists())
+            self.assertTrue((daily / "audio_status.html").exists())
+            self.assertTrue((daily / "blocker_status.html").exists())
+            self.assertTrue((daily / "daily_dashboard.html").exists())
             self.assertTrue((daily / "prompt.json").exists())
             self.assertTrue((daily / "images" / "image_square.svg").exists())
             self.assertTrue((daily / "images" / "image_portrait.svg").exists())
             self.assertTrue((daily / "images" / "linkedin_infographic.png").exists())
+            dashboard = (daily / "daily_dashboard.html").read_text(encoding="utf-8")
+            style_pack = json.loads((daily / "image_style_pack.json").read_text(encoding="utf-8"))
+            self.assertIn("Gemini image quota", dashboard)
+            self.assertIn("Blocker learning agent", dashboard)
+            self.assertIn("Gemini daily budget is low", dashboard)
+            self.assertIn("Image style pack", dashboard)
+            self.assertIn("Storyboard prompts", dashboard)
+            self.assertIn("Thumbnail prompt", dashboard)
+            self.assertIn("Voice profile", dashboard)
+            self.assertIn("Voice preview", dashboard)
+            self.assertIn("Indian voice samples", dashboard)
+            self.assertIn("Voice footer", dashboard)
+            self.assertIn("Audio status front door", dashboard)
+            self.assertIn("gemini_image_status.json", dashboard)
+            self.assertIn("blocker_journal_snapshot.json", dashboard)
+            self.assertIn("blocker_suggestions.json", dashboard)
+            self.assertIn("audio_status.html", dashboard)
+            self.assertEqual(style_pack["topic"], json.loads((daily / "prompt.json").read_text(encoding="utf-8"))["topic"])
+            self.assertEqual(len(style_pack["storyboard_prompts"]), 35)
+            self.assertIn("no text, logos, or watermarks", style_pack["notes"][-1])
+            voice_profile = json.loads((daily / "voice_profile.json").read_text(encoding="utf-8"))
+            voice_preview = (daily / "voice_normalization_preview.txt").read_text(encoding="utf-8")
+            samples_manifest = json.loads(
+                (daily / "indian_voice_samples" / "voice_samples_manifest.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(voice_profile["voice"], "en-IN-PrabhatNeural")
+            self.assertIn("A.I.", voice_preview)
+            self.assertEqual(samples_manifest["voice"], "en-IN-PrabhatNeural")
+            self.assertEqual(len(samples_manifest["samples"]), 3)
 
             payload = json.loads((daily / "publish" / "linkedin_payload.json").read_text())
             self.assertIn("#ProjectManagement", payload["hashtags"])
             self.assertEqual(payload["image_file"], "images/linkedin_infographic.png")
             self.assertEqual(payload["posting_target"], "personal_profile")
             self.assertEqual(payload["required_scope"], "w_member_social")
+
+    def test_cinematic_image_prompt_recipe_is_vivid_and_text_free(self) -> None:
+        prompt = build_cinematic_image_prompt(
+            "Agile project management",
+            "a project manager reviewing a glowing workflow board",
+            "PM leaders",
+        )
+
+        self.assertIn("Agile project management", prompt)
+        self.assertIn("pastel purple and cyan highlights", prompt)
+        self.assertIn("no text, logos, or watermarks", prompt)
+        self.assertIn("hero image", prompt)
+
+    def test_image_style_pack_builds_storyboard_and_thumbnail_prompts(self) -> None:
+        pack = build_image_style_pack("Agile project management", subject="a team board")
+
+        self.assertEqual(pack.topic, "Agile project management")
+        self.assertEqual(len(pack.storyboard_prompts), 35)
+        self.assertIn("Agile project management", pack.topic_prompt)
+        self.assertIn("Agile project management", pack.thumbnail_prompt)
+        self.assertIn("hero", pack.thumbnail_prompt.lower())
+        self.assertIn("Scene 01", pack.storyboard_prompts[0]["segment"])
+        self.assertIn("vibrant, cinematic 3D", pack.storyboard_prompts[0]["prompt"])
+        self.assertIn("no text, logos, or watermarks", " ".join(pack.notes))
+
+    def test_voice_normalization_expands_abbreviations(self) -> None:
+        normalized = normalize_voice_text("AI for PM teams using Jira and Scrum.")
+
+        self.assertIn("A.I.", normalized)
+        self.assertIn("P.M.", normalized)
+        self.assertIn("Jee-ra", normalized)
+        self.assertIn("Skrum", normalized)
+
+    def test_voice_daily_artifacts_write_status_bundle(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            output = Path(temporary_dir) / "output"
+            settings = Settings(output_dir=output, voice_provider="openai", indian_tts_voice="en-IN-PrabhatNeural")
+
+            written = write_voice_daily_artifacts(output, settings, day="2026-05-26")
+            status = voice_status(output, settings, day="2026-05-26")
+
+            self.assertTrue((output / "daily" / "2026-05-26" / "voice_status.json").exists())
+            self.assertTrue((output / "daily" / "2026-05-26" / "voice_status.html").exists())
+            self.assertEqual(status["day"], "2026-05-26")
+            self.assertEqual(status["provider"], "openai")
+            self.assertEqual(status["voice"], "en-IN-PrabhatNeural")
+            self.assertFalse(status["has_real_audio"])
+            self.assertIn("generated_at", status)
+            self.assertIn("preview_excerpt", status)
+            self.assertIn("A.I.", status["preview_excerpt"])
+            self.assertIn("P.M.", status["preview_excerpt"])
+            self.assertEqual(written["voice_status"], output / "daily" / "2026-05-26" / "voice_status.json")
+            self.assertEqual(
+                written["voice_status_html"],
+                output / "daily" / "2026-05-26" / "voice_status.html",
+            )
+            self.assertIn("manifest only", (output / "daily" / "2026-05-26" / "voice_status.html").read_text())
+            self.assertIn("Voice status", (output / "daily" / "2026-05-26" / "voice_status.html").read_text())
+            self.assertIn("Last generated", (output / "daily" / "2026-05-26" / "voice_status.html").read_text())
+            self.assertIn("Pronunciation preview", (output / "daily" / "2026-05-26" / "voice_status.html").read_text())
+
+    def test_audio_status_aggregates_daily_science_and_pm_audio(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            output = Path(temporary_dir) / "output"
+            settings = Settings(output_dir=output, voice_provider="openai", indian_tts_voice="en-IN-PrabhatNeural")
+            write_voice_daily_artifacts(output, settings, day="2026-05-26")
+
+            science_manifest = output / "science_stories" / "science_001" / "audio"
+            science_manifest.mkdir(parents=True, exist_ok=True)
+            science_manifest.joinpath("audio_manifest.json").write_text(
+                json.dumps(
+                    {
+                        "audio_status": "ready",
+                        "provider": "openai",
+                        "voice": "echo",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            pm_manifest = output / "youtubeVideo" / "2026-05-26" / "episode_001" / "audio" / "reference"
+            pm_manifest.mkdir(parents=True, exist_ok=True)
+            pm_manifest.joinpath("audio_manifest.json").write_text(
+                json.dumps(
+                    {
+                        "narration_mode": "openai_tts",
+                        "tts_voice": "echo",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            status = audio_status(output, settings, day="2026-05-26")
+            html = render_audio_status_html(status)
+
+            self.assertEqual(status["day"], "2026-05-26")
+            self.assertEqual(status["daily_voice_status"]["provider"], "openai")
+            self.assertEqual(status["science_audio"]["count"], 1)
+            self.assertEqual(status["pm_audio"]["count"], 1)
+            self.assertIn("Audio status", html)
+            self.assertIn("Science audio", html)
+            self.assertIn("PM audio", html)
 
     def test_manifest_reports_live_when_a_live_provider_is_configured(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_dir:
@@ -218,6 +389,331 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(responses_summary.total_tokens, 250)
         self.assertEqual(responses_summary.remaining_context_tokens, 750)
         self.assertAlmostEqual(responses_summary.estimated_cost_usd or 0.0, 0.000375)
+
+    def test_gemini_image_provider_rotates_keys_with_cooldown(self) -> None:
+        class FakeClock:
+            def __init__(self) -> None:
+                self.now = 0.0
+                self.sleeps: list[float] = []
+
+            def time(self) -> float:
+                return self.now
+
+            def sleep(self, seconds: float) -> None:
+                self.sleeps.append(seconds)
+                self.now += seconds
+
+        class FakeClient:
+            def __init__(self, index: int, calls: list[int]) -> None:
+                self.index = index
+                self.calls = calls
+                self.models = types.SimpleNamespace(generate_content=self.generate_content)
+
+            def generate_content(self, **kwargs):
+                self.calls.append(self.index)
+                return types.SimpleNamespace(
+                    candidates=[
+                        types.SimpleNamespace(
+                            content=types.SimpleNamespace(
+                                parts=[
+                                    types.SimpleNamespace(
+                                        inline_data=types.SimpleNamespace(data=b"fake-image-bytes")
+                                    )
+                                ]
+                            )
+                        )
+                    ]
+                )
+
+        clock = FakeClock()
+        calls: list[int] = []
+        clients = [FakeClient(index, calls) for index in range(4)]
+        settings = Settings(
+            output_dir=Path("output"),
+            image_provider="gemini",
+            gemini_api_key="key-1",
+            gemini_image_daily_budget=50,
+            gemini_image_min_interval_seconds=10,
+            gemini_image_max_attempts=4,
+            gemini_image_retry_backoff_seconds=30,
+        )
+        limiter = GeminiImageLimiter(
+            key_count=4,
+            daily_budget=50,
+            min_interval_seconds=10,
+            max_attempts=4,
+            retry_backoff_seconds=30,
+            now_fn=clock.time,
+            sleep_fn=clock.sleep,
+        )
+        provider = GeminiImageProvider(
+            settings,
+            clients=clients,
+            limiter=limiter,
+            now_fn=clock.time,
+            sleep_fn=clock.sleep,
+        )
+        variant = ImageVariant("16:9", 1280, 720, "unused")
+
+        for _ in range(5):
+            image_bytes = provider.create("Prompt text", variant)
+            self.assertEqual(image_bytes, b"fake-image-bytes")
+
+        self.assertEqual(calls, [0, 1, 2, 3, 0])
+        self.assertIn(10.0, clock.sleeps)
+
+    def test_gemini_image_provider_retries_on_rate_limit(self) -> None:
+        class FakeClock:
+            def __init__(self) -> None:
+                self.now = 0.0
+                self.sleeps: list[float] = []
+
+            def time(self) -> float:
+                return self.now
+
+            def sleep(self, seconds: float) -> None:
+                self.sleeps.append(seconds)
+                self.now += seconds
+
+        class ErrorClient:
+            def __init__(self, index: int, calls: list[int]) -> None:
+                self.index = index
+                self.calls = calls
+                self.models = types.SimpleNamespace(generate_content=self.generate_content)
+
+            def generate_content(self, **kwargs):
+                self.calls.append(self.index)
+                raise RuntimeError("429 Too Many Requests")
+
+        class SuccessClient:
+            def __init__(self, index: int, calls: list[int]) -> None:
+                self.index = index
+                self.calls = calls
+                self.models = types.SimpleNamespace(generate_content=self.generate_content)
+
+            def generate_content(self, **kwargs):
+                self.calls.append(self.index)
+                return types.SimpleNamespace(
+                    candidates=[
+                        types.SimpleNamespace(
+                            content=types.SimpleNamespace(
+                                parts=[
+                                    types.SimpleNamespace(
+                                        inline_data=types.SimpleNamespace(data=b"ok")
+                                    )
+                                ]
+                            )
+                        )
+                    ]
+                )
+
+        clock = FakeClock()
+        calls: list[int] = []
+        clients = [ErrorClient(0, calls), SuccessClient(1, calls)]
+        settings = Settings(
+            output_dir=Path("output"),
+            image_provider="gemini",
+            gemini_api_key="key-1",
+            gemini_image_daily_budget=50,
+            gemini_image_min_interval_seconds=10,
+            gemini_image_max_attempts=4,
+            gemini_image_retry_backoff_seconds=30,
+        )
+        provider = GeminiImageProvider(
+            settings,
+            clients=clients,
+            limiter=GeminiImageLimiter(
+                key_count=2,
+                daily_budget=50,
+                min_interval_seconds=10,
+                max_attempts=4,
+                retry_backoff_seconds=30,
+                now_fn=clock.time,
+                sleep_fn=clock.sleep,
+            ),
+            now_fn=clock.time,
+            sleep_fn=clock.sleep,
+        )
+        variant = ImageVariant("1:1", 1080, 1080, "unused")
+
+        image_bytes = provider.create("Prompt text", variant)
+
+        self.assertEqual(image_bytes, b"ok")
+        self.assertEqual(calls, [0, 1])
+
+    def test_gemini_image_status_reports_cooldown_and_next_allowed_time(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            output = Path(temporary_dir) / "output"
+            runtime = output / ".runtime"
+            runtime.mkdir(parents=True, exist_ok=True)
+            now = datetime.now(timezone.utc).timestamp()
+            today = datetime.fromtimestamp(now, tz=timezone.utc).date().isoformat()
+            runtime.joinpath("gemini_image_rate_limit.json").write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "updated_at": 100.0,
+                        "usage_date": today,
+                        "keys": [
+                            {
+                                "next_available_at": now + 15,
+                                "cooldown_until": now + 20,
+                                "consecutive_failures": 2,
+                                "usage_date": today,
+                                "daily_generated": 2,
+                            },
+                            {
+                                "next_available_at": now - 10,
+                                "cooldown_until": 0.0,
+                                "consecutive_failures": 0,
+                                "usage_date": today,
+                                "daily_generated": 0,
+                            },
+                        ],
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            settings = Settings(
+                output_dir=output,
+                gemini_api_key="key-1",
+                gemini_api_keys=("key-1", "key-2", "key-3", "key-4"),
+                gemini_image_daily_budget=10,
+                gemini_image_min_interval_seconds=30,
+                gemini_image_max_attempts=8,
+                gemini_image_retry_backoff_seconds=120,
+            )
+
+            status = gemini_image_status(settings, now=now)
+
+            self.assertTrue(status["configured"])
+            self.assertEqual(status["configured_key_count"], 4)
+            self.assertEqual(status["daily_budget"], 10)
+            self.assertEqual(status["daily_generated"], 2)
+            self.assertEqual(status["daily_remaining"], 8)
+            self.assertEqual(status["cooling_down_slots"], [1])
+            self.assertAlmostEqual(status["next_request_allowed_in_seconds"], 0.0)
+            self.assertEqual(status["key_states"][0]["slot"], 1)
+            self.assertTrue(status["key_states"][0]["cooling_down"])
+            self.assertEqual(status["key_states"][1]["slot"], 2)
+            self.assertFalse(status["key_states"][1]["cooling_down"])
+
+    def test_gemini_image_plan_estimates_full_packages_and_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            output = Path(temporary_dir) / "output"
+            runtime = output / ".runtime"
+            runtime.mkdir(parents=True, exist_ok=True)
+            now = datetime.now(timezone.utc).timestamp()
+            today = datetime.fromtimestamp(now, tz=timezone.utc).date().isoformat()
+            runtime.joinpath("gemini_image_rate_limit.json").write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "usage_date": today,
+                        "keys": [
+                            {
+                                "next_available_at": 100.0,
+                                "cooldown_until": 100.0,
+                                "consecutive_failures": 0,
+                                "usage_date": today,
+                                "daily_generated": 2,
+                            },
+                        ],
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            settings = Settings(
+                output_dir=output,
+                gemini_api_key="key-1",
+                gemini_image_daily_budget=5,
+                image_provider="gemini",
+                image_fallback_provider="mock",
+            )
+
+            plan = gemini_image_package_plan(settings, packages_requested=1, now=now)
+
+            self.assertEqual(plan["daily_remaining_images"], 3)
+            self.assertEqual(plan["full_packages_remaining"], 1)
+            self.assertTrue(plan["can_complete_requested_packages"])
+            self.assertEqual(plan["recommended_provider"], "gemini")
+
+            plan2 = gemini_image_package_plan(settings, packages_requested=2, now=now)
+            self.assertFalse(plan2["can_complete_requested_packages"])
+            self.assertEqual(plan2["recommended_provider"], "mock")
+            self.assertTrue(plan2["stop_before_failure"])
+
+    def test_gemini_image_provider_refuses_batch_when_daily_budget_is_too_small(self) -> None:
+        class FakeClient:
+            def __init__(self) -> None:
+                self.models = types.SimpleNamespace(generate_content=self.generate_content)
+
+            def generate_content(self, **kwargs):
+                raise AssertionError("generate_content should not be called when budget is insufficient")
+
+        settings = Settings(
+            output_dir=Path("output"),
+            image_provider="gemini",
+            gemini_api_key="key-1",
+            gemini_image_daily_budget=2,
+        )
+        provider = GeminiImageProvider(
+            settings,
+            clients=[FakeClient(), FakeClient(), FakeClient(), FakeClient()],
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "daily budget exhausted"):
+            provider.ensure_capacity(3)
+
+    def test_gemini_image_provider_falls_back_to_mock_when_daily_budget_is_exhausted(self) -> None:
+        class FakeClient:
+            def __init__(self) -> None:
+                self.models = types.SimpleNamespace(generate_content=self.generate_content)
+
+            def generate_content(self, **kwargs):
+                raise AssertionError("Gemini client should not be called after budget exhaustion")
+
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            output = Path(temporary_dir) / "output"
+            runtime = output / ".runtime"
+            runtime.mkdir(parents=True, exist_ok=True)
+            today = datetime.now(timezone.utc).date().isoformat()
+            runtime.joinpath("gemini_image_rate_limit.json").write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "usage_date": today,
+                        "keys": [
+                            {
+                                "next_available_at": 0.0,
+                                "cooldown_until": 0.0,
+                                "consecutive_failures": 0,
+                                "usage_date": today,
+                                "daily_generated": 1,
+                            }
+                        ],
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            settings = Settings(
+                output_dir=output,
+                image_provider="gemini",
+                gemini_api_key="key-1",
+                gemini_image_daily_budget=1,
+                image_fallback_provider="mock",
+            )
+            provider = GeminiImageProvider(
+                settings,
+                clients=[FakeClient()],
+            )
+
+            image_bytes = provider.create("Prompt text", ImageVariant("1:1", 1080, 1080, "unused"))
+
+            self.assertTrue(image_bytes.startswith(b"<svg"))
 
     def test_linkedin_authorization_requests_personal_post_scope(self) -> None:
         settings = Settings(
@@ -542,7 +1038,9 @@ class PipelineTest(unittest.TestCase):
             manifest = json.loads(written[0].read_text(encoding="utf-8"))
             self.assertEqual(len(manifest["agent_order"]), 7)
             self.assertIn("No copyrighted cartoon character", bal_krishna_image_plan().shots[0].prompt)
-            self.assertIn("IMAGE BOT PLACEHOLDER", images[0].read_text(encoding="utf-8"))
+            svg_content = images[0].read_text(encoding="utf-8")
+            self.assertIn("THE PM AI QUESTION", svg_content)
+            self.assertIn("no API cost", svg_content)
 
     def test_selected_krishna_voice_records_creator_approved_builtin_voice(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_dir:

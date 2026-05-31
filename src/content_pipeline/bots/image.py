@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import base64
+import json
 import re
 import struct
-from dataclasses import dataclass
+import threading
+import time
+from dataclasses import dataclass, replace
+from datetime import datetime, timedelta, timezone
 from html import escape
 from io import BytesIO
-from typing import Protocol
+from pathlib import Path
+from typing import Callable, Protocol
 
 from content_pipeline.config import Settings
 from content_pipeline.models import ContentPackage
@@ -147,19 +152,53 @@ class ImagenProvider:
 class GeminiImageProvider:
     extension = ".png"
 
-    def __init__(self, settings: Settings) -> None:
-        if not settings.gemini_api_key:
+    def __init__(
+        self,
+        settings: Settings,
+        *,
+        clients: list[object] | None = None,
+        limiter: "GeminiImageLimiter" | None = None,
+        now_fn: Callable[[], float] | None = None,
+        sleep_fn: Callable[[float], None] | None = None,
+    ) -> None:
+        if not settings.gemini_api_key and not clients:
             raise ValueError("GEMINI_API_KEY is required for IMAGE_PROVIDER=gemini")
-        try:
-            from google import genai
-        except ImportError as exc:
-            raise RuntimeError("Install live dependencies with: pip install -e '.[live]'") from exc
-        self.clients = [genai.Client(api_key=key) for key in (settings.gemini_api_keys or (settings.gemini_api_key,))]
+        if clients is None:
+            try:
+                from google import genai
+            except ImportError as exc:
+                raise RuntimeError("Install live dependencies with: pip install -e '.[live]'") from exc
+            clients = [genai.Client(api_key=key) for key in (settings.gemini_api_keys or (settings.gemini_api_key,))]
+        self.settings = settings
+        self.clients = clients
         self.model = settings.gemini_image_model
+        self.fallback_provider = _fallback_image_provider(settings)
+        state_path = settings.output_dir / ".runtime" / "gemini_image_rate_limit.json"
+        self.limiter = limiter or GeminiImageLimiter(
+            key_count=len(self.clients),
+            daily_budget=settings.gemini_image_daily_budget,
+            min_interval_seconds=settings.gemini_image_min_interval_seconds,
+            max_attempts=settings.gemini_image_max_attempts,
+            retry_backoff_seconds=settings.gemini_image_retry_backoff_seconds,
+            state_path=state_path,
+            now_fn=now_fn or time.time,
+            sleep_fn=sleep_fn or time.sleep,
+        )
+
+    def ensure_capacity(self, count: int) -> None:
+        self.limiter.ensure_capacity(count)
 
     def create(self, prompt: str, variant: ImageVariant) -> bytes:
+        try:
+            self.ensure_capacity(1)
+        except RuntimeError as exc:
+            if _is_budget_exhausted(exc):
+                return self.fallback_provider.create(prompt, variant)
+            raise
         last_error: Exception | None = None
-        for client in self.clients:
+        for _ in range(self.limiter.max_attempts):
+            client_index = self.limiter.acquire_key()
+            client = self.clients[client_index]
             try:
                 response = client.models.generate_content(
                     model=self.model,
@@ -171,10 +210,405 @@ class GeminiImageProvider:
                 image_bytes = _response_image_bytes(response)
                 if image_bytes is None:
                     raise RuntimeError("Gemini image generation did not return an image asset.")
+                self.limiter.record_success(client_index)
                 return image_bytes
             except Exception as exc:
                 last_error = exc
-        raise RuntimeError(f"Gemini image generation failed for all configured keys: {last_error}")
+                if not self.limiter.is_retryable(exc):
+                    self.limiter.record_failure(client_index, exc, retryable=False)
+                    raise RuntimeError(f"Gemini image generation failed: {exc}") from exc
+                self.limiter.record_failure(client_index, exc, retryable=True)
+        raise RuntimeError(
+            "Gemini image generation failed after exhausting the configured keys and retries: "
+            f"{last_error}"
+        )
+
+
+@dataclass
+class _GeminiKeyState:
+    next_available_at: float = 0.0
+    cooldown_until: float = 0.0
+    consecutive_failures: int = 0
+    usage_date: str = ""
+    daily_generated: int = 0
+
+
+class GeminiImageLimiter:
+    def __init__(
+        self,
+        *,
+        key_count: int,
+        daily_budget: int,
+        min_interval_seconds: float,
+        max_attempts: int,
+        retry_backoff_seconds: float,
+        state_path: Path | None = None,
+        now_fn: Callable[[], float] = time.time,
+        sleep_fn: Callable[[float], None] = time.sleep,
+    ) -> None:
+        if key_count <= 0:
+            raise ValueError("key_count must be positive")
+        self.max_attempts = max(1, max_attempts)
+        self.daily_budget = max(0, daily_budget)
+        self.min_interval_seconds = max(0.0, min_interval_seconds)
+        self.retry_backoff_seconds = max(0.0, retry_backoff_seconds)
+        self.state_path = state_path
+        self._now = now_fn
+        self._sleep = sleep_fn
+        self._lock = threading.RLock()
+        self._states = [_GeminiKeyState() for _ in range(key_count)]
+        self._usage_date = self._today()
+        self._load()
+
+    def ensure_capacity(self, count: int) -> None:
+        if count <= 0 or self.daily_budget <= 0:
+            return
+        remaining = self.remaining_daily_images()
+        if remaining < count:
+            next_allowed_at = self._next_daily_reset()
+            raise RuntimeError(
+                "Gemini image daily budget exhausted "
+                f"({self.daily_budget} per UTC day, {remaining} remaining). "
+                f"Next request allowed at {datetime.fromtimestamp(next_allowed_at, tz=timezone.utc).isoformat()}."
+            )
+
+    def acquire_key(self) -> int:
+        while True:
+            with self._lock:
+                self._reset_daily_if_needed()
+                now = self._now()
+                index, available_at = self._next_key(now)
+                wait_seconds = available_at - now
+                if wait_seconds <= 0:
+                    state = self._states[index]
+                    state.next_available_at = now + self.min_interval_seconds
+                    self._save_locked()
+                    return index
+            self._sleep(wait_seconds)
+
+    def record_success(self, index: int) -> None:
+        with self._lock:
+            self._reset_daily_if_needed()
+            state = self._states[index]
+            state.consecutive_failures = 0
+            state.cooldown_until = 0.0
+            state.daily_generated += 1
+            state.usage_date = self._usage_date
+            self._save_locked()
+
+    def record_failure(self, index: int, exc: Exception, *, retryable: bool) -> None:
+        with self._lock:
+            self._reset_daily_if_needed()
+            state = self._states[index]
+            now = self._now()
+            if retryable:
+                state.consecutive_failures += 1
+                backoff = min(
+                    self.retry_backoff_seconds,
+                    max(self.min_interval_seconds, self.min_interval_seconds * (2 ** (state.consecutive_failures - 1))),
+                )
+                state.cooldown_until = max(state.cooldown_until, now + backoff)
+                state.next_available_at = max(state.next_available_at, now + self.min_interval_seconds)
+            else:
+                state.consecutive_failures = 0
+            self._save_locked()
+
+    def is_retryable(self, exc: Exception) -> bool:
+        message = f"{exc.__class__.__name__}: {exc}".lower()
+        retryable_markers = (
+            "429",
+            "too many requests",
+            "rate limit",
+            "rate limited",
+            "resource exhausted",
+            "quota exceeded",
+            "temporarily unavailable",
+            "deadline exceeded",
+            "unavailable",
+            "service unavailable",
+        )
+        return any(marker in message for marker in retryable_markers)
+
+    def _next_key(self, now: float) -> tuple[int, float]:
+        best_index = 0
+        best_available = self._available_at(self._states[0], now)
+        for index in range(1, len(self._states)):
+            available_at = self._available_at(self._states[index], now)
+            if available_at < best_available:
+                best_index = index
+                best_available = available_at
+        return best_index, best_available
+
+    def _available_at(self, state: _GeminiKeyState, now: float) -> float:
+        return max(state.next_available_at, state.cooldown_until, now)
+
+    def _load(self) -> None:
+        if self.state_path is None or not self.state_path.exists():
+            return
+        try:
+            data = json.loads(self.state_path.read_text(encoding="utf-8"))
+        except Exception:
+            return
+        raw_states = data.get("keys", [])
+        if not isinstance(raw_states, list):
+            return
+        for index, raw_state in enumerate(raw_states[: len(self._states)]):
+            if not isinstance(raw_state, dict):
+                continue
+            state = self._states[index]
+            state.next_available_at = float(raw_state.get("next_available_at", 0.0))
+            state.cooldown_until = float(raw_state.get("cooldown_until", 0.0))
+            state.consecutive_failures = int(raw_state.get("consecutive_failures", 0))
+            state.usage_date = str(raw_state.get("usage_date", ""))
+            state.daily_generated = int(raw_state.get("daily_generated", 0))
+        self._usage_date = str(data.get("usage_date", self._today()))
+        self._reset_daily_if_needed()
+
+    def _save_locked(self) -> None:
+        if self.state_path is None:
+            return
+        self.state_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "version": 1,
+            "updated_at": self._now(),
+            "usage_date": self._usage_date,
+            "keys": [
+                {
+                    "next_available_at": state.next_available_at,
+                    "cooldown_until": state.cooldown_until,
+                    "consecutive_failures": state.consecutive_failures,
+                    "usage_date": state.usage_date,
+                    "daily_generated": state.daily_generated,
+                }
+                for state in self._states
+            ],
+        }
+        self.state_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+    def current_daily_generated(self) -> int:
+        self._reset_daily_if_needed()
+        return sum(state.daily_generated for state in self._states if state.usage_date == self._usage_date)
+
+    def remaining_daily_images(self) -> int | None:
+        if self.daily_budget <= 0:
+            return None
+        used = self.current_daily_generated()
+        return max(self.daily_budget - used, 0)
+
+    def _reset_daily_if_needed(self) -> None:
+        with self._lock:
+            today = self._today()
+            if self._usage_date == today:
+                return
+            self._usage_date = today
+            for state in self._states:
+                state.daily_generated = 0
+                state.usage_date = today
+            self._save_locked()
+
+    def _today(self) -> str:
+        return datetime.fromtimestamp(self._now(), tz=timezone.utc).date().isoformat()
+
+    def _next_daily_reset(self) -> float:
+        now_dt = datetime.fromtimestamp(self._now(), tz=timezone.utc)
+        next_day = (now_dt.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1))
+        return next_day.timestamp()
+
+
+def gemini_image_status(settings: Settings, now: float | None = None) -> dict[str, object]:
+    now = time.time() if now is None else now
+    slots = [
+        ("GEMINI_API_KEY", settings.gemini_api_key),
+        ("GEMINI_API_KEY_2", settings.gemini_api_keys[1] if len(settings.gemini_api_keys) > 1 else ""),
+        ("GEMINI_API_KEY_3", settings.gemini_api_keys[2] if len(settings.gemini_api_keys) > 2 else ""),
+        ("GEMINI_API_KEY_4", settings.gemini_api_keys[3] if len(settings.gemini_api_keys) > 3 else ""),
+    ]
+    configured_slots = [
+        {"slot": index + 1, "env_var": env_var, "configured": bool(value)}
+        for index, (env_var, value) in enumerate(slots)
+    ]
+    state_path = settings.output_dir / ".runtime" / "gemini_image_rate_limit.json"
+    raw_state: dict[str, object] = {}
+    if state_path.exists():
+        try:
+            raw_state = json.loads(state_path.read_text(encoding="utf-8"))
+        except Exception:
+            raw_state = {}
+    raw_keys = raw_state.get("keys", [])
+    key_states: list[dict[str, object]] = []
+    cooling_down_slots: list[int] = []
+    next_allowed_at: float | None = None
+    daily_usage = 0
+    daily_remaining: int | None = settings.gemini_image_daily_budget if settings.gemini_image_daily_budget > 0 else None
+    daily_limit_reached = False
+    next_daily_reset_at: float | None = None
+    for index, slot in enumerate(configured_slots):
+        state = raw_keys[index] if isinstance(raw_keys, list) and index < len(raw_keys) and isinstance(raw_keys[index], dict) else {}
+        next_available_at = _float_value(state.get("next_available_at"), default=0.0)
+        cooldown_until = _float_value(state.get("cooldown_until"), default=0.0)
+        consecutive_failures = int(_float_value(state.get("consecutive_failures"), default=0.0))
+        daily_generated = int(_float_value(state.get("daily_generated"), default=0.0))
+        usage_date = str(state.get("usage_date", ""))
+        available_at = max(next_available_at, cooldown_until, now)
+        available_in_seconds = max(0.0, available_at - now) if slot["configured"] else None
+        if slot["configured"] and available_in_seconds is not None and available_in_seconds > 0:
+            cooling_down_slots.append(slot["slot"])
+        if slot["configured"]:
+            next_allowed_at = available_at if next_allowed_at is None else min(next_allowed_at, available_at)
+        if usage_date == datetime.fromtimestamp(now, tz=timezone.utc).date().isoformat():
+            daily_usage += daily_generated
+        key_states.append(
+            {
+                **slot,
+                "cooling_down": bool(available_in_seconds and available_in_seconds > 0),
+                "available_in_seconds": round(available_in_seconds, 2) if available_in_seconds is not None else None,
+                "available_at": (
+                    datetime.fromtimestamp(available_at, tz=timezone.utc).isoformat()
+                    if available_in_seconds is not None
+                    else None
+                ),
+                "consecutive_failures": consecutive_failures,
+                "daily_generated": daily_generated,
+                "usage_date": usage_date or None,
+            }
+        )
+    if settings.gemini_image_daily_budget > 0:
+        daily_remaining = max(settings.gemini_image_daily_budget - daily_usage, 0)
+        daily_limit_reached = daily_remaining == 0
+        next_daily_reset_at = (
+            datetime.fromtimestamp(now, tz=timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+            + timedelta(days=1)
+        ).timestamp()
+        if daily_limit_reached:
+            next_allowed_at = next_daily_reset_at
+    return {
+        "configured": any(slot["configured"] for slot in configured_slots),
+        "configured_key_count": sum(1 for slot in configured_slots if slot["configured"]),
+        "model": settings.gemini_image_model,
+        "daily_budget": settings.gemini_image_daily_budget,
+        "daily_generated": daily_usage,
+        "daily_remaining": daily_remaining,
+        "daily_limit_reached": daily_limit_reached,
+        "next_daily_reset_at": (
+            datetime.fromtimestamp(next_daily_reset_at, tz=timezone.utc).isoformat()
+            if next_daily_reset_at is not None
+            else None
+        ),
+        "min_interval_seconds": settings.gemini_image_min_interval_seconds,
+        "max_attempts": settings.gemini_image_max_attempts,
+        "retry_backoff_seconds": settings.gemini_image_retry_backoff_seconds,
+        "state_path": str(state_path),
+        "next_request_allowed_at": (
+            datetime.fromtimestamp(next_allowed_at, tz=timezone.utc).isoformat()
+            if next_allowed_at is not None
+            else None
+        ),
+        "next_request_allowed_in_seconds": (
+            round(max(0.0, next_allowed_at - now), 2) if next_allowed_at is not None else None
+        ),
+        "cooling_down_slots": cooling_down_slots,
+        "key_states": key_states,
+    }
+
+
+def _float_value(value: object, default: float) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def gemini_image_package_plan(
+    settings: Settings,
+    *,
+    packages_requested: int = 1,
+    now: float | None = None,
+) -> dict[str, object]:
+    status = gemini_image_status(settings, now=now)
+    images_per_package = len(VARIANTS)
+    daily_remaining = status["daily_remaining"]
+    if daily_remaining is None:
+        full_packages_remaining: int | None = None
+        can_complete_requested = True
+    else:
+        full_packages_remaining = int(daily_remaining) // images_per_package
+        can_complete_requested = full_packages_remaining >= packages_requested
+    fallback_provider = _safe_fallback_provider_name(settings.image_fallback_provider)
+    recommended_provider = settings.image_provider
+    stop_before_failure = False
+    if settings.image_provider == "gemini" and daily_remaining is not None:
+        stop_before_failure = not can_complete_requested or int(daily_remaining) < images_per_package
+        if stop_before_failure:
+            recommended_provider = fallback_provider
+    return {
+        "requested_packages": packages_requested,
+        "images_per_package": images_per_package,
+        "daily_remaining_images": daily_remaining,
+        "full_packages_remaining": full_packages_remaining,
+        "can_complete_requested_packages": can_complete_requested,
+        "recommended_provider": recommended_provider,
+        "fallback_provider": fallback_provider,
+        "stop_before_failure": stop_before_failure,
+        "status": "safe" if can_complete_requested else "fallback_recommended",
+    }
+
+
+def render_gemini_image_status_widget(settings: Settings, now: float | None = None) -> str:
+    status = gemini_image_status(settings, now=now)
+    plan = gemini_image_package_plan(settings, now=now)
+    remaining = "unlimited" if status["daily_remaining"] is None else str(status["daily_remaining"])
+    cooling = ", ".join(f"slot {slot}" for slot in status["cooling_down_slots"]) or "none"
+    next_request = (
+        "ready now"
+        if status["next_request_allowed_in_seconds"] is None
+        else f'{status["next_request_allowed_in_seconds"]} s'
+    )
+    return f"""<section style="background:#0f172a;border:1px solid #334155;border-radius:18px;padding:16px;color:#e2e8f0;">
+  <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;">
+    <div>
+      <div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#7dd3fc;font-weight:800;">Gemini image quota</div>
+      <div style="font-size:22px;font-weight:800;margin-top:4px;">{status["configured_key_count"]} key(s) configured</div>
+    </div>
+    <div style="text-align:right;">
+      <div style="font-size:12px;color:#94a3b8;">Next request</div>
+      <div style="font-size:18px;font-weight:700;">{next_request}</div>
+    </div>
+  </div>
+  <p style="margin:12px 0 0;color:#cbd5e1;">Daily remaining: <strong>{remaining}</strong> · Cooling: <strong>{cooling}</strong> · Fallback: <strong>{plan["recommended_provider"]}</strong></p>
+  <p style="margin:8px 0 0;color:#94a3b8;font-size:13px;">Full packages remaining: {plan["full_packages_remaining"] if plan["full_packages_remaining"] is not None else "unlimited"} · Stop before failure: {str(plan["stop_before_failure"]).lower()}</p>
+</section>"""
+
+
+def _is_budget_exhausted(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return "daily budget exhausted" in message or "quota exhausted" in message
+
+
+def _safe_fallback_provider_name(name: str) -> str:
+    fallback = (name or "imagen").strip().lower()
+    if fallback in {"gemini", "google", "google-genai"}:
+        return "mock"
+    if fallback == "auto":
+        return "imagen"
+    return fallback
+
+
+def _fallback_image_provider(settings: Settings) -> ImageProvider:
+    fallback_name = _safe_fallback_provider_name(settings.image_fallback_provider)
+    candidates = [fallback_name]
+    if fallback_name != "mock":
+        candidates.append("mock")
+    for provider_name in candidates:
+        try:
+            if provider_name == "mock":
+                return MockImageProvider()
+            if provider_name == "imagen":
+                return ImagenProvider(replace(settings, image_provider="imagen"))
+            if provider_name == "openai":
+                return OpenAIImageProvider(replace(settings, image_provider="openai"))
+        except Exception:
+            continue
+    return MockImageProvider()
 
 
 class OpenAIImageProvider:
@@ -230,10 +664,26 @@ def generate_images(
     max_bytes: int = 5 * 1024 * 1024,
 ) -> list[str]:
     files: list[str] = []
+    batch_provider = provider
+    if isinstance(provider, GeminiImageProvider):
+        plan = gemini_image_package_plan(
+            provider.settings,
+            packages_requested=1,
+        )
+        if plan["recommended_provider"] != "gemini":
+            batch_provider = provider.fallback_provider
+        else:
+            try:
+                provider.ensure_capacity(len(VARIANTS))
+            except RuntimeError as exc:
+                if _is_budget_exhausted(exc):
+                    batch_provider = provider.fallback_provider
+                else:
+                    raise
     for variant in VARIANTS:
-        filename = variant.filename + provider.extension
-        image_bytes = provider.create(package.image_prompt, variant)
-        _assert_image_limits(image_bytes, provider.extension, filename, max_dimension, max_bytes)
+        filename = variant.filename + batch_provider.extension
+        image_bytes = batch_provider.create(package.image_prompt, variant)
+        _assert_image_limits(image_bytes, batch_provider.extension, filename, max_dimension, max_bytes)
         storage.write_bytes(package.date, filename, image_bytes)
         files.append(filename)
     return files

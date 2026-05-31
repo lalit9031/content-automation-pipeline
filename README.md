@@ -43,6 +43,26 @@ Run tests without installing packages:
 PYTHONPATH=src python3 -m unittest discover -s tests -v
 ```
 
+## Run The Website
+
+Install the local UI extras and launch the Streamlit front door:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e '.[ui]'
+streamlit run app.py
+```
+
+For Streamlit Cloud, set the main file path to `streamlit_app.py`.
+
+The app gives you one friendly place to:
+
+- run the daily pipeline,
+- open the latest dashboard,
+- inspect the unified audio front door,
+- preview voice samples when they exist.
+
 ## Activate Live Prompt And Images
 
 Create a virtual environment and install optional providers:
@@ -64,7 +84,15 @@ OPENAI_IMAGE_MODEL=gpt-image-1
 
 IMAGE_PROVIDER=gemini
 GEMINI_API_KEY=your_gemini_api_key
+GEMINI_API_KEY_2=your_second_gemini_api_key
+GEMINI_API_KEY_3=your_third_gemini_api_key
+GEMINI_API_KEY_4=your_fourth_gemini_api_key
 GEMINI_IMAGE_MODEL=gemini-2.5-flash-image
+GEMINI_IMAGE_DAILY_BUDGET=0
+GEMINI_IMAGE_MIN_INTERVAL_SECONDS=30
+GEMINI_IMAGE_MAX_ATTEMPTS=8
+GEMINI_IMAGE_RETRY_BACKOFF_SECONDS=120
+IMAGE_FALLBACK_PROVIDER=imagen
 
 # Or use ChatGPT/OpenAI image generation:
 # IMAGE_PROVIDER=openai
@@ -80,10 +108,11 @@ LinkedIn remains deliberately non-posting until member OAuth with
 `w_member_social` and the media upload flow are wired and tested.
 
 For LinkedIn-only drafting, leave `IMAGE_PROVIDER=mock`: the deterministic
-infographic renderer creates the publishable LinkedIn PNG without paid Imagen
-generation. Enable Imagen only when supporting visual variants are needed. Run
-manifests identify active providers and report `mode: live` whenever OpenAI or
-Imagen is enabled.
+infographic renderer creates the publishable LinkedIn PNG without paid image
+generation. When `IMAGE_PROVIDER=gemini`, the provider rotates across the
+configured Gemini keys, applies a local cooldown per key, and retries
+rate-limited responses instead of hammering a single account. The limiter is
+configurable through the Gemini image env vars above.
 
 ## Connect Personal LinkedIn Posting
 
@@ -248,6 +277,87 @@ Check configuration:
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m content_pipeline gemini-config-check
+```
+
+Check Gemini image quota state:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m content_pipeline gemini-image-status
+```
+
+Generate an image style pack for one topic, a 35-scene storyboard, and a thumbnail prompt:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m content_pipeline image-style-pack \
+  --topic "Agile project management" \
+  --subject "a team reviewing a glowing workflow board" \
+  --output output/image_style_pack.json
+```
+
+The daily run also writes a combined dashboard at:
+
+- `output/daily/<date>/daily_dashboard.html`
+- `output/daily/<date>/image_style_pack.json`
+- `output/daily/<date>/image_storyboard_prompts.json`
+- `output/daily/<date>/thumbnail_prompt.txt`
+- `output/daily/<date>/voice_profile.json`
+- `output/daily/<date>/voice_normalization_preview.txt`
+- `output/daily/<date>/indian_voice_samples/voice_samples_manifest.json`
+- `output/daily/<date>/voice_status.json`
+- `output/daily/<date>/voice_status.html`
+- `output/daily/<date>/audio_status.json`
+- `output/daily/<date>/audio_status.html`
+- `output/daily/<date>/gemini_image_status.html`
+- `output/daily/<date>/blocker_status.html`
+- `output/daily/<date>/gemini_image_status.json`
+- `output/daily/<date>/blocker_journal_snapshot.json`
+- `output/daily/<date>/blocker_suggestions.json`
+
+For voice:
+
+- `VOICE_PROVIDER=edge` enables the free Edge TTS Indian voice path for science narration.
+- `INDIAN_TTS_VOICE=en-IN-PrabhatNeural` picks the default Indian English narrator.
+- `krishna-voice-samples --engine edge` generates the free Indian sample pack.
+- `voice-status` prints the current voice provider, selected voice, and whether the daily bundle has real audio or manifest-only metadata.
+- `audio-status` summarizes the daily voice bundle plus the latest science and PM audio manifests.
+- Install `edge-tts` in your environment if you want to use the free Indian voice path.
+
+Science video workspaces also write:
+
+- `output/science_stories/<story_id>/audio/audio_manifest.json`
+- `output/science_stories/<story_id>/audio/audio_status.html`
+
+PM video workspaces also write:
+
+- `output/shorts/<episode_id>/audio/reference/audio_manifest.json`
+- `output/shorts/<episode_id>/audio/reference/audio_status.html`
+- `output/youtubeVideo/<episode_id>/audio/reference/audio_manifest.json`
+- `output/youtubeVideo/<episode_id>/audio/reference/audio_status.html`
+
+Estimate how many full image packages can be generated before starting:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m content_pipeline gemini-image-plan
+```
+
+Record or learn a blocker fix from any source:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m content_pipeline blocker-log \
+  --stage gemini-image-plan \
+  --issue "Gemini quota exhausted" \
+  --solution "Add per-key cooldown and fallback routing" \
+  --source-title "Google quota guidance" \
+  --source-url "https://example.com/rate-limits"
+
+PYTHONPATH=src .venv/bin/python -m content_pipeline blocker-learn \
+  --issue "429 Too Many Requests on image generation" \
+  --solution "Queue requests and rotate keys before retrying" \
+  --source-title "Community note" \
+  --source-url "https://example.com/fix"
+
+PYTHONPATH=src .venv/bin/python -m content_pipeline blocker-suggest
+PYTHONPATH=src .venv/bin/python -m content_pipeline blocker-status --html
 ```
 
 Preview the exact Gemini/Veo requests without spending quota:

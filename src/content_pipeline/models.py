@@ -289,6 +289,114 @@ class VideoCompilation:
         return asdict(self)
 
 
+@dataclass(frozen=True)
+class ScienceScene:
+    """A single scene within a science discovery story chapter."""
+    chapter: str
+    chapter_index: int
+    scene_index: int
+    title: str
+    narration_hi: str  # Hindi narration text
+    on_screen_text_hi: str  # Hindi on-screen text
+    visual_prompt: str  # English cinematic prompt for image generation
+    duration_seconds: int
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "ScienceScene":
+        duration = data.get("duration_seconds")
+        if not isinstance(duration, int) or not 8 <= duration <= 45:
+            raise ValueError(
+                f"ScienceScene duration_seconds must be between 8 and 45, got {duration}"
+            )
+        return cls(
+            chapter=_required_text(data, "chapter"),
+            chapter_index=int(data.get("chapter_index", 0)),
+            scene_index=int(data.get("scene_index", 0)),
+            title=_required_text(data, "title"),
+            narration_hi=_required_text(data, "narration_hi"),
+            on_screen_text_hi=_required_text(data, "on_screen_text_hi"),
+            visual_prompt=_required_text(data, "visual_prompt"),
+            duration_seconds=duration,
+        )
+
+
+@dataclass(frozen=True)
+class ScienceStoryScript:
+    """A 30-minute science discovery story with multiple chapters."""
+    title: str
+    topic: str
+    tagline: str
+    chapters: list[str]
+    scenes: list[ScienceScene]
+    intro_music_hint: str = ""
+    background_music_mood: str = "cinematic orchestral, inspiring, wonder"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "ScienceStoryScript":
+        raw_chapters = data.get("chapters", [])
+        raw_scenes = data.get("scenes", [])
+        if not isinstance(raw_chapters, list) or not raw_chapters:
+            raise ValueError("chapters must be a non-empty list")
+        if not isinstance(raw_scenes, list) or not raw_scenes:
+            raise ValueError("scenes must be a non-empty list")
+        total_seconds = sum(s.get("duration_seconds", 0) for s in raw_scenes)
+        if total_seconds < 600:
+            raise ValueError(
+                f"Science story must be at least 10 minutes (600s), got {total_seconds}s. "
+                "Target is ~30 minutes (1800s)."
+            )
+        return cls(
+            title=_required_text(data, "title"),
+            topic=_required_text(data, "topic"),
+            tagline=_required_text(data, "tagline"),
+            chapters=[str(c).strip() for c in raw_chapters if str(c).strip()],
+            scenes=[ScienceScene.from_dict(s) for s in raw_scenes],
+            intro_music_hint=str(data.get("intro_music_hint", "")),
+            background_music_mood=str(data.get("background_music_mood", "cinematic orchestral, inspiring, wonder")),
+        )
+
+    @property
+    def duration_seconds(self) -> int:
+        return sum(scene.duration_seconds for scene in self.scenes)
+
+    @property
+    def duration_minutes(self) -> float:
+        return self.duration_seconds / 60
+
+    def as_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    def scenes_for_chapter(self, chapter_index: int) -> list[ScienceScene]:
+        return [s for s in self.scenes if s.chapter_index == chapter_index]
+
+
+@dataclass(frozen=True)
+class ScienceVideoWorkspace:
+    """Metadata for a science video workspace."""
+    story_id: str
+    title: str
+    topic: str
+    workspace_path: str
+    created_at: str
+    scene_count: int
+    total_duration_seconds: int
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "ScienceVideoWorkspace":
+        return cls(
+            story_id=_required_text(data, "story_id"),
+            title=_required_text(data, "title"),
+            topic=_required_text(data, "topic"),
+            workspace_path=_required_text(data, "workspace_path"),
+            created_at=_required_text(data, "created_at"),
+            scene_count=int(data.get("scene_count", 0)),
+            total_duration_seconds=int(data.get("total_duration_seconds", 0)),
+        )
+
+    def as_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
 def _required_text(data: dict[str, Any], key: str) -> str:
     value = data.get(key)
     if not isinstance(value, str) or not value.strip():

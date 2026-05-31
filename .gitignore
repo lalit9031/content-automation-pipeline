@@ -9,3 +9,4 @@ output/*
 credentials/
 .secrets/
 scripts/client_secret_*.json
+.DS_Store

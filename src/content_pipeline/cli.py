@@ -14,8 +14,41 @@ from content_pipeline.bots.linkedin import (
     published_post_receipt,
     record_published_post,
 )
-from content_pipeline.bots.audio import generate_hindi_voice_samples
-from content_pipeline.bots.image import VARIANTS, image_provider
+from content_pipeline.bots.science_story_agent import (
+    generate_science_story_script,
+    list_available_topics,
+    save_script_to_disk,
+)
+from content_pipeline.bots.science_video_agent import (
+    create_science_video,
+    create_science_video_workspace,
+    generate_scene_images,
+    generate_narration_audio,
+    assemble_scene_clips,
+    assemble_final_video,
+)
+from content_pipeline.bots.audio import (
+    audio_status,
+    generate_hindi_voice_samples,
+    render_voice_status_html,
+    render_audio_status_html,
+    voice_status,
+)
+from content_pipeline.bots.blocker_agent import (
+    absorb_blocker_solution,
+    blocker_status,
+    blocker_status_html,
+    log_exception,
+    record_blocker,
+    resolve_blocker,
+    suggest_blocker_fixes,
+)
+from content_pipeline.bots.image import (
+    VARIANTS,
+    gemini_image_package_plan,
+    gemini_image_status,
+    image_provider,
+)
 from content_pipeline.bots.krishna_agents import (
     ImagePlan,
     assert_character_design_approved,
@@ -41,6 +74,7 @@ from content_pipeline.bots.motion import (
 )
 from content_pipeline.bots.policy import PublicationDeclarations, review_publication
 from content_pipeline.bots.pm_video_agents import create_daily_pm_video_batch
+from content_pipeline.bots.prompt import build_image_style_pack, generate_long_form_video_script
 from content_pipeline.bots.pm_slide_router import build_slide_plan
 from content_pipeline.bots.pm_template_agent import write_pm_template_agent_examples
 from content_pipeline.bots.pm_video_templates import (
@@ -99,7 +133,7 @@ from content_pipeline.bots.youtube import (
 from content_pipeline.bots.youtube_sync import sync_public_youtube_uploads
 from content_pipeline.config import Settings
 from content_pipeline.content_history import record_history_entry
-from content_pipeline.models import ContentPackage, VideoEpisode
+from content_pipeline.models import ContentPackage, ScienceStoryScript, VideoEpisode
 from content_pipeline.pipeline import run_linkedin_mvp
 from content_pipeline.storage import LocalDailyStorage
 
@@ -267,6 +301,12 @@ def main() -> int:
         type=Path,
         default=Path("output/bal_krishna_motion_validation/audio_samples"),
     )
+    voice_parser.add_argument(
+        "--engine",
+        choices=("openai", "edge"),
+        default="openai",
+        help="Use OpenAI narration samples or the free Edge TTS Indian voice samples.",
+    )
     voice_select_parser = subparsers.add_parser(
         "krishna-voice-select", help="Record the creator-approved Hindi narration voice."
     )
@@ -378,6 +418,70 @@ def main() -> int:
         help="Assemble downloaded OpenArt/Meta AI scene clips from an episode workspace.",
     )
     manual_assemble_parser.add_argument("--workspace", type=Path, required=True)
+    # --- Science Discovery Story commands ---
+    science_story_parser = subparsers.add_parser(
+        "science-story-generate",
+        help="Generate a 30-minute science discovery story script from a topic.",
+    )
+    science_story_parser.add_argument("--topic", default="", help="Science topic. Leave empty for auto-selection.")
+    science_story_parser.add_argument(
+        "--minutes", type=int, default=30, help="Target video duration in minutes."
+    )
+    science_story_parser.add_argument(
+        "--save", action="store_true", help="Save script to output directory."
+    )
+    subparsers.add_parser(
+        "science-story-topics",
+        help="List available science story template topics.",
+    )
+    science_video_parser = subparsers.add_parser(
+        "science-video-create",
+        help="Full pipeline: generate script, create workspace, images, audio, and assemble video.",
+    )
+    science_video_parser.add_argument(
+        "--topic", default="", help="Science topic. Leave empty for auto-selection."
+    )
+    science_video_parser.add_argument(
+        "--minutes", type=int, default=30, help="Target video duration in minutes."
+    )
+    science_video_parser.add_argument(
+        "--tts-voice", default="echo",
+        help="OpenAI TTS voice (alloy, echo, fable, onyx, nova, shimmer).",
+    )
+    science_video_parser.add_argument(
+        "--skip-images", action="store_true", help="Skip AI image generation (use gradient placeholders)."
+    )
+    science_video_parser.add_argument(
+        "--skip-audio", action="store_true", help="Skip TTS audio generation (use silence)."
+    )
+    science_video_parser.add_argument(
+        "--skip-assembly", action="store_true", help="Skip final video assembly."
+    )
+    science_workspace_parser = subparsers.add_parser(
+        "science-video-workspace",
+        help="Create a workspace from an existing script (images + audio + assembly steps separately).",
+    )
+    science_workspace_parser.add_argument("--topic", default="", help="Science topic.")
+    science_workspace_parser.add_argument(
+        "--minutes", type=int, default=30, help="Target video duration."
+    )
+    science_workspace_parser.add_argument(
+        "--workspace", type=Path, default=None,
+        help="Existing workspace path (skip script generation).",
+    )
+    science_workspace_parser.add_argument(
+        "--generate-images", action="store_true", help="Generate scene images."
+    )
+    science_workspace_parser.add_argument(
+        "--generate-audio", action="store_true", help="Generate narration audio."
+    )
+    science_workspace_parser.add_argument(
+        "--assemble-clips", action="store_true", help="Assemble individual scene clips."
+    )
+    science_workspace_parser.add_argument(
+        "--assemble-final", action="store_true", help="Assemble final video from clips."
+    )
+
     story_parser = subparsers.add_parser(
         "story-studio-create",
         help="Create a general kid/adult story dashboard, prompts and clip inbox.",
@@ -417,6 +521,91 @@ def main() -> int:
     story_serve_parser.add_argument("--host", default="127.0.0.1")
     story_serve_parser.add_argument("--port", type=int, default=8765)
     subparsers.add_parser("gemini-config-check", help="Check Gemini/Veo API configuration without generating video.")
+    subparsers.add_parser(
+        "gemini-image-status",
+        help="Show Gemini image-key cooldowns and when the next request is allowed.",
+    )
+    subparsers.add_parser(
+        "gemini-image-plan",
+        help="Estimate how many full image packages can be generated before failing.",
+    )
+    voice_status_parser = subparsers.add_parser(
+        "voice-status",
+        help="Show the current voice provider, selected voice, and daily bundle state.",
+    )
+    voice_status_parser.add_argument("--day", default=date.today().isoformat(), help="Date in YYYY-MM-DD.")
+    voice_status_parser.add_argument("--html", action="store_true", help="Render a small HTML widget.")
+    audio_status_parser = subparsers.add_parser(
+        "audio-status",
+        help="Summarize the daily voice bundle plus science and PM audio manifests.",
+    )
+    audio_status_parser.add_argument("--day", default=date.today().isoformat(), help="Date in YYYY-MM-DD.")
+    audio_status_parser.add_argument("--html", action="store_true", help="Render a small HTML widget.")
+    image_style_pack_parser = subparsers.add_parser(
+        "image-style-pack",
+        help="Generate a reusable prompt pack with one topic prompt, storyboard prompts, and thumbnail prompt.",
+    )
+    image_style_pack_parser.add_argument("--topic", required=True, help="Primary topic to build the pack around.")
+    image_style_pack_parser.add_argument("--subject", default="", help="Optional scene subject to steer visuals.")
+    image_style_pack_parser.add_argument(
+        "--audience",
+        default="professional audiences",
+        help="Target audience for the main topic prompt.",
+    )
+    image_style_pack_parser.add_argument(
+        "--scene-count",
+        type=int,
+        default=35,
+        help="How many storyboard prompts to generate.",
+    )
+    image_style_pack_parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Optional path to write the JSON pack instead of printing it.",
+    )
+    blocker_status_parser = subparsers.add_parser(
+        "blocker-status",
+        help="Show blocker journal summary and recent open items.",
+    )
+    blocker_status_parser.add_argument("--html", action="store_true", help="Render a small HTML widget.")
+    blocker_log_parser = subparsers.add_parser(
+        "blocker-log",
+        help="Record a blocker and the fix you discovered later.",
+    )
+    blocker_log_parser.add_argument("--stage", default="", help="Command or stage that hit the blocker.")
+    blocker_log_parser.add_argument("--issue", required=True, help="Short blocker description.")
+    blocker_log_parser.add_argument("--solution", default="", help="What fixed it, if known.")
+    blocker_log_parser.add_argument("--component", default="", help="Optional component name.")
+    blocker_log_parser.add_argument("--severity", default="medium", help="low, medium, or high.")
+    blocker_log_parser.add_argument("--tag", action="append", default=[], help="Optional tag; repeatable.")
+    blocker_log_parser.add_argument("--source-title", default="", help="Where the solution came from.")
+    blocker_log_parser.add_argument("--source-url", default="", help="Link to the source of the fix.")
+    blocker_log_parser.add_argument("--notes", default="", help="Extra implementation notes.")
+    blocker_learn_parser = subparsers.add_parser(
+        "blocker-learn",
+        help="Record a fix from any source as a reusable blocker lesson.",
+    )
+    blocker_learn_parser.add_argument("--issue", required=True, help="What problem was solved.")
+    blocker_learn_parser.add_argument("--solution", required=True, help="What fixed it.")
+    blocker_learn_parser.add_argument("--stage", default="", help="Optional command or stage name.")
+    blocker_learn_parser.add_argument("--component", default="", help="Optional component name.")
+    blocker_learn_parser.add_argument("--severity", default="low", help="low, medium, or high.")
+    blocker_learn_parser.add_argument("--tag", action="append", default=[], help="Optional tag; repeatable.")
+    blocker_learn_parser.add_argument("--source-title", default="", help="Where the solution came from.")
+    blocker_learn_parser.add_argument("--source-url", default="", help="Link to the source of the fix.")
+    blocker_learn_parser.add_argument("--notes", default="", help="Extra implementation notes.")
+    blocker_suggest_parser = subparsers.add_parser(
+        "blocker-suggest",
+        help="Suggest previous fixes that look similar to a new blocker.",
+    )
+    blocker_suggest_parser.add_argument("--limit", type=int, default=5, help="Maximum suggestions to show.")
+    blocker_resolve_parser = subparsers.add_parser(
+        "blocker-resolve",
+        help="Mark an existing blocker as resolved with a solution note.",
+    )
+    blocker_resolve_parser.add_argument("--id", required=True, help="Blocker id from blocker-status.")
+    blocker_resolve_parser.add_argument("--solution", required=True, help="What fixed the blocker.")
     policy_parser = subparsers.add_parser(
         "youtube-policy-check", help="Create the required publication approval report."
     )
@@ -672,6 +861,92 @@ def main() -> int:
     args = parser.parse_args()
     project_dir = args.project_dir.resolve()
     settings = Settings.from_environment(project_dir)
+
+    # --- Science Discovery Story commands ---
+    if args.command == "science-story-topics":
+        topics = list_available_topics()
+        print("Available science story topics:")
+        for t in topics:
+            print(f"  - {t}")
+        print("\nOr provide any science topic of your choice via --topic.")
+        return 0
+
+    if args.command == "science-story-generate":
+        topic = args.topic.strip()
+        if not topic:
+            topics = list_available_topics()
+            print("Available topics: " + ", ".join(topics))
+            print("\nProvide --topic or leave empty for auto-selection.")
+            topic = ""
+        script = generate_science_story_script(
+            settings, topic=topic, target_minutes=args.minutes
+        )
+        print(f"Title: {script.title}")
+        print(f"Topic: {script.topic}")
+        print(f"Duration: {script.duration_seconds}s ({script.duration_minutes:.1f} minutes)")
+        print(f"Scenes: {len(script.scenes)}")
+        print(f"Chapters: {len(script.chapters)}")
+        for i, chapter in enumerate(script.chapters):
+            chapter_scenes = script.scenes_for_chapter(i)
+            chapter_duration = sum(s.duration_seconds for s in chapter_scenes)
+            print(f"  Chapter {i + 1}: {chapter} ({len(chapter_scenes)} scenes, {chapter_duration}s)")
+        if args.save:
+            paths = save_script_to_disk(script, str(settings.output_dir))
+            print(f"\nScript saved:")
+            for key, path in paths.items():
+                print(f"  {key}: {path}")
+        return 0
+
+    if args.command == "science-video-create":
+        workspace_dir = create_science_video(
+            settings,
+            topic=args.topic.strip() or "",
+            target_minutes=args.minutes,
+            tts_voice=args.tts_voice,
+            skip_images=args.skip_images,
+            skip_audio=args.skip_audio,
+            skip_assembly=args.skip_assembly,
+        )
+        print(f"\nScience video workspace: {workspace_dir}")
+        print(f"  Storyboard: {workspace_dir / 'ui' / 'storyboard.html'}")
+        print(f"  Scene manifest: {workspace_dir / 'scene_manifest.json'}")
+        final_video = workspace_dir / "video" / "final_video.mp4"
+        if final_video.exists():
+            print(f"  Final video: {final_video}")
+        return 0
+
+    if args.command == "science-video-workspace":
+        from content_pipeline.bots.image import image_provider
+
+        if args.workspace:
+            ws_path = args.workspace if args.workspace.is_absolute() else project_dir / args.workspace
+            script = ScienceStoryScript.from_dict(
+                json.loads((ws_path / "script.json").read_text(encoding="utf-8"))
+            )
+            workspace_dir = ws_path
+        else:
+            script = generate_science_story_script(
+                settings, topic=args.topic.strip() or "", target_minutes=args.minutes
+            )
+            workspace_dir = create_science_video_workspace(settings.output_dir, script)
+            print(f"Workspace created: {workspace_dir}")
+
+        if args.generate_images:
+            provider = image_provider(settings)
+            print(f"Generating {len(script.scenes)} scene images...")
+            generate_scene_images(workspace_dir, script, provider)
+        if args.generate_audio:
+            print(f"Generating {len(script.scenes)} narration audio files...")
+            generate_narration_audio(workspace_dir, script, settings, voice="echo")
+        if args.assemble_clips:
+            print("Assembling scene clips...")
+            assemble_scene_clips(workspace_dir, script)
+        if args.assemble_final:
+            print("Assembling final video...")
+            path = assemble_final_video(workspace_dir, script)
+            print(f"Final video: {path}")
+        return 0
+
     if args.command == "krishna-agents-init":
         destination = args.destination
         if not destination.is_absolute():
@@ -683,7 +958,7 @@ def main() -> int:
         destination = args.destination
         if not destination.is_absolute():
             destination = project_dir / destination
-        for path in generate_hindi_voice_samples(settings, destination):
+        for path in generate_hindi_voice_samples(settings, destination, engine=args.engine):
             print(path)
         return 0
     if args.command == "krishna-voice-select":
@@ -827,6 +1102,85 @@ def main() -> int:
         return 0
     if args.command == "gemini-config-check":
         print(json.dumps(gemini_config_status(settings), indent=2))
+        return 0
+    if args.command == "gemini-image-status":
+        print(json.dumps(gemini_image_status(settings), indent=2))
+        return 0
+    if args.command == "gemini-image-plan":
+        print(json.dumps(gemini_image_package_plan(settings), indent=2))
+        return 0
+    if args.command == "voice-status":
+        status = voice_status(settings.output_dir, settings, day=args.day)
+        if args.html:
+            print(render_voice_status_html(status))
+        else:
+            print(json.dumps(status, indent=2, ensure_ascii=False))
+        return 0
+    if args.command == "audio-status":
+        status = audio_status(settings.output_dir, settings, day=args.day)
+        if args.html:
+            print(render_audio_status_html(status))
+        else:
+            print(json.dumps(status, indent=2, ensure_ascii=False))
+        return 0
+    if args.command == "image-style-pack":
+        pack = build_image_style_pack(
+            args.topic,
+            subject=args.subject,
+            audience=args.audience,
+            scene_count=args.scene_count,
+        )
+        payload = json.dumps(pack.as_dict(), indent=2, ensure_ascii=False)
+        if args.output:
+            output_path = args.output if args.output.is_absolute() else project_dir / args.output
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(payload + "\n", encoding="utf-8")
+            print(output_path)
+        else:
+            print(payload)
+        return 0
+    if args.command == "blocker-status":
+        if args.html:
+            print(blocker_status_html(settings.output_dir))
+        else:
+            print(json.dumps(blocker_status(settings.output_dir), indent=2, ensure_ascii=False))
+        return 0
+    if args.command == "blocker-log":
+        path = record_blocker(
+            settings.output_dir,
+            command=args.stage,
+            issue=args.issue,
+            solution=args.solution,
+            component=args.component,
+            severity=args.severity,
+            tags=args.tag,
+            source_title=args.source_title,
+            source_url=args.source_url,
+            notes=args.notes,
+        )
+        print(path)
+        return 0
+    if args.command == "blocker-learn":
+        path = absorb_blocker_solution(
+            settings.output_dir,
+            issue=args.issue,
+            solution=args.solution,
+            command=args.stage,
+            component=args.component,
+            severity=args.severity,
+            tags=args.tag,
+            source_title=args.source_title,
+            source_url=args.source_url,
+            notes=args.notes,
+        )
+        print(path)
+        return 0
+    if args.command == "blocker-suggest":
+        print(json.dumps(suggest_blocker_fixes(settings.output_dir, limit=args.limit), indent=2, ensure_ascii=False))
+        return 0
+    if args.command == "blocker-resolve":
+        path = resolve_blocker(settings.output_dir, args.id, args.solution)
+        print(path)
         return 0
     if args.command == "youtube-policy-check":
         video = args.video if args.video.is_absolute() else project_dir / args.video

@@ -346,6 +346,21 @@ def create_pm_video_workspace(
         _write_text(audio_reference / "voice_reference.md", _voice_reference_doc(voice_sample_path)),
         _write_text(ui / "index.html", _dashboard_html(episode, agent, root)),
     ]
+    audio_manifest = _audio_reference_manifest(
+        episode,
+        agent,
+        openai_api_key=openai_api_key,
+        tts_voice=tts_voice,
+        voice_sample_path=voice_sample_path,
+        voiceover_file=voiceover_file,
+        preview_without_audio=preview_without_audio,
+    )
+    paths.extend(
+        [
+            _write_json(audio_reference / "audio_manifest.json", audio_manifest),
+            _write_text(audio_reference / "audio_status.html", _audio_reference_status_html(audio_manifest)),
+        ]
+    )
     paths.append(
         _write_text(
             root / "publish" / "linkedin_post.md",
@@ -775,6 +790,48 @@ def _voice_reference_doc(voice_sample_path: Path | None) -> str:
         "stretched across a full video, because that would create unnatural audio.\n"
         "- Final narration: record the complete script and render with `--voiceover-file`.\n"
     )
+
+
+def _audio_reference_manifest(
+    episode: VideoEpisode,
+    agent: PMVideoAgent,
+    *,
+    openai_api_key: str,
+    tts_voice: str,
+    voice_sample_path: Path | None,
+    voiceover_file: Path | None,
+    preview_without_audio: bool,
+) -> dict[str, Any]:
+    narration_mode = "openai_tts" if openai_api_key else "preview_without_audio" if preview_without_audio else "unavailable"
+    return {
+        "episode_id": episode.episode_id,
+        "agent": agent.name,
+        "aspect": agent.aspect,
+        "scene_count": len(episode.clips),
+        "duration_seconds": episode.duration_seconds,
+        "narration_mode": narration_mode,
+        "tts_voice": tts_voice,
+        "voice_sample_reference": str(voice_sample_path) if voice_sample_path else "",
+        "voiceover_file": str(voiceover_file) if voiceover_file else "",
+        "preview_without_audio": preview_without_audio,
+        "voice_sample_copied": bool(voice_sample_path),
+        "note": (
+            "PM narration is OpenAI-first. The stored sample is a creator reference, "
+            "and preview_without_audio enables a silent review path when rendering is not desired."
+        ),
+    }
+
+
+def _audio_reference_status_html(manifest: dict[str, Any]) -> str:
+    badge = "OpenAI narration" if manifest.get("narration_mode") == "openai_tts" else "Silent preview"
+    return f"""<section style="background:#111827;border:1px solid #334155;border-radius:18px;padding:16px;color:#e2e8f0;">
+  <div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#7dd3fc;font-weight:800;">PM audio</div>
+  <div style="margin-top:6px;font-size:20px;font-weight:800;">{escape(badge)}</div>
+  <div style="margin-top:4px;color:#94a3b8;">Voice sample: {escape(str(manifest.get('voice_sample_reference') or 'none'))}</div>
+  <div style="margin-top:4px;color:#94a3b8;">Voiceover file: {escape(str(manifest.get('voiceover_file') or 'none'))}</div>
+  <div style="margin-top:4px;color:#94a3b8;">TTS voice: {escape(str(manifest.get('tts_voice') or ''))}</div>
+  <div style="margin-top:10px;color:#cbd5e1;">{escape(str(manifest.get('note') or ''))}</div>
+</section>"""
 
 
 def _prepare_user_voiceover(root: Path, source: Path, duration: int) -> Path:

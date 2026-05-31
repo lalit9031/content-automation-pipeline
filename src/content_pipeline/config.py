@@ -21,6 +21,13 @@ class Settings:
     gcp_location: str = "us-central1"
     imagen_model: str = "imagen-4.0-generate-001"
     gemini_image_model: str = "gemini-2.5-flash-image"
+    gemini_image_daily_budget: int = 0
+    gemini_image_min_interval_seconds: float = 30.0
+    gemini_image_max_attempts: int = 8
+    gemini_image_retry_backoff_seconds: float = 120.0
+    image_fallback_provider: str = "imagen"
+    voice_provider: str = "openai"
+    indian_tts_voice: str = "en-IN-PrabhatNeural"
     image_max_dimension: int = 2048
     image_max_bytes: int = 5 * 1024 * 1024
     publish_linkedin: bool = False
@@ -77,6 +84,17 @@ class Settings:
             gcp_location=os.getenv("GCP_LOCATION", "us-central1"),
             imagen_model=os.getenv("IMAGEN_MODEL", "imagen-4.0-generate-001"),
             gemini_image_model=os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image"),
+            gemini_image_daily_budget=int(os.getenv("GEMINI_IMAGE_DAILY_BUDGET", "0")),
+            gemini_image_min_interval_seconds=float(
+                os.getenv("GEMINI_IMAGE_MIN_INTERVAL_SECONDS", "30")
+            ),
+            gemini_image_max_attempts=int(os.getenv("GEMINI_IMAGE_MAX_ATTEMPTS", "8")),
+            gemini_image_retry_backoff_seconds=float(
+                os.getenv("GEMINI_IMAGE_RETRY_BACKOFF_SECONDS", "120")
+            ),
+            image_fallback_provider=os.getenv("IMAGE_FALLBACK_PROVIDER", "imagen").strip().lower(),
+            voice_provider=os.getenv("VOICE_PROVIDER", "openai").strip().lower(),
+            indian_tts_voice=os.getenv("INDIAN_TTS_VOICE", "en-IN-PrabhatNeural"),
             image_max_dimension=int(os.getenv("IMAGE_MAX_DIMENSION", "2048")),
             image_max_bytes=int(os.getenv("IMAGE_MAX_BYTES", str(5 * 1024 * 1024))),
             publish_linkedin=_as_bool(os.getenv("PUBLISH_LINKEDIN", "false")),

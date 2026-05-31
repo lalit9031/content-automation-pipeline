@@ -218,6 +218,11 @@ class PMVideoAgentsTest(unittest.TestCase):
 
             self.assertIn(root / "audio" / "reference" / "creator_voice_sample.ogg", paths)
             self.assertTrue((root / "audio" / "reference" / "creator_voice_sample.ogg").exists())
+            self.assertTrue((root / "audio" / "reference" / "audio_manifest.json").exists())
+            self.assertTrue((root / "audio" / "reference" / "audio_status.html").exists())
+            audio_manifest = json.loads((root / "audio" / "reference" / "audio_manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(audio_manifest["voice_sample_reference"], str(voice_sample))
+            self.assertEqual(audio_manifest["voice_sample_copied"], True)
             self.assertIn(
                 "creator voice reference",
                 (root / "audio" / "reference" / "voice_reference.md").read_text(encoding="utf-8"),
