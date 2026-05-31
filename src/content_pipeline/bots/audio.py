@@ -91,6 +91,17 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
         ),
     ),
     VoicePreviewPreset(
+        key="english_storyteller",
+        label="English storyteller",
+        description="Soft English narration with a warm storytelling flow.",
+        provider="openai",
+        voice="fable",
+        language="en-US",
+        sample_text=(
+            "Once upon a workflow, a small team learned to trust its process, refine every step, and ship with calm confidence."
+        ),
+    ),
+    VoicePreviewPreset(
         key="hindi_story",
         label="Hindi story",
         description="Pure Hindi narration for stories and devotional content.",
@@ -102,6 +113,28 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
         ),
     ),
     VoicePreviewPreset(
+        key="hindi_devotional",
+        label="Hindi devotional",
+        description="Gentle Hindi narration for spiritual, devotional, or cultural scripts.",
+        provider="edge",
+        voice="hi-IN-SwaraNeural",
+        language="hi-IN",
+        sample_text=(
+            "वृंदावन की पवित्र गलियों में, श्यामसुंदर की लीलाएँ हर मन को भक्ति और शांति से भर देती हैं।"
+        ),
+    ),
+    VoicePreviewPreset(
+        key="hindi_bulletin",
+        label="Hindi bulletin",
+        description="Crisp Hindi narration for announcements and short updates.",
+        provider="edge",
+        voice="hi-IN-SwaraNeural",
+        language="hi-IN",
+        sample_text=(
+            "आज की मुख्य खबर यह है कि टीम ने अपने सभी लक्ष्य समय पर पूरे कर लिए हैं और अगला चरण शुरू हो चुका है।"
+        ),
+    ),
+    VoicePreviewPreset(
         key="hinglish_teacher",
         label="Hinglish teacher",
         description="Friendly Hindi-English mix for learning content.",
@@ -110,6 +143,17 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
         language="en-IN",
         sample_text=(
             "Aaj hum simple steps mein samjhenge kaise AI, Jira, aur Scrum ko smart way se use karte hain."
+        ),
+    ),
+    VoicePreviewPreset(
+        key="hinglish_shortform",
+        label="Hinglish shortform",
+        description="High-energy Hinglish for shorts, reels, and quick explainers.",
+        provider="edge",
+        voice="en-IN-PrabhatNeural",
+        language="en-IN",
+        sample_text=(
+            "Aaj ka quick tip simple hai: planning ko chhota rakho, execution ko sharp rakho, aur har step pe clarity maintain karo."
         ),
     ),
     VoicePreviewPreset(
@@ -198,6 +242,19 @@ def available_voice_options(provider: str) -> list[tuple[str, str]]:
 
 def voice_preview_presets() -> tuple[VoicePreviewPreset, ...]:
     return VOICE_PREVIEW_PRESETS
+
+
+def voice_preview_language_options() -> tuple[tuple[str, str], ...]:
+    seen: list[str] = []
+    for preset in VOICE_PREVIEW_PRESETS:
+        if preset.language not in seen:
+            seen.append(preset.language)
+    labels = {
+        "en-US": "English",
+        "en-IN": "Hinglish",
+        "hi-IN": "Hindi",
+    }
+    return tuple([("all", "All languages"), *[(language, labels.get(language, language)) for language in seen]])
 
 
 def normalize_voice_text(text: str) -> str:
@@ -346,6 +403,13 @@ def render_voice_status_html(status: dict[str, Any]) -> str:
     )
     if not sample_rows:
         sample_rows = "<li>No sample audio files generated yet.</li>"
+    missing_audio_notice = ""
+    if status.get("missing_sample_files") or not status.get("sample_files"):
+        missing_audio_notice = (
+            '<div style="margin-top:10px;color:#fca5a5;font-size:12px;font-weight:700;">'
+            "Missing sample audio"
+            "</div>"
+        )
     audio_mode = "real audio" if status.get("has_real_audio") else "manifest only"
     preview_excerpt = escape(str(status.get("preview_excerpt") or ""))
     generated_at = escape(str(status.get("generated_at") or "unknown"))
@@ -378,6 +442,7 @@ def render_voice_status_html(status: dict[str, Any]) -> str:
   <div style="margin-top:14px;">
     <div style="font-weight:700;color:#fca5a5;margin-bottom:6px;">Sample files</div>
     <ul style="margin:0;padding-left:18px;color:#cbd5e1;">{sample_rows}</ul>
+    {missing_audio_notice}
   </div>
   <div style="margin-top:14px;background:#0f172a;border:1px solid #334155;border-radius:14px;padding:12px;">
     <div style="font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;">Pronunciation preview</div>

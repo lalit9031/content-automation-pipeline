@@ -87,6 +87,7 @@ from content_pipeline.bots.audio import available_voice_options
 from content_pipeline.bots.audio import generate_music_preview
 from content_pipeline.bots.audio import normalize_voice_text
 from content_pipeline.bots.audio import render_audio_status_html
+from content_pipeline.bots.audio import voice_preview_language_options
 from content_pipeline.bots.audio import voice_preview_presets
 from content_pipeline.bots.audio import voice_status
 from content_pipeline.bots.audio import write_voice_daily_artifacts
@@ -216,9 +217,19 @@ class PipelineTest(unittest.TestCase):
         texts = "\n".join(preset.sample_text for preset in presets)
 
         self.assertIn("Hindi story", labels)
+        self.assertIn("Hindi devotional", labels)
+        self.assertIn("Hindi bulletin", labels)
         self.assertIn("Hinglish teacher", labels)
         self.assertIn("कान्हा", texts)
         self.assertIn("Jira", texts)
+
+    def test_voice_preview_language_options_cover_all_languages(self) -> None:
+        languages = voice_preview_language_options()
+
+        self.assertIn(("all", "All languages"), languages)
+        self.assertIn(("en-US", "English"), languages)
+        self.assertIn(("en-IN", "Hinglish"), languages)
+        self.assertIn(("hi-IN", "Hindi"), languages)
 
     def test_music_preview_writes_wav_file(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_dir:

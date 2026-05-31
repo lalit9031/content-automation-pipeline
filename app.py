@@ -23,6 +23,7 @@ from content_pipeline.bots.audio import available_voice_options
 from content_pipeline.bots.audio import generate_music_preview
 from content_pipeline.bots.audio import generate_voice_preview
 from content_pipeline.bots.audio import normalize_voice_text
+from content_pipeline.bots.audio import voice_preview_language_options
 from content_pipeline.bots.audio import voice_preview_presets
 from content_pipeline.bots.image import ImageVariant, image_provider
 from content_pipeline.bots.prompt import build_cinematic_image_prompt
@@ -166,6 +167,8 @@ def load_studio_state(output_dir: Path) -> dict[str, str]:
         "voice_provider",
         "voice_name",
         "voice_preview_text",
+        "voice_preview_path",
+        "voice_library_language_filter",
         "image_provider",
         "image_topic",
         "image_subject",
@@ -195,6 +198,17 @@ def render_image_preview(path: Path) -> None:
         components.html(path.read_text(encoding="utf-8"), height=720, scrolling=False)
     else:
         st.image(str(path), use_container_width=True)
+
+
+def apply_voice_preset_by_key(preset_key: str) -> None:
+    preset_lookup = {preset.key: preset for preset in voice_preview_presets()}
+    preset = preset_lookup.get(preset_key)
+    if not preset:
+        return
+    st.session_state["voice_preset_choice"] = preset.key
+    st.session_state["voice_provider_choice"] = preset.provider
+    st.session_state["voice_name_choice"] = preset.voice
+    st.session_state["voice_preview_text"] = preset.sample_text
 
 
 def file_chip(label: str, path: Path) -> str:
@@ -401,6 +415,8 @@ def render_frontdoor(settings: Settings) -> None:
         st.session_state["music_preview_path"] = ""
     st.session_state.setdefault("image_preview_path", "")
     st.session_state.setdefault("music_preview_path", "")
+    st.session_state.setdefault("voice_preview_path", "")
+    st.session_state.setdefault("voice_library_language_filter", "all")
     st.sidebar.subheader("Voice Studio")
     preset_options = voice_preview_presets()
     preset_map = {preset.key: preset for preset in preset_options}
@@ -457,6 +473,19 @@ def render_frontdoor(settings: Settings) -> None:
     current_voice_preset = preset_map[st.session_state["voice_preset_choice"]]
     st.sidebar.caption(
         f"Preset: {current_voice_preset.label} · Script language: {current_voice_preset.language}"
+    )
+    language_options = voice_preview_language_options()
+    language_map = {value: label for value, label in language_options}
+    default_language_filter = st.session_state.get("voice_library_language_filter", "all")
+    if default_language_filter not in language_map:
+        default_language_filter = "all"
+        st.session_state["voice_library_language_filter"] = default_language_filter
+    st.sidebar.selectbox(
+        "Voice library language",
+        options=[value for value, _ in language_options],
+        index=[value for value, _ in language_options].index(default_language_filter),
+        format_func=lambda value: language_map.get(value, value),
+        key="voice_library_language_filter",
     )
     st.sidebar.subheader("Image Studio")
     image_provider_options = ("mock", "gemini", "imagen", "openai")
@@ -1031,6 +1060,65 @@ def render_frontdoor(settings: Settings) -> None:
             else:
                 st.write("No voice bundle found for this day.")
 
+        st.markdown("#### Voice library")
+        preset_options = voice_preview_presets()
+        library_language = st.session_state.get("voice_library_language_filter", "all")
+        visible_presets = [
+            preset for preset in preset_options
+            if library_language == "all" or preset.language == library_language
+        ]
+        st.caption(
+            f"Showing {len(visible_presets)} of {len(preset_options)} presets "
+            f"for {language_map.get(library_language, library_language)}"
+        )
+        library_cols = st.columns(2)
+        if not visible_presets:
+            st.info("No voice presets match the selected language filter.")
+        for index, preset in enumerate(visible_presets):
+            column = library_cols[index % 2]
+            sample_path = ui_settings.output_dir / ".runtime" / "voice_previews" / "library" / f"{preset.key}.mp3"
+            with column:
+                st.markdown(
+                    f"""
+                    <div class="metric-box">
+                      <div class="metric-label">{escape(preset.label)}</div>
+                      <div class="metric-value">{escape(preset.provider)} · {escape(preset.voice)}</div>
+                      <div style="margin-top:4px;color:#7dd3fc;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;">{escape(preset.language)}</div>
+                      <div style="margin-top:6px;color:#94a3b8;font-size:13px;line-height:1.45;">{escape(preset.description)}</div>
+                      <div style="margin-top:10px;color:#cbd5e1;font-size:12px;line-height:1.5;">{escape(preset.sample_text[:140])}{"..." if len(preset.sample_text) > 140 else ""}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                button_cols = st.columns(2)
+                with button_cols[0]:
+                    if st.button("Load script", key=f"load_voice_script_{preset.key}", use_container_width=True):
+                        apply_voice_preset_by_key(preset.key)
+                        st.rerun()
+                with button_cols[1]:
+                    if st.button("Play sample", key=f"play_voice_sample_{preset.key}", use_container_width=True):
+                        try:
+                            preview_dir = ui_settings.output_dir / ".runtime" / "voice_previews" / "library"
+                            preview_dir.mkdir(parents=True, exist_ok=True)
+                            preview_path = preview_dir / f"{preset.key}.mp3"
+                            generate_voice_preview(
+                                preset.sample_text,
+                                preview_path,
+                                provider=preset.provider,
+                                voice=preset.voice,
+                                openai_api_key=ui_settings.openai_api_key,
+                            )
+                            st.session_state["voice_preview_path"] = str(preview_path)
+                            st.session_state["voice_provider_choice"] = preset.provider
+                            st.session_state["voice_name_choice"] = preset.voice
+                            st.session_state["voice_preview_text"] = preset.sample_text
+                            st.success(f"Sample written to {preview_path}")
+                        except Exception as exc:
+                            st.error(str(exc))
+                if sample_path.exists():
+                    st.audio(str(sample_path))
+                    st.caption(str(sample_path))
+
         st.markdown("#### Voice studio")
         st.caption(
             f"Provider: {voice_provider_choice} · Voice: {voice_name_choice} · Normalized for narration preview."
@@ -1049,6 +1137,7 @@ def render_frontdoor(settings: Settings) -> None:
                     voice=voice_name_choice,
                     openai_api_key=ui_settings.openai_api_key,
                 )
+                st.session_state["voice_preview_path"] = str(preview_file)
             except Exception as exc:
                 st.error(str(exc))
             else:
@@ -1123,6 +1212,8 @@ def render_frontdoor(settings: Settings) -> None:
             "voice_provider": str(st.session_state["voice_provider_choice"]),
             "voice_name": str(st.session_state["voice_name_choice"]),
             "voice_preview_text": str(st.session_state["voice_preview_text"]),
+            "voice_preview_path": str(st.session_state["voice_preview_path"]),
+            "voice_library_language_filter": str(st.session_state["voice_library_language_filter"]),
             "image_provider": str(st.session_state["image_provider_choice"]),
             "image_topic": str(st.session_state["image_topic"]),
             "image_subject": str(st.session_state["image_subject"]),
