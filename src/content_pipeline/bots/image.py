@@ -74,7 +74,7 @@ class MockImageProvider:
       <stop stop-color="#38bdf8" stop-opacity="0.9"/>
       <stop offset="0.36" stop-color="#0ea5e9" stop-opacity="0.34"/>
       <stop offset="1" stop-color="#020617" stop-opacity="0"/>
-    </linearGradient>
+    </radialGradient>
     <filter id="shadow"><feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#000000" flood-opacity="0.45"/></filter>
   </defs>
   <rect width="100%" height="100%" fill="url(#bg)"/>
