@@ -693,6 +693,30 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(image_bytes, b"ok")
         self.assertEqual(calls, [0, 1])
 
+    def test_gemini_image_provider_falls_back_on_quota_exhaustion_after_retries(self) -> None:
+        class QuotaClient:
+            def __init__(self) -> None:
+                self.models = types.SimpleNamespace(generate_content=self.generate_content)
+
+            def generate_content(self, **kwargs):
+                raise RuntimeError(
+                    "429 RESOURCE_EXHAUSTED: You exceeded your current quota for gemini-2.5-flash-preview-image"
+                )
+
+        settings = Settings(
+            output_dir=Path("output"),
+            image_provider="gemini",
+            gemini_api_key="key-1",
+            gemini_image_daily_budget=0,
+            gemini_image_max_attempts=2,
+            image_fallback_provider="mock",
+        )
+        provider = GeminiImageProvider(settings, clients=[QuotaClient()])
+
+        image_bytes = provider.create("Prompt text", ImageVariant("1:1", 1080, 1080, "unused"))
+
+        self.assertTrue(image_bytes.startswith(b"<svg"))
+
     def test_gemini_image_status_reports_cooldown_and_next_allowed_time(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_dir:
             output = Path(temporary_dir) / "output"

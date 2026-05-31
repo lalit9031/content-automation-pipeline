@@ -218,6 +218,8 @@ class GeminiImageProvider:
                     self.limiter.record_failure(client_index, exc, retryable=False)
                     raise RuntimeError(f"Gemini image generation failed: {exc}") from exc
                 self.limiter.record_failure(client_index, exc, retryable=True)
+        if last_error is not None and self.limiter.is_retryable(last_error):
+            return self.fallback_provider.create(prompt, variant)
         raise RuntimeError(
             "Gemini image generation failed after exhausting the configured keys and retries: "
             f"{last_error}"
