@@ -343,6 +343,20 @@ def apply_voice_preset_by_key(preset_key: str) -> None:
     st.session_state["voice_preview_text"] = preset.sample_text
 
 
+def queue_voice_preset_by_key(preset_key: str) -> None:
+    preset_lookup = {preset.key: preset for preset in voice_preview_presets()}
+    preset = preset_lookup.get(preset_key)
+    if not preset:
+        return
+    st.session_state["voice_preset_pending_key"] = preset.key
+
+
+def apply_pending_voice_preset() -> None:
+    pending_key = st.session_state.pop("voice_preset_pending_key", "")
+    if pending_key:
+        apply_voice_preset_by_key(pending_key)
+
+
 def _voice_preview_fallback_voice(gender: str, language: str = "en-IN") -> str:
     gender = (gender or "all").strip().lower()
     language = (language or "").strip().lower()
@@ -729,6 +743,7 @@ def render_frontdoor(settings: Settings) -> None:
     st.session_state.setdefault("reference_audio_selected_clip", "")
     st.session_state.setdefault("reference_audio_preview_path", "")
     st.session_state.setdefault("reference_audio_bank_size", 24)
+    apply_pending_voice_preset()
     show_audio_controls = sidebar_mode in {"Audio", "All"}
     show_image_controls = sidebar_mode in {"Image", "All"}
     if show_image_controls:
@@ -857,9 +872,7 @@ def render_frontdoor(settings: Settings) -> None:
         )
         apply_voice_preset = st.sidebar.button("Apply voice preset", use_container_width=True)
         if apply_voice_preset:
-            preset = preset_map[st.session_state["voice_preset_choice"]]
-            st.session_state["voice_name_choice"] = preset.voice
-            st.session_state["voice_preview_text"] = preset.sample_text
+            queue_voice_preset_by_key(st.session_state["voice_preset_choice"])
             st.rerun()
         st.sidebar.subheader("Music Studio")
         music_mood_options = ("cinematic", "focus", "warm", "uplift", "ambient")
@@ -1876,7 +1889,7 @@ def overlay_lower_third_text(image_path: Path, output_path: Path, text: str):
                 button_cols = st.columns(2)
                 with button_cols[0]:
                     if st.button("Load script", key=f"load_voice_script_{preset.key}", use_container_width=True):
-                        apply_voice_preset_by_key(preset.key)
+                        queue_voice_preset_by_key(preset.key)
                         st.rerun()
                 with button_cols[1]:
                     if st.button("Play sample", key=f"play_voice_sample_{preset.key}", use_container_width=True):
@@ -1892,9 +1905,9 @@ def overlay_lower_third_text(image_path: Path, output_path: Path, text: str):
                                 language_hint=preset.language,
                             )
                             st.session_state["voice_preview_path"] = str(preview_output)
-                            st.session_state["voice_name_choice"] = preset.voice
-                            st.session_state["voice_preview_text"] = preset.sample_text
+                            queue_voice_preset_by_key(preset.key)
                             st.success(f"Sample written to {preview_output}")
+                            st.rerun()
                         except Exception as exc:
                             st.error(str(exc))
                 if sample_path.exists():
