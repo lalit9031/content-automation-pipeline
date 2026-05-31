@@ -2,10 +2,16 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from dataclasses import replace
 from datetime import date
 from pathlib import Path
 from collections.abc import Mapping
+
+PROJECT_ROOT = Path(__file__).resolve().parent
+SRC_DIR = PROJECT_ROOT / "src"
+if SRC_DIR.exists():
+    sys.path.insert(0, str(SRC_DIR))
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -13,9 +19,6 @@ import streamlit.components.v1 as components
 from content_pipeline.bots.audio import audio_status, render_audio_status_html
 from content_pipeline.config import Settings
 from content_pipeline.pipeline import run_linkedin_mvp
-
-
-PROJECT_ROOT = Path(__file__).resolve().parent
 
 
 def _apply_streamlit_secrets() -> None:
