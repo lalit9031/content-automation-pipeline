@@ -1171,9 +1171,49 @@ def render_frontdoor(settings: Settings) -> None:
                 st.json(image_style_pack.as_dict())
                 st.code(image_prompt, language="text")
         else:
-            st.info(
-                "Video tools are hidden in Audio mode. Switch the sidebar mode to Video or All to edit image prompts and generate previews."
+            st.subheader("Image quick action")
+            image_style_pack = build_image_style_pack(
+                st.session_state["image_topic"],
+                subject=st.session_state["image_subject"],
             )
+            image_provider_choice = st.session_state["image_provider_choice"]
+            st.markdown(
+                f"""
+                <div class="metric-box">
+                  <div class="metric-label">Selected image provider</div>
+                  <div class="metric-value">{escape(image_provider_choice)}</div>
+                  <div style="margin-top:6px;color:#94a3b8;font-size:13px;line-height:1.4;">Topic: {escape(st.session_state['image_topic'])}<br>Subject: {escape(st.session_state['image_subject'])}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            st.caption(
+                "Audio mode keeps the full image editor hidden, but you can still generate one confirmation image from the current prompt."
+            )
+            if st.button("Generate image preview", key="studio_quick_image_preview", use_container_width=True):
+                try:
+                    image_settings = replace(settings, output_dir=ui_output_dir)
+                    provider = image_provider(
+                        replace(image_settings, image_provider=st.session_state["image_provider_choice"])
+                    )
+                    variant = ImageVariant("1:1", 1080, 1080, "image_preview")
+                    preview_path = ui_output_dir / ".runtime" / "image_previews" / (
+                        f"{_slugify(st.session_state['image_topic'])}_{_slugify(st.session_state['image_subject'])}_{st.session_state['image_provider_choice']}{provider.extension}"
+                    )
+                    preview_path.parent.mkdir(parents=True, exist_ok=True)
+                    preview_path.write_bytes(provider.create(st.session_state["image_prompt"], variant))
+                    st.session_state["image_preview_path"] = str(preview_path)
+                    st.success(f"Image preview written to {preview_path}")
+                except Exception as exc:
+                    st.error(str(exc))
+            if st.session_state["image_preview_path"]:
+                preview_path = Path(st.session_state["image_preview_path"])
+                if preview_path.exists():
+                    render_image_preview(preview_path)
+            with st.expander("Image prompt pack", expanded=False):
+                st.json(image_style_pack.as_dict())
+                st.code(st.session_state["image_prompt"], language="text")
+            st.info("Switch the sidebar mode to Video or All if you want the full image editor controls.")
 
         if show_audio_controls:
             st.markdown("### Music studio")
