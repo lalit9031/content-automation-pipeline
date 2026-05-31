@@ -298,6 +298,35 @@ class PipelineTest(unittest.TestCase):
             mock_image.assert_not_called()
             mock_caption.assert_called()
 
+    def test_image_preview_status_reports_ready_missing_and_broken(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            ready_path = Path(temporary_dir) / "ready.png"
+            try:
+                from PIL import Image
+            except ImportError:
+                self.skipTest("Pillow is not installed in the test environment")
+            image = Image.frombytes("RGB", (64, 64), os.urandom(64 * 64 * 3))
+            image.save(ready_path, format="PNG")
+            broken_path = Path(temporary_dir) / "broken.png"
+            broken_path.write_text("broken payload", encoding="utf-8")
+            missing_path = Path(temporary_dir) / "missing.png"
+
+            try:
+                import app as streamlit_app
+            except ModuleNotFoundError:
+                self.skipTest("Streamlit is not installed in the test environment")
+
+            ready_state, ready_message = streamlit_app.image_preview_status(ready_path)
+            missing_state, missing_message = streamlit_app.image_preview_status(missing_path)
+            broken_state, broken_message = streamlit_app.image_preview_status(broken_path)
+
+            self.assertEqual(ready_state, "ready")
+            self.assertIn("stored", ready_message)
+            self.assertEqual(missing_state, "missing")
+            self.assertIn("No preview file found", missing_message)
+            self.assertEqual(broken_state, "broken")
+            self.assertIn("too small", broken_message)
+
     def test_filter_voice_preview_presets_by_gender(self) -> None:
         presets = voice_preview_presets()
         male_presets = filter_voice_preview_presets(presets, gender="male")

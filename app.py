@@ -259,6 +259,25 @@ def render_image_preview(path: Path) -> None:
             pass
 
 
+def image_preview_status(path: Path | None) -> tuple[str, str]:
+    if path is None:
+        return "missing", "No preview path set yet."
+    if not path.exists():
+        return "missing", f"No preview file found at {path.name}."
+    if path.stat().st_size < 1024:
+        return "broken", f"{path.name} is too small to be a valid image."
+    try:
+        from PIL import Image, UnidentifiedImageError
+    except ImportError:
+        return "ready", f"Preview stored at {path.name}."
+    try:
+        with Image.open(path) as image:
+            image.verify()
+        return "ready", f"Preview stored at {path.name}."
+    except (UnidentifiedImageError, OSError, ValueError, SyntaxError):
+        return "broken", f"{path.name} could not be decoded as an image."
+
+
 def apply_voice_preset_by_key(preset_key: str) -> None:
     preset_lookup = {preset.key: preset for preset in voice_preview_presets()}
     preset = preset_lookup.get(preset_key)
@@ -1231,6 +1250,12 @@ def render_frontdoor(settings: Settings) -> None:
             )
             image_provider_choice = st.session_state["image_provider_choice"]
             image_prompt = st.session_state["image_prompt"]
+            image_preview_path = (
+                Path(st.session_state["image_preview_path"])
+                if st.session_state.get("image_preview_path")
+                else None
+            )
+            image_preview_state, image_preview_message = image_preview_status(image_preview_path)
             st.markdown(
                 f"""
                 <div class="metric-box">
@@ -1241,12 +1266,22 @@ def render_frontdoor(settings: Settings) -> None:
                 """,
                 unsafe_allow_html=True,
             )
+            st.markdown(
+                f"""
+                <div class="metric-box">
+                  <div class="metric-label">Image preview status</div>
+                  <div class="metric-value">{escape(image_preview_state)}</div>
+                  <div style="margin-top:6px;color:#94a3b8;font-size:13px;line-height:1.4;">{escape(image_preview_message)}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
             st.caption(image_request_note)
             st.caption("Tip: keep the prompt vivid, specific, and free of text, logos, and watermarks.")
             st.text_area("Current image prompt", value=image_prompt, height=170, disabled=True)
             components.html(copy_prompt_button(image_prompt, button_id="copy-full-image-prompt"), height=52)
-            if st.session_state["image_preview_path"]:
-                preview_path = Path(st.session_state["image_preview_path"])
+            if image_preview_path:
+                preview_path = image_preview_path
                 if preview_path.exists():
                     render_image_preview(preview_path)
             with st.expander("Image prompt pack", expanded=False):
@@ -1259,12 +1294,28 @@ def render_frontdoor(settings: Settings) -> None:
                 subject=st.session_state["image_subject"],
             )
             image_provider_choice = st.session_state["image_provider_choice"]
+            image_preview_path = (
+                Path(st.session_state["image_preview_path"])
+                if st.session_state.get("image_preview_path")
+                else None
+            )
+            image_preview_state, image_preview_message = image_preview_status(image_preview_path)
             st.markdown(
                 f"""
                 <div class="metric-box">
                   <div class="metric-label">Selected image provider</div>
                   <div class="metric-value">{escape(image_provider_choice)}</div>
                   <div style="margin-top:6px;color:#94a3b8;font-size:13px;line-height:1.4;">Topic: {escape(st.session_state['image_topic'])}<br>Subject: {escape(st.session_state['image_subject'])}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                f"""
+                <div class="metric-box">
+                  <div class="metric-label">Image preview status</div>
+                  <div class="metric-value">{escape(image_preview_state)}</div>
+                  <div style="margin-top:6px;color:#94a3b8;font-size:13px;line-height:1.4;">{escape(image_preview_message)}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -1291,8 +1342,8 @@ def render_frontdoor(settings: Settings) -> None:
                     st.success(f"Image preview written to {preview_path}")
                 except Exception as exc:
                     st.error(str(exc))
-            if st.session_state["image_preview_path"]:
-                preview_path = Path(st.session_state["image_preview_path"])
+            if image_preview_path:
+                preview_path = image_preview_path
                 if preview_path.exists():
                     render_image_preview(preview_path)
             with st.expander("Image prompt pack", expanded=False):
