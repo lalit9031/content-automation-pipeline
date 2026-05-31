@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
+import struct
 import re
+import wave
 from dataclasses import asdict, dataclass
 from html import escape
 from datetime import date, datetime, timezone
@@ -43,6 +46,14 @@ OPENAI_TTS_VOICES = (
     "nova",
     "shimmer",
 )
+
+MUSIC_PRESETS: dict[str, tuple[list[float], float]] = {
+    "cinematic": ([174.0, 261.63, 392.0], 0.18),
+    "focus": ([196.0, 246.94, 293.66], 0.14),
+    "warm": ([164.81, 220.0, 261.63], 0.12),
+    "uplift": ([220.0, 329.63, 392.0], 0.16),
+    "ambient": ([130.81, 196.0, 261.63], 0.10),
+}
 
 
 @dataclass(frozen=True)
@@ -209,6 +220,29 @@ def generate_voice_preview(
         ),
     )
     output_path.write_bytes(result.read())
+    return output_path
+
+
+def generate_music_preview(output_path: Path, mood: str, *, duration_seconds: int = 8) -> Path:
+    frequencies, amplitude = MUSIC_PRESETS.get(mood, MUSIC_PRESETS["cinematic"])
+    duration_seconds = max(4, min(int(duration_seconds), 15))
+    sample_rate = 44100
+    total_samples = duration_seconds * sample_rate
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with wave.open(str(output_path), "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(sample_rate)
+        frames = bytearray()
+        for index in range(total_samples):
+            t = index / sample_rate
+            fade_in = min(1.0, t / 0.75)
+            fade_out = min(1.0, max(0.0, (duration_seconds - t) / 0.75))
+            envelope = fade_in * fade_out
+            sample = sum(math.sin(2 * math.pi * frequency * t) for frequency in frequencies) / len(frequencies)
+            sample *= amplitude * envelope
+            frames.extend(struct.pack("<h", int(sample * 32767)))
+        wav_file.writeframes(bytes(frames))
     return output_path
 
 

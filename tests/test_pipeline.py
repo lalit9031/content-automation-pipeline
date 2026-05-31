@@ -6,6 +6,7 @@ import types
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
+import wave
 from unittest.mock import patch
 
 from content_pipeline.bots.canva import CanvaAuth, render_canva_video
@@ -83,6 +84,7 @@ from content_pipeline.bots.video import (
 )
 from content_pipeline.bots.audio import audio_status
 from content_pipeline.bots.audio import available_voice_options
+from content_pipeline.bots.audio import generate_music_preview
 from content_pipeline.bots.audio import normalize_voice_text
 from content_pipeline.bots.audio import render_audio_status_html
 from content_pipeline.bots.audio import voice_status
@@ -206,6 +208,16 @@ class PipelineTest(unittest.TestCase):
         self.assertIn("en-IN-NeerjaNeural", [voice for voice, _ in edge_options])
         self.assertIn("echo", [voice for voice, _ in openai_options])
         self.assertIn("nova", [voice for voice, _ in openai_options])
+
+    def test_music_preview_writes_wav_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            output = Path(temporary_dir) / "music.wav"
+            preview = generate_music_preview(output, "cinematic", duration_seconds=4)
+
+            self.assertTrue(preview.exists())
+            with wave.open(str(preview), "rb") as wav_file:
+                self.assertEqual(wav_file.getnchannels(), 1)
+                self.assertGreater(wav_file.getnframes(), 0)
 
     def test_voice_daily_artifacts_write_status_bundle(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_dir:

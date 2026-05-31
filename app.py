@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import re
 from dataclasses import replace
 from datetime import date
 from html import escape
@@ -19,8 +20,12 @@ import streamlit.components.v1 as components
 
 from content_pipeline.bots.audio import audio_status, render_audio_status_html
 from content_pipeline.bots.audio import available_voice_options
+from content_pipeline.bots.audio import generate_music_preview
 from content_pipeline.bots.audio import generate_voice_preview
 from content_pipeline.bots.audio import normalize_voice_text
+from content_pipeline.bots.image import ImageVariant, image_provider
+from content_pipeline.bots.prompt import build_cinematic_image_prompt
+from content_pipeline.bots.prompt import build_image_style_pack
 from content_pipeline.config import Settings
 from content_pipeline.pipeline import run_linkedin_mvp
 
@@ -149,23 +154,45 @@ def load_json(path: Path) -> dict[str, object] | None:
     return data if isinstance(data, dict) else None
 
 
-def load_voice_studio_state(output_dir: Path) -> dict[str, str]:
-    path = output_dir / ".runtime" / "voice_studio_state.json"
+def load_studio_state(output_dir: Path) -> dict[str, str]:
+    path = output_dir / ".runtime" / "studio_state.json"
     payload = load_json(path)
     if not payload:
         return {}
     state: dict[str, str] = {}
-    for key in ("voice_provider", "voice_name", "voice_preview_text"):
+    for key in (
+        "voice_provider",
+        "voice_name",
+        "voice_preview_text",
+        "image_provider",
+        "image_topic",
+        "image_subject",
+        "image_prompt",
+        "music_mood",
+        "music_duration_seconds",
+    ):
         value = payload.get(key)
         if isinstance(value, str) and value:
             state[key] = value
     return state
 
 
-def save_voice_studio_state(output_dir: Path, state: dict[str, str]) -> None:
-    path = output_dir / ".runtime" / "voice_studio_state.json"
+def save_studio_state(output_dir: Path, state: dict[str, str]) -> None:
+    path = output_dir / ".runtime" / "studio_state.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(state, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def _slugify(value: str) -> str:
+    slug = re.sub(r"[^a-zA-Z0-9]+", "-", value.strip().lower()).strip("-")
+    return slug or "preview"
+
+
+def render_image_preview(path: Path) -> None:
+    if path.suffix.lower() == ".svg":
+        components.html(path.read_text(encoding="utf-8"), height=720, scrolling=False)
+    else:
+        st.image(str(path), use_container_width=True)
 
 
 def file_chip(label: str, path: Path) -> str:
@@ -343,13 +370,40 @@ def render_frontdoor(settings: Settings) -> None:
     st.sidebar.header("Studio Controls")
     output_dir_input = st.sidebar.text_input("Output directory", value=str(settings.output_dir))
     ui_output_dir = resolve_output_dir(output_dir_input)
-    saved_voice_state = load_voice_studio_state(ui_output_dir)
+    saved_studio_state = load_studio_state(ui_output_dir)
+    if st.session_state.get("_studio_output_dir") != str(ui_output_dir):
+        st.session_state["_studio_output_dir"] = str(ui_output_dir)
+        st.session_state["voice_provider_choice"] = saved_studio_state.get("voice_provider", settings.voice_provider)
+        st.session_state["voice_name_choice"] = saved_studio_state.get("voice_name", settings.indian_tts_voice)
+        st.session_state["voice_preview_text"] = saved_studio_state.get(
+            "voice_preview_text",
+            "AI for PM teams using Jira and Scrum. The A.I. flow should sound clear and calm.",
+        )
+        st.session_state["image_provider_choice"] = saved_studio_state.get("image_provider", settings.image_provider)
+        st.session_state["image_topic"] = saved_studio_state.get("image_topic", "Agile project management")
+        st.session_state["image_subject"] = saved_studio_state.get(
+            "image_subject",
+            "a team reviewing a glowing workflow board",
+        )
+        st.session_state["image_prompt"] = saved_studio_state.get(
+            "image_prompt",
+            build_cinematic_image_prompt(
+                st.session_state["image_topic"],
+                st.session_state["image_subject"],
+            ),
+        )
+        st.session_state["music_mood"] = saved_studio_state.get("music_mood", "cinematic")
+        st.session_state["music_duration_seconds"] = int(saved_studio_state.get("music_duration_seconds", "8"))
+        st.session_state["image_preview_path"] = ""
+        st.session_state["music_preview_path"] = ""
+    st.session_state.setdefault("image_preview_path", "")
+    st.session_state.setdefault("music_preview_path", "")
     st.sidebar.subheader("Voice Studio")
     voice_provider_options = ("edge", "openai")
-    default_voice_provider = saved_voice_state.get("voice_provider") or settings.voice_provider
+    default_voice_provider = st.session_state["voice_provider_choice"]
     if default_voice_provider not in voice_provider_options:
         default_voice_provider = "edge"
-    st.session_state.setdefault("voice_provider_choice", default_voice_provider)
+        st.session_state["voice_provider_choice"] = default_voice_provider
     voice_provider_choice = st.sidebar.selectbox(
         "Voice provider",
         options=voice_provider_options,
@@ -358,12 +412,11 @@ def render_frontdoor(settings: Settings) -> None:
     )
     voice_options = available_voice_options(voice_provider_choice)
     voice_option_values = [voice for voice, _ in voice_options]
-    default_voice = saved_voice_state.get("voice_name") or (
+    default_voice = st.session_state["voice_name_choice"] or (
         settings.indian_tts_voice if voice_provider_choice == "edge" else "echo"
     )
     if default_voice not in voice_option_values:
         default_voice = voice_option_values[0]
-    st.session_state.setdefault("voice_name_choice", default_voice)
     if st.session_state["voice_name_choice"] not in voice_option_values:
         st.session_state["voice_name_choice"] = default_voice
     voice_name_choice = st.sidebar.selectbox(
@@ -375,22 +428,37 @@ def render_frontdoor(settings: Settings) -> None:
     )
     voice_preview_text = st.sidebar.text_area(
         "Voiceover script preview",
-        value=st.session_state.get(
-            "voice_preview_text",
-            saved_voice_state.get("voice_preview_text")
-            or "AI for PM teams using Jira and Scrum. The A.I. flow should sound clear and calm.",
-        ),
+        value=st.session_state["voice_preview_text"],
         height=140,
         key="voice_preview_text",
     )
-    save_voice_studio_state(
-        ui_output_dir,
-        {
-            "voice_provider": voice_provider_choice,
-            "voice_name": voice_name_choice,
-            "voice_preview_text": voice_preview_text,
-        },
+    st.sidebar.subheader("Image Studio")
+    image_provider_options = ("mock", "gemini", "imagen", "openai")
+    image_provider_default = st.session_state["image_provider_choice"]
+    if image_provider_default not in image_provider_options:
+        image_provider_default = settings.image_provider if settings.image_provider in image_provider_options else "mock"
+        st.session_state["image_provider_choice"] = image_provider_default
+    st.sidebar.selectbox(
+        "Image provider",
+        options=image_provider_options,
+        index=image_provider_options.index(image_provider_default),
+        key="image_provider_choice",
     )
+    st.sidebar.text_input("Image topic", key="image_topic")
+    st.sidebar.text_input("Image subject", key="image_subject")
+    st.sidebar.subheader("Music Studio")
+    music_mood_options = ("cinematic", "focus", "warm", "uplift", "ambient")
+    music_mood_default = st.session_state["music_mood"]
+    if music_mood_default not in music_mood_options:
+        music_mood_default = "cinematic"
+        st.session_state["music_mood"] = music_mood_default
+    st.sidebar.selectbox(
+        "Music mood",
+        options=music_mood_options,
+        index=music_mood_options.index(music_mood_default),
+        key="music_mood",
+    )
+    st.sidebar.slider("Music preview length (seconds)", 4, 15, key="music_duration_seconds")
     if st.sidebar.button("Load latest day", use_container_width=True, disabled=not latest_day):
         st.session_state["run_day"] = default_day
         st.session_state["inspect_day"] = default_day
@@ -762,9 +830,88 @@ def render_frontdoor(settings: Settings) -> None:
             unsafe_allow_html=True,
         )
 
-    tab_run, tab_dashboard, tab_audio, tab_files = st.tabs(
-        ["Run", "Dashboard", "Audio", "Files"]
+    tab_studio, tab_run, tab_dashboard, tab_audio, tab_files = st.tabs(
+        ["Studio", "Run", "Dashboard", "Audio", "Files"]
     )
+
+    with tab_studio:
+        st.subheader("Image studio")
+        image_style_pack = build_image_style_pack(
+            st.session_state["image_topic"],
+            subject=st.session_state["image_subject"],
+        )
+        image_provider_choice = st.session_state["image_provider_choice"]
+        image_prompt_default = st.session_state["image_prompt"] or build_cinematic_image_prompt(
+            st.session_state["image_topic"],
+            st.session_state["image_subject"],
+        )
+        image_prompt = st.text_area("Image prompt", value=image_prompt_default, height=180, key="image_prompt")
+        st.caption("Tip: keep the prompt vivid, specific, and free of text, logos, and watermarks.")
+        image_action_cols = st.columns([1, 1])
+        with image_action_cols[0]:
+            if st.button("Generate image preview", use_container_width=True):
+                try:
+                    provider = image_provider(replace(ui_settings, image_provider=image_provider_choice))
+                    variant = ImageVariant("1:1", 1080, 1080, "image_preview")
+                    preview_path = ui_settings.output_dir / ".runtime" / "image_previews" / (
+                        f"{_slugify(st.session_state['image_topic'])}_{_slugify(st.session_state['image_subject'])}_{image_provider_choice}{provider.extension}"
+                    )
+                    preview_path.parent.mkdir(parents=True, exist_ok=True)
+                    preview_path.write_bytes(provider.create(image_prompt, variant))
+                    st.session_state["image_preview_path"] = str(preview_path)
+                    st.success(f"Image preview written to {preview_path}")
+                except Exception as exc:
+                    st.error(str(exc))
+        with image_action_cols[1]:
+            st.markdown(
+                f"""
+                <div class="metric-box">
+                  <div class="metric-label">Selected image provider</div>
+                  <div class="metric-value">{escape(image_provider_choice)}</div>
+                  <div style="margin-top:6px;color:#94a3b8;font-size:13px;line-height:1.4;">Topic: {escape(st.session_state['image_topic'])}<br>Subject: {escape(st.session_state['image_subject'])}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        if st.session_state["image_preview_path"]:
+            preview_path = Path(st.session_state["image_preview_path"])
+            if preview_path.exists():
+                render_image_preview(preview_path)
+        with st.expander("Image prompt pack", expanded=False):
+            st.json(image_style_pack.as_dict())
+            st.code(image_prompt, language="text")
+
+        st.markdown("### Music studio")
+        music_mood = st.session_state["music_mood"]
+        music_duration = int(st.session_state["music_duration_seconds"])
+        music_action_cols = st.columns([1, 1])
+        with music_action_cols[0]:
+            if st.button("Generate music preview", use_container_width=True):
+                try:
+                    preview_path = ui_settings.output_dir / ".runtime" / "music_previews" / (
+                        f"{_slugify(music_mood)}_{music_duration}s.wav"
+                    )
+                    generate_music_preview(preview_path, music_mood, duration_seconds=music_duration)
+                    st.session_state["music_preview_path"] = str(preview_path)
+                    st.success(f"Music preview written to {preview_path}")
+                except Exception as exc:
+                    st.error(str(exc))
+        with music_action_cols[1]:
+            st.markdown(
+                f"""
+                <div class="metric-box">
+                  <div class="metric-label">Selected mood</div>
+                  <div class="metric-value">{escape(music_mood)}</div>
+                  <div style="margin-top:6px;color:#94a3b8;font-size:13px;line-height:1.4;">Preview length: {music_duration} seconds</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        if st.session_state["music_preview_path"]:
+            music_preview_path = Path(st.session_state["music_preview_path"])
+            if music_preview_path.exists():
+                st.audio(str(music_preview_path))
+                st.caption(str(music_preview_path))
 
     with tab_run:
         left, right = st.columns([1.2, 0.8])
@@ -942,6 +1089,21 @@ def render_frontdoor(settings: Settings) -> None:
                 st.caption(f"Filtered results: {len(all_files)}")
         else:
             st.info("No daily artifacts found yet for this day.")
+
+    save_studio_state(
+        ui_output_dir,
+        {
+            "voice_provider": str(st.session_state["voice_provider_choice"]),
+            "voice_name": str(st.session_state["voice_name_choice"]),
+            "voice_preview_text": str(st.session_state["voice_preview_text"]),
+            "image_provider": str(st.session_state["image_provider_choice"]),
+            "image_topic": str(st.session_state["image_topic"]),
+            "image_subject": str(st.session_state["image_subject"]),
+            "image_prompt": str(st.session_state["image_prompt"]),
+            "music_mood": str(st.session_state["music_mood"]),
+            "music_duration_seconds": str(st.session_state["music_duration_seconds"]),
+        },
+    )
 
 
 def main() -> None:
