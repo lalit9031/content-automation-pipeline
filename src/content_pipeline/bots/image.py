@@ -676,10 +676,12 @@ class PollinationsImageProvider:
     def create(self, prompt: str, variant: ImageVariant) -> bytes:
         import urllib.parse
         import requests
+        import time
 
         encoded_prompt = urllib.parse.quote(prompt)
         url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width={variant.width}&height={variant.height}&nologo=true&private=true"
         try:
+            time.sleep(3)  # Anti-rate-limiting delay
             response = requests.get(url, timeout=30)
             response.raise_for_status()
             return response.content

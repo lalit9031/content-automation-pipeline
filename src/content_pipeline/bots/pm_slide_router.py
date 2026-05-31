@@ -243,68 +243,68 @@ def _image_prompt(topic: str, beat: dict[str, str], role: str, template: PMVideo
     hook = _hook_for(beat, role)
     concepts = _concepts_for(topic, beat)
     concept_text = "\n".join(f"- {concept}" for concept in concepts)
+    
+    # Premium 3D aesthetic parameters based on our highest-quality generated reference
     base_guardrails = (
-        "No watermark, no logos, no readable UI, no stock-photo look, no clutter. "
-        "Absolutely no large readable text inside the generated image. "
-        "Do not draw the renderer-only headline or hook as image text. "
-        "Reserve a large clean typography-safe area on the left for our renderer to overlay exact text later. "
-        "If any text appears in the image, keep it minimal, secondary, and fully inside safe margins with no overlap. "
-        "16:9 aspect ratio, YouTube thumbnail quality, ultra-detailed, professional learning content cover. "
-        "Leave enough clean space so our renderer can overlay final text perfectly if the image model distorts words."
+        "No watermarks, no logos, no cluttered real-world screenshots, no generic stock-photo look. "
+        "16:9 widescreen aspect ratio, ultra-detailed, cinematic quality. "
+        "Style: Premium 3D character illustration with warm, expressive characters, friendly and approachable. "
+        "Shapes and curves are beautifully rounded, smooth modern tech surfaces with tactile glassmorphism textures. "
+        "Color Palette: Soft pastel purple and cyan highlights, subtle orange/gold glow, deep blue-grey background studio environment. "
+        "Lighting: Soft volumetric studio lighting, gentle depth of field, subtle glowing particles, dramatic contrast. "
+        "Absolutely no large readable text inside the image. Reserve a clean typography-safe area for text overlays."
     )
+    
     if role == "cta":
         return (
-            "Final course engagement slide, premium executive learning design, dark blue grid background, "
-            "orange and white typography, clean spacious composition.\n\n"
-            f"Topic: {topic}\n\n"
-            'Renderer-only headline: "NEXT STEP: ENGAGE WITH THE COURSE!"\n\n'
-            'Renderer-only hook: "Ask questions, suggest topics, and stay part of the community."\n\n'
-            "Visualize three large friendly cinematic icons: a like/thumbs-up icon, a YouTube play/subscribe icon, "
-            "and a notification bell icon. Add subtle orange glow, glass cards, and a professional training-course finish. "
-            "Composition similar to a premium final slide for Learn with Lalit, AI for PMs. "
+            "Premium final course engagement slide, cinematic 3D character illustration. A warm, friendly robotic AI assistant companion "
+            "with glowing yellow eyes floats in a high-contrast futuristic workspace next to a large glowing thumbs-up, subscribe play icon, "
+            "and notification bell icon. Tactile glass cards with subtle orange and cyan glow. Dark blue grid studio background, "
+            "professional final course slide for AI training. "
+            f"Topic: {topic}\n"
+            f'Renderer-only headline: "NEXT STEP: ENGAGE WITH THE COURSE!"\n'
+            f'Renderer-only hook: "Ask questions, suggest topics, and stay part of the community."\n'
             f"Use the visual language of {template.style_line}. "
             f"{base_guardrails}"
         )
     if role == "workflow":
         return (
-            "Premium executive learning slide, cinematic workflow visualization, dark futuristic PM AI environment, "
-            "glassmorphism process cards, glowing arrows, clear visual hierarchy, practical teaching layout.\n\n"
-            f"Topic: {topic}\n\n"
-            f'Renderer-only headline: "{headline}"\n\n'
-            f'Renderer-only hook: "{hook}"\n\n'
-            "Visualize the key workflow using symbolic imagery and clean process architecture, not screenshots. "
-            f"Show these concepts:\n{concept_text}\n\n"
-            "A confident project manager reviews an AI-assisted delivery loop with Capture, Draft, Validate, and Communicate stages. "
-            "Use dark blue, cyan, lime, and orange glow accents, premium LinkedIn Learning course style. "
+            "Premium process workflow slide, cinematic 3D character illustration. A friendly professional software manager or developer sits at "
+            "a sleek minimalist glass desk, looking with an inspired smile at a floating, semi-transparent holographic process workflow dashboard. "
+            "The dashboard displays glowing rounded flowchart nodes and clean process cards. A cute little robotic AI companion floats nearby. "
+            "Cyan and pastel purple highlights, tactile glassmorphism elements.\n\n"
+            f"Topic: {topic}\n"
+            f'Renderer-only headline: "{headline}"\n'
+            f'Renderer-only hook: "{hook}"\n'
+            "Show large cinematic metaphors representing these process concepts:\n"
+            f"{concept_text}\n"
             f"Use the visual language of {template.style_line}. "
             f"{base_guardrails}"
         )
     if role == "analysis":
         return (
-            "Premium analytical learning-video cover, dark cinematic background, high-contrast infographic scene, "
-            "futuristic charts as symbolic objects rather than readable dashboards.\n\n"
-            f"Topic: {topic}\n\n"
-            f'Renderer-only headline: "{headline}"\n\n'
-            f'Renderer-only hook: "{hook}"\n\n'
-            "Visualize the insight using large cinematic metaphors:\n"
-            f"{concept_text}\n\n"
-            "Show an AI hologram helping a PM compare risk, flow, and delivery confidence while the PM keeps final judgement. "
-            "Composition inspired by premium LinkedIn Learning, MasterClass, and executive training thumbnails. "
+            "Premium analytical learning scene, cinematic 3D character illustration. A professional project leader standing at a glowing high-tech "
+            "shared conference table, inspecting a beautiful floating 3D analytical hologram showing rising growth arrows, glowing trend lines, "
+            "and rounded data metrics. A small friendly robot companion sits on the table, pointing at a glowing visual checklist. "
+            "Soft purple and cyan volumetric lights, glassmorphism dashboard highlights.\n\n"
+            f"Topic: {topic}\n"
+            f'Renderer-only headline: "{headline}"\n'
+            f'Renderer-only hook: "{hook}"\n'
+            "Show large cinematic metaphors representing these analytical insights:\n"
+            f"{concept_text}\n"
             f"Use the visual language of {template.style_line}. "
             f"{base_guardrails}"
         )
     return (
-        "Hero scene, bold YouTube learning-video cover image, premium presentation design, dark cinematic background, "
-        "ultra high contrast, strong focal subject, dramatic volumetric lighting, futuristic AI atmosphere.\n\n"
-        f"Topic: {topic}\n\n"
-        f'Renderer-only headline: "{headline}"\n\n'
-        f'Renderer-only hook: "{hook}"\n\n'
-        "Visualize the key concepts using symbolic imagery, not dashboards or screenshots. "
-        f"Show large cinematic icons and metaphors representing:\n{concept_text}\n\n"
-        "One confident professional standing at the center facing a giant AI presence or holographic intelligence. "
-        "Massive scale difference creates curiosity and tension between traditional project delivery and AI-assisted delivery. "
-        "Large clean typography area on the left side, hero visual on the right side. "
-        "Dark blue and orange color palette, cybernetic glow, depth, cinematic shadows, presentation-ready. "
+        "Hero scene, bold YouTube learning video cover, cinematic 3D character illustration of a software developer "
+        "sitting at a sleek minimalist desk in a futuristic workspace, looking with an inspired smile at a massive floating holographic "
+        "dashboard displaying glowing rounded UI cards, flowchart nodes, and clean tech blocks. A friendly robotic AI companion floats beside "
+        "the desk. Soft pastel purple and cyan highlights, gentle depth of field, warm volumetric lighting.\n\n"
+        f"Topic: {topic}\n"
+        f'Renderer-only headline: "{headline}"\n'
+        f'Renderer-only hook: "{hook}"\n'
+        "Show large cinematic metaphors representing these key concepts:\n"
+        f"{concept_text}\n"
         f"Use the visual language of {template.style_line}. "
         f"{base_guardrails}"
     )
