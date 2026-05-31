@@ -779,7 +779,7 @@ def render_frontdoor(settings: Settings) -> None:
             try:
                 image_settings = replace(settings, output_dir=ui_output_dir)
                 provider = image_provider(replace(image_settings, image_provider=st.session_state["image_provider_choice"]))
-                variant = ImageVariant("1:1", 1080, 1080, "image_preview")
+                variant = ImageVariant("16:9", 2560, 1440, "image_preview")
                 preview_path = ui_output_dir / ".runtime" / "image_previews" / (
                     f"{_slugify(st.session_state['image_topic'])}_{_slugify(st.session_state['image_subject'])}_{st.session_state['image_provider_choice']}{provider.extension}"
                 )
@@ -1451,7 +1451,7 @@ def render_frontdoor(settings: Settings) -> None:
                     provider = image_provider(
                         replace(image_settings, image_provider=st.session_state["image_provider_choice"])
                     )
-                    variant = ImageVariant("1:1", 1080, 1080, "image_preview")
+                    variant = ImageVariant("16:9", 2560, 1440, "image_preview")
                     preview_path = ui_output_dir / ".runtime" / "image_previews" / (
                         f"{_slugify(st.session_state['image_topic'])}_{_slugify(st.session_state['image_subject'])}_{st.session_state['image_provider_choice']}{provider.extension}"
                     )

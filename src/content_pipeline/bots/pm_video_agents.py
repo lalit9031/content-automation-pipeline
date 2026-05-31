@@ -1111,7 +1111,7 @@ def _clips_for_topic(
         aspect=agent.aspect,
         total_slides=scene_count,
         template_mode=template_mode,
-        max_dimension=2048,
+        max_dimension=4096,
         max_bytes=5 * 1024 * 1024,
         openai_key_count=openai_key_count,
         gemini_key_count=gemini_key_count,

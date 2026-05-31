@@ -28,7 +28,7 @@ class ImageVariant:
 
 VARIANTS = [
     ImageVariant("1:1", 1080, 1080, "images/image_square"),
-    ImageVariant("16:9", 1920, 1080, "images/image_landscape"),
+    ImageVariant("16:9", 2560, 1440, "images/image_landscape"),
     ImageVariant("9:16", 1080, 1920, "images/image_portrait"),
 ]
 
@@ -691,20 +691,56 @@ class PollinationsImageProvider:
         import time
         import random
 
+        # Cap Pollinations URL dimensions to fit within free API limits (1024 max)
+        req_width = variant.width
+        req_height = variant.height
+        max_api_dim = 1024
+        if req_width > max_api_dim or req_height > max_api_dim:
+            if req_width >= req_height:
+                req_height = int(req_height * max_api_dim / req_width)
+                req_width = max_api_dim
+            else:
+                req_width = int(req_width * max_api_dim / req_height)
+                req_height = max_api_dim
+
         encoded_prompt = urllib.parse.quote(prompt)
         random_seed = random.randint(10000, 99999)
         url = (
             f"https://image.pollinations.ai/prompt/{encoded_prompt}"
-            f"?width={variant.width}&height={variant.height}"
+            f"?width={req_width}&height={req_height}"
             f"&model=flux&seed={random_seed}&enhance=false"
         )
-        try:
-            time.sleep(3)  # Anti-rate-limiting delay
-            response = requests.get(url, timeout=60)
-            response.raise_for_status()
-            return response.content
-        except Exception:
-            return self.fallback_provider.create(prompt, variant)
+        
+        max_retries = 3
+        delay = 4
+        for attempt in range(1, max_retries + 1):
+            try:
+                time.sleep(delay)
+                response = requests.get(url, timeout=45)
+                response.raise_for_status()
+                image_bytes = response.content
+                
+                # Dynamic Lanczos Upscaling to QHD / requested dimension
+                try:
+                    from PIL import Image
+                    import io
+                    img = Image.open(io.BytesIO(image_bytes))
+                    if img.width < variant.width or img.height < variant.height:
+                        resample_filter = getattr(Image, "Resampling", Image).LANCZOS
+                        img_resized = img.resize((variant.width, variant.height), resample=resample_filter)
+                        
+                        out_buffer = io.BytesIO()
+                        img_format = "PNG" if variant.filename.endswith(".png") else "JPEG"
+                        img_resized.save(out_buffer, format=img_format, quality=95)
+                        image_bytes = out_buffer.getvalue()
+                except Exception:
+                    pass
+                    
+                return image_bytes
+            except Exception:
+                if attempt == max_retries:
+                    return self.fallback_provider.create(prompt, variant)
+                delay *= 2
 
 
 def image_provider(settings: Settings) -> ImageProvider:
@@ -734,7 +770,7 @@ def generate_images(
     provider: ImageProvider,
     storage: LocalDailyStorage,
     *,
-    max_dimension: int = 2048,
+    max_dimension: int = 4096,
     max_bytes: int = 5 * 1024 * 1024,
     request_delay_seconds: float = 0.0,
 ) -> list[str]:

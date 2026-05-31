@@ -171,7 +171,7 @@ class VideoClip:
     provider_family: str = ""
     provider_slot: str = ""
     slide_role: str = ""
-    image_max_dimension: int = 2048
+    image_max_dimension: int = 4096
     image_max_bytes: int = 5 * 1024 * 1024
 
     @classmethod
@@ -199,7 +199,7 @@ class VideoClip:
             provider_family=str(data.get("provider_family", "")).strip(),
             provider_slot=str(data.get("provider_slot", "")).strip(),
             slide_role=str(data.get("slide_role", "")).strip(),
-            image_max_dimension=int(data.get("image_max_dimension", 2048)),
+            image_max_dimension=int(data.get("image_max_dimension", 4096)),
             image_max_bytes=int(data.get("image_max_bytes", 5 * 1024 * 1024)),
         )
 

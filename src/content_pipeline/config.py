@@ -29,7 +29,7 @@ class Settings:
     image_fallback_provider: str = "mock"
     voice_provider: str = "edge"
     indian_tts_voice: str = "en-IN-PrabhatNeural"
-    image_max_dimension: int = 2048
+    image_max_dimension: int = 4096
     image_max_bytes: int = 5 * 1024 * 1024
     publish_linkedin: bool = False
     linkedin_client_id: str = ""
@@ -98,7 +98,7 @@ class Settings:
             image_fallback_provider=os.getenv("IMAGE_FALLBACK_PROVIDER", "mock").strip().lower(),
             voice_provider="edge",
             indian_tts_voice=os.getenv("INDIAN_TTS_VOICE", "en-IN-PrabhatNeural"),
-            image_max_dimension=int(os.getenv("IMAGE_MAX_DIMENSION", "2048")),
+            image_max_dimension=int(os.getenv("IMAGE_MAX_DIMENSION", "4096")),
             image_max_bytes=int(os.getenv("IMAGE_MAX_BYTES", str(5 * 1024 * 1024))),
             publish_linkedin=_as_bool(os.getenv("PUBLISH_LINKEDIN", "false")),
             linkedin_client_id=os.getenv("LINKEDIN_CLIENT_ID", ""),
