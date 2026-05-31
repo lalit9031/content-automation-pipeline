@@ -67,62 +67,210 @@ class MockImageProvider:
             or "no API cost, less cinematic realism."
         )
         concepts = _prompt_concepts(prompt)
-        concept_rows = "\n".join(
-            f"""    <g transform="translate(0 {index * 82})">
-      <rect x="0" y="0" width="310" height="62" rx="22" fill="#111827" fill-opacity="0.76" stroke="{color}" stroke-width="2"/>
-      <circle cx="34" cy="31" r="11" fill="{color}"/>
-      <text x="58" y="39" fill="#f8fafc" font-family="Arial, sans-serif" font-size="24" font-weight="800">{escape(label)}</text>
-    </g>"""
-            for index, (label, color) in enumerate(zip(concepts, ("#38bdf8", "#f59e0b", "#a3e635")))
-        )
+
+        w = variant.width
+        h = variant.height
+        is_portrait = variant.aspect_ratio == "9:16"
+        is_square = variant.aspect_ratio == "1:1"
+
+        # Grid lines
+        grid_lines = []
+        for x in range(0, w, 80):
+            grid_lines.append(f'<line x1="{x}" y1="0" x2="{x}" y2="{h}" stroke="#475569" stroke-opacity="0.08" stroke-dasharray="2 4" stroke-width="1"/>')
+        for y in range(0, h, 80):
+            grid_lines.append(f'<line x1="0" y1="{y}" x2="{w}" y2="{y}" stroke="#475569" stroke-opacity="0.08" stroke-dasharray="2 4" stroke-width="1"/>')
+        grid_str = "\n    ".join(grid_lines)
+
+        # Dynamic layout parameters
+        if is_portrait:
+            title_font_size = int(w * 0.058)
+            hook_font_size = int(w * 0.038)
+            brand_scale = 1.0
+            
+            card_x = int(w * 0.05)
+            card_y = int(h * 0.12)
+            card_w = int(w * 0.90)
+            card_h = int(h * 0.34)
+            
+            widget_x = int(w * 0.05)
+            widget_y = int(h * 0.49)
+            widget_w = int(w * 0.90)
+            widget_h = int(h * 0.40)
+        elif is_square:
+            title_font_size = int(w * 0.048)
+            hook_font_size = int(w * 0.032)
+            brand_scale = 1.1
+            
+            card_x = int(w * 0.05)
+            card_y = int(h * 0.12)
+            card_w = int(w * 0.90)
+            card_h = int(h * 0.35)
+            
+            widget_x = int(w * 0.05)
+            widget_y = int(h * 0.50)
+            widget_w = int(w * 0.90)
+            widget_h = int(h * 0.40)
+        else: # Widescreen 16:9
+            title_font_size = int(w * 0.032)
+            hook_font_size = int(w * 0.020)
+            brand_scale = 1.25
+            
+            card_x = int(w * 0.05)
+            card_y = int(h * 0.14)
+            card_w = int(w * 0.44)
+            card_h = int(h * 0.70)
+            
+            widget_x = int(w * 0.52)
+            widget_y = int(h * 0.14)
+            widget_w = int(w * 0.43)
+            widget_h = int(h * 0.70)
+
+        # Title word wrapping
+        title_lines = [title]
+        if len(title) > 22:
+            words = title.split(" ")
+            mid = len(words) // 2
+            if mid > 0:
+                title_lines = [" ".join(words[:mid+1]), " ".join(words[mid+1:])]
+
+        title_blocks = []
+        for idx, line in enumerate(title_lines):
+            line_y = card_y + card_h * 0.30 + idx * (title_font_size * 1.2)
+            title_blocks.append(f'<text x="{card_x + card_w * 0.08:.1f}" y="{line_y:.1f}" fill="#ffffff" font-family="system-ui, -apple-system, sans-serif" font-size="{title_font_size}" font-weight="900" filter="url(#shadow)">{line}</text>')
+        title_str = "\n        ".join(title_blocks)
+
+        # Hook positioning
+        hook_y = card_y + card_h * 0.32 + len(title_lines) * (title_font_size * 1.2) + (hook_font_size * 0.4)
+        hook_str = f'<text x="{card_x + card_w * 0.08:.1f}" y="{hook_y:.1f}" fill="#60a5fa" font-family="system-ui, -apple-system, sans-serif" font-size="{hook_font_size}" font-weight="800" filter="url(#shadow)">{hook}</text>'
+
+        # Description sub-card inside the main card
+        desc_h = card_h * 0.28
+        desc_y = card_y + card_h * 0.94 - desc_h
+        desc_card = f"""
+    <g transform="translate({card_x + card_w * 0.08:.1f} {desc_y:.1f})">
+      <rect x="0" y="0" width="{card_w * 0.84:.1f}" height="{desc_h:.1f}" rx="{desc_h * 0.22:.1f}" fill="#0f172a" fill-opacity="0.55" stroke="#3b82f6" stroke-opacity="0.32" stroke-width="1.5"/>
+      <text x="{card_w * 0.06:.1f}" y="{desc_h * 0.34:.1f}" fill="#38bdf8" font-family="system-ui, -apple-system, sans-serif" font-size="{desc_h * 0.18:.1f}" font-weight="800">{desc_title}</text>
+      <text x="{card_w * 0.06:.1f}" y="{desc_h * 0.60:.1f}" fill="#cbd5e1" font-family="system-ui, -apple-system, sans-serif" font-size="{desc_h * 0.14:.1f}">{desc_l1}</text>
+      <text x="{card_w * 0.06:.1f}" y="{desc_h * 0.78:.1f}" fill="#cbd5e1" font-family="system-ui, -apple-system, sans-serif" font-size="{desc_h * 0.14:.1f}">{desc_l2}</text>
+    </g>
+        """
+
+        # Concept Rows
+        concept_colors = ("#38bdf8", "#fb7185", "#34d399")
+        concept_rows = []
+        for index, label in enumerate(concepts[:3]):
+            color = concept_colors[index % len(concept_colors)]
+            row_y = index * (widget_h * 0.28) + (widget_h * 0.12)
+            pill_h = widget_h * 0.20
+            concept_rows.append(f"""
+    <g transform="translate({widget_w * 0.44:.1f} {row_y:.1f})">
+      <rect x="0" y="0" width="{widget_w * 0.50:.1f}" height="{pill_h:.1f}" rx="{pill_h * 0.38:.1f}" fill="#111827" fill-opacity="0.65" stroke="{color}" stroke-width="1.5" filter="url(#shadow)"/>
+      <circle cx="{pill_h * 0.5:.1f}" cy="{pill_h * 0.5:.1f}" r="{pill_h * 0.18:.1f}" fill="{color}"/>
+      <text x="{pill_h * 0.9:.1f}" y="{pill_h * 0.58:.1f}" fill="#f8fafc" font-family="system-ui, -apple-system, sans-serif" font-size="{pill_h * 0.30:.1f}" font-weight="800">{escape(label)}</text>
+    </g>""")
+        concept_rows_str = "\n".join(concept_rows)
+
+        # Dynamic dial parameters
+        dial_x = widget_w * 0.22
+        dial_y = widget_h * 0.5
+        dial_r = min(widget_w * 0.16, widget_h * 0.38)
+
+        dial_group = f"""
+    <g transform="translate({widget_x + dial_x:.1f} {widget_y + dial_y:.1f})">
+      <!-- Outer dial track -->
+      <circle cx="0" cy="0" r="{dial_r:.1f}" fill="none" stroke="#38bdf8" stroke-opacity="0.15" stroke-width="6"/>
+      <circle cx="0" cy="0" r="{dial_r:.1f}" fill="none" stroke="#3b82f6" stroke-opacity="0.6" stroke-width="2" stroke-dasharray="6 8"/>
+      
+      <!-- Middle accent track -->
+      <circle cx="0" cy="0" r="{dial_r * 0.74:.1f}" fill="none" stroke="#7c3aed" stroke-opacity="0.3" stroke-width="1"/>
+      <path d="M {-dial_r * 0.74:.1f} 0 A {dial_r * 0.74:.1f} {dial_r * 0.74:.1f} 0 0 1 {dial_r * 0.74:.1f} 0" fill="none" stroke="#fb7185" stroke-opacity="0.8" stroke-width="3"/>
+      
+      <!-- Inner core glow -->
+      <circle cx="0" cy="0" r="{dial_r * 0.46:.1f}" fill="#0f172a" fill-opacity="0.8" stroke="#34d399" stroke-opacity="0.5" stroke-width="2" filter="url(#shadow)"/>
+      <circle cx="0" cy="0" r="{dial_r * 0.18:.1f}" fill="#34d399" fill-opacity="0.9"/>
+      
+      <!-- Rotating indicator line -->
+      <line x1="0" y1="0" x2="{dial_r * 0.64:.1f}" y2="{-dial_r * 0.36:.1f}" stroke="#60a5fa" stroke-width="3" stroke-linecap="round"/>
+      <circle cx="{dial_r * 0.64:.1f}" cy="{-dial_r * 0.36:.1f}" r="4" fill="#ffffff" filter="url(#shadow)"/>
+      
+      <!-- Digital readout -->
+      <text x="0" y="{dial_r * 0.36:.1f}" text-anchor="middle" fill="#93c5fd" font-family="Courier New, monospace" font-size="{dial_r * 0.22:.1f}" font-weight="bold">LALIT.AI // OK</text>
+    </g>
+        """
+
         svg = f"""<svg xmlns="http://www.w3.org/2000/svg" width="{variant.width}" height="{variant.height}" viewBox="0 0 {variant.width} {variant.height}">
   <defs>
-    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
-      <stop stop-color="#030712"/>
-      <stop offset="0.52" stop-color="#07152f"/>
-      <stop offset="1" stop-color="#301308"/>
+    <!-- Multi-layered cyberpunk mesh gradient base -->
+    <linearGradient id="cyberBg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#03000a"/>
+      <stop offset="40%" stop-color="#090518"/>
+      <stop offset="80%" stop-color="#0e172e"/>
+      <stop offset="100%" stop-color="#240c06"/>
     </linearGradient>
-    <radialGradient id="aiGlow" cx="73%" cy="42%" r="35%">
-      <stop stop-color="#38bdf8" stop-opacity="0.9"/>
-      <stop offset="0.36" stop-color="#0ea5e9" stop-opacity="0.34"/>
-      <stop offset="1" stop-color="#020617" stop-opacity="0"/>
+    <radialGradient id="neonBlue" cx="15%" cy="30%" r="45%">
+      <stop stop-color="#1e40af" stop-opacity="0.32"/>
+      <stop offset="60%" stop-color="#3b82f6" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#000" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="neonPurple" cx="80%" cy="25%" r="50%">
+      <stop stop-color="#7c3aed" stop-opacity="0.28"/>
+      <stop offset="60%" stop-color="#8b5cf6" stop-opacity="0.06"/>
+      <stop offset="100%" stop-color="#000" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="neonSunset" cx="70%" cy="80%" r="40%">
+      <stop stop-color="#db2777" stop-opacity="0.22"/>
+      <stop offset="60%" stop-color="#ea580c" stop-opacity="0.04"/>
+      <stop offset="100%" stop-color="#000" stop-opacity="0"/>
     </radialGradient>
     <filter id="shadow"><feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#000000" flood-opacity="0.45"/></filter>
   </defs>
-  <rect width="100%" height="100%" fill="url(#bg)"/>
-  <rect width="100%" height="100%" fill="url(#aiGlow)"/>
-  <path d="M0 610 C250 500 430 700 670 590 C900 485 1040 540 1280 435" stroke="#38bdf8" stroke-opacity="0.32" stroke-width="8" fill="none"/>
-  <path d="M0 650 C250 555 450 730 700 625 C930 528 1100 605 1280 485" stroke="#f59e0b" stroke-opacity="0.42" stroke-width="7" fill="none"/>
-  <g opacity="0.15" stroke="#94a3b8" stroke-width="1">
-    {"".join(f'<line x1="{x}" y1="0" x2="{x}" y2="{variant.height}"/>' for x in range(0, variant.width + 1, 64))}
-    {"".join(f'<line x1="0" y1="{y}" x2="{variant.width}" y2="{y}"/>' for y in range(0, variant.height + 1, 64))}
+  
+  <!-- Render background mesh -->
+  <rect width="100%" height="100%" fill="url(#cyberBg)"/>
+  <rect width="100%" height="100%" fill="url(#neonBlue)"/>
+  <rect width="100%" height="100%" fill="url(#neonPurple)"/>
+  <rect width="100%" height="100%" fill="url(#neonSunset)"/>
+  
+  <!-- Aesthetic abstract waves -->
+  <path d="M0 {h * 0.78:.1f} C{w * 0.20:.1f} {h * 0.65:.1f} {w * 0.34:.1f} {h * 0.90:.1f} {w * 0.52:.1f} {h * 0.80:.1f} C{w * 0.70:.1f} {h * 0.70:.1f} {w * 0.81:.1f} {h * 0.76:.1f} {w:.1f} {h * 0.64:.1f}" stroke="#3b82f6" stroke-opacity="0.24" stroke-width="8" fill="none"/>
+  <path d="M0 {h * 0.82:.1f} C{w * 0.20:.1f} {h * 0.70:.1f} {w * 0.35:.1f} {h * 0.94:.1f} {w * 0.55:.1f} {h * 0.84:.1f} C{w * 0.73:.1f} {h * 0.75:.1f} {w * 0.86:.1f} {h * 0.82:.1f} {w:.1f} {h * 0.70:.1f}" stroke="#fb7185" stroke-opacity="0.30" stroke-width="6" fill="none"/>
+  
+  <!-- Subtle coordinate grid -->
+  <g>{grid_str}</g>
+
+  <!-- Left Main Glass Card -->
+  <g filter="url(#shadow)">
+    <rect x="{card_x}" y="{card_y}" width="{card_w}" height="{card_h}" rx="{card_h * 0.08:.1f}" fill="#0f172a" fill-opacity="0.45" stroke="#ffffff" stroke-opacity="0.12" stroke-width="1.5"/>
+    
+    <!-- Brand badge block inside card -->
+    <g transform="translate({card_x + card_w * 0.08:.1f} {card_y + card_h * 0.08:.1f}) scale({brand_scale:.2f})">
+      <rect width="285" height="46" rx="23" fill="#f59e0b" filter="url(#shadow)"/>
+      <text x="28" y="31" fill="#111827" font-family="system-ui, -apple-system, sans-serif" font-size="24" font-weight="900">LEARN WITH LALIT</text>
+      <rect x="305" width="190" height="46" rx="23" fill="#111827" stroke="#a855f7" stroke-width="2"/>
+      <text x="335" y="31" fill="#ffffff" font-family="system-ui, -apple-system, sans-serif" font-size="23" font-weight="900">AI FOR PMS</text>
+    </g>
+
+    <!-- Headline and Hook -->
+    {title_str}
+    {hook_str}
+
+    <!-- Glass sub-card with baseline instructions -->
+    {desc_card}
   </g>
-  <g transform="translate(70 58)">
-    <rect width="285" height="46" rx="23" fill="#f59e0b" filter="url(#shadow)"/>
-    <text x="28" y="31" fill="#111827" font-family="Arial, sans-serif" font-size="24" font-weight="900">LEARN WITH LALIT</text>
-    <rect x="330" width="190" height="46" rx="23" fill="#111827" stroke="#a855f7" stroke-width="2"/>
-    <text x="360" y="31" fill="#ffffff" font-family="Arial, sans-serif" font-size="23" font-weight="900">AI FOR PMS</text>
+
+  <!-- Right Dashboard Widget Card -->
+  <g filter="url(#shadow)">
+    <rect x="{widget_x}" y="{widget_y}" width="{widget_w}" height="{widget_h}" rx="{widget_h * 0.08:.1f}" fill="#0f172a" fill-opacity="0.45" stroke="#ffffff" stroke-opacity="0.08" stroke-width="1.5"/>
+    
+    <!-- Sweeping Radar Dial -->
+    {dial_group}
+
+    <!-- Dynamic concept list pills -->
+    {concept_rows_str}
   </g>
-  <g transform="translate(70 170)" filter="url(#shadow)">
-    <text x="0" y="0" fill="#ffffff" font-family="Arial, sans-serif" font-size="{max(46, variant.width // 14)}" font-weight="900">{title}</text>
-    <text x="2" y="76" fill="#93c5fd" font-family="Arial, sans-serif" font-size="{max(34, variant.width // 22)}" font-weight="900">{hook}</text>
-  </g>
-  <g transform="translate(78 370)">
-    <rect x="0" y="0" width="570" height="170" rx="34" fill="#0f172a" fill-opacity="0.74" stroke="#38bdf8" stroke-width="2"/>
-    <text x="38" y="58" fill="#e5e7eb" font-family="Arial, sans-serif" font-size="28" font-weight="800">{desc_title}</text>
-    <text x="38" y="100" fill="#cbd5e1" font-family="Arial, sans-serif" font-size="23">{desc_l1}</text>
-    <text x="38" y="134" fill="#cbd5e1" font-family="Arial, sans-serif" font-size="23">{desc_l2}</text>
-  </g>
-  <g transform="translate(780 190)" filter="url(#shadow)">
-    <circle cx="210" cy="155" r="142" fill="#020617" stroke="#38bdf8" stroke-width="3"/>
-    <path d="M115 155 C145 72 275 74 307 155 C280 245 148 244 115 155Z" fill="none" stroke="#38bdf8" stroke-width="8"/>
-    <circle cx="210" cy="155" r="42" fill="#38bdf8" fill-opacity="0.2" stroke="#93c5fd" stroke-width="5"/>
-    <path d="M210 30 L210 0 M210 310 L210 280 M65 155 L25 155 M395 155 L355 155" stroke="#93c5fd" stroke-width="5"/>
-  </g>
-  <g transform="translate(820 472)">
-{concept_rows}
-  </g>
-  <text x="70" y="{variant.height - 48}" fill="#cbd5e1" font-family="Arial, sans-serif" font-size="22" font-weight="800">PMP • SCRUM • AGILE • SAFE • JIRA • COPILOT • PMO</text>
+
+  <!-- Footer Tagline -->
+  <text x="{card_x:.1f}" y="{h - 48}" fill="#64748b" font-family="system-ui, -apple-system, sans-serif" font-size="{max(12, int(w * 0.016))}" font-weight="800" letter-spacing="0.12em">PMP • SCRUM • AGILE • SAFE • JIRA • COPILOT • PMO</text>
 </svg>
 """
         return svg.encode("utf-8")
