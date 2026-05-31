@@ -30,7 +30,7 @@ FREE_INDIAN_EDGE_VOICE_VARIANTS = [
     ("sample_01_prabhat_neural.mp3", "en-IN-PrabhatNeural", "Warm Indian English male voice for professional narration."),
     ("sample_02_neerja_neural.mp3", "en-IN-NeerjaNeural", "Warm Indian English female voice for clear storytelling."),
     ("sample_03_swara_neural.mp3", "hi-IN-SwaraNeural", "Clear Hindi female voice for family-friendly narration."),
-    ("sample_04_aarav_neural.mp3", "hi-IN-AaravNeural", "Clear Hindi male voice for stronger Hindi narration."),
+    ("sample_04_madhur_neural.mp3", "hi-IN-MadhurNeural", "Clear Hindi male voice for stronger Hindi narration."),
 ]
 
 MUSIC_PRESETS: dict[str, tuple[list[float], float]] = {
@@ -175,7 +175,7 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
         label="Hindi explainer male",
         description="Professional Hindi-style narration with a steadier male tone.",
         provider="edge",
-        voice="hi-IN-AaravNeural",
+        voice="hi-IN-MadhurNeural",
         language="hi-IN",
         gender="male",
         sample_text=(
@@ -239,6 +239,7 @@ def _voice_gender(provider: str, voice: str) -> str:
             "en-IN-PrabhatNeural": "male",
             "en-IN-NeerjaNeural": "female",
             "hi-IN-SwaraNeural": "female",
+            "hi-IN-MadhurNeural": "male",
             "hi-IN-AaravNeural": "male",
         },
     }

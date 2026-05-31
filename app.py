@@ -236,7 +236,7 @@ def _voice_preview_fallback_voice(gender: str, language: str = "en-IN") -> str:
     language = (language or "").strip().lower()
     if gender == "male":
         if language.startswith("hi"):
-            return "hi-IN-AaravNeural"
+            return "hi-IN-MadhurNeural"
         return "en-IN-PrabhatNeural"
     if gender == "female":
         if language.startswith("hi"):
@@ -251,12 +251,13 @@ def _voice_preview_fallback_candidates(gender: str, language: str = "en-IN") -> 
     candidates: list[str] = []
     if language.startswith("hi"):
         if gender == "male":
-            candidates.extend(["hi-IN-AaravNeural", "hi-IN-KunalNeural", "hi-IN-RehaanNeural"])
+            candidates.extend(["hi-IN-MadhurNeural", "hi-IN-AaravNeural", "hi-IN-KunalNeural", "hi-IN-RehaanNeural"])
         elif gender == "female":
             candidates.extend(["hi-IN-SwaraNeural", "hi-IN-AnanyaNeural", "hi-IN-KavyaNeural"])
         else:
             candidates.extend(
                 [
+                    "hi-IN-MadhurNeural",
                     "hi-IN-AaravNeural",
                     "hi-IN-KunalNeural",
                     "hi-IN-RehaanNeural",

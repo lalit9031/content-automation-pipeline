@@ -214,9 +214,9 @@ class PipelineTest(unittest.TestCase):
 
         self.assertIn("en-IN-PrabhatNeural", [voice for voice, _ in edge_options])
         self.assertIn("en-IN-NeerjaNeural", [voice for voice, _ in edge_options])
-        self.assertIn("hi-IN-AaravNeural", [voice for voice, _ in edge_options])
+        self.assertIn("hi-IN-MadhurNeural", [voice for voice, _ in edge_options])
         self.assertIn("en-IN-PrabhatNeural", [voice for voice, _ in edge_male_options])
-        self.assertIn("hi-IN-AaravNeural", [voice for voice, _ in edge_male_options])
+        self.assertIn("hi-IN-MadhurNeural", [voice for voice, _ in edge_male_options])
 
     def test_voice_preview_presets_include_hindi_and_hinglish(self) -> None:
         presets = voice_preview_presets()
@@ -230,7 +230,7 @@ class PipelineTest(unittest.TestCase):
         self.assertIn("Hinglish teacher", labels)
         self.assertIn("कान्हा", texts)
         self.assertIn("Jira", texts)
-        self.assertTrue(any(preset.voice == "hi-IN-AaravNeural" for preset in presets))
+        self.assertTrue(any(preset.voice == "hi-IN-MadhurNeural" for preset in presets))
 
     def test_voice_preview_language_options_cover_all_languages(self) -> None:
         languages = voice_preview_language_options()

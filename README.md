@@ -82,7 +82,7 @@ OPENAI_API_KEY=your_openai_api_key
 OPENAI_MODEL=gpt-5.4-mini
 OPENAI_IMAGE_MODEL=gpt-image-1
 
-IMAGE_PROVIDER=gemini
+IMAGE_PROVIDER=imagen
 GEMINI_API_KEY=your_gemini_api_key
 GEMINI_API_KEY_2=your_second_gemini_api_key
 GEMINI_API_KEY_3=your_third_gemini_api_key
@@ -92,15 +92,15 @@ GEMINI_IMAGE_DAILY_BUDGET=0
 GEMINI_IMAGE_MIN_INTERVAL_SECONDS=30
 GEMINI_IMAGE_MAX_ATTEMPTS=8
 GEMINI_IMAGE_RETRY_BACKOFF_SECONDS=120
-IMAGE_FALLBACK_PROVIDER=imagen
+IMAGE_FALLBACK_PROVIDER=mock
 
 # Or use ChatGPT/OpenAI image generation:
 # IMAGE_PROVIDER=openai
 # OPENAI_IMAGE_MODEL=gpt-image-1
 
-GCP_PROJECT_ID=your_google_cloud_project
+GCP_PROJECT_ID=your_google_cloud_project_id_from_the_Pixar-Video-Studio_project
 GCP_LOCATION=us-central1
-IMAGEN_MODEL=imagen-4.0-generate-001
+IMAGEN_MODEL=imagen-3.0-generate-002
 ```
 
 Google Application Default Credentials must also be configured for Vertex AI.
