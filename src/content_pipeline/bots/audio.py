@@ -622,7 +622,7 @@ def write_voice_daily_artifacts(output_dir: Path, settings: Settings, *, day: st
     if settings.voice_provider == "edge":
         try:
             generated = generate_hindi_voice_samples(settings, samples_dir, engine="edge")
-        except RuntimeError as exc:
+        except Exception as exc:
             generated = []
             sample_generation_error = str(exc)
         for path in generated:

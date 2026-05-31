@@ -197,7 +197,7 @@ class GeminiImageProvider:
             raise
         last_error: Exception | None = None
         for _ in range(self.limiter.max_attempts):
-            client_index = self.limiter.acquire_key(max_wait_seconds=5.0)
+            client_index = self.limiter.acquire_key(max_wait_seconds=max(5.0, self.limiter.min_interval_seconds))
             if client_index is None:
                 return self.fallback_provider.create(prompt, variant)
             client = self.clients[client_index]

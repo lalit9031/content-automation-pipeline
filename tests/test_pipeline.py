@@ -299,13 +299,13 @@ class PipelineTest(unittest.TestCase):
                 )
 
             self.assertTrue(output.exists())
-            self.assertIn("edge", output.name)
+            self.assertIn("hi-IN-MadhurNeural", output.name)
             self.assertEqual(output.read_bytes(), b"edge-fallback")
 
     def test_render_image_preview_cleans_up_invalid_png_payload(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_dir:
             preview_path = Path(temporary_dir) / "broken.png"
-            preview_path.write_text("not really a png", encoding="utf-8")
+            preview_path.write_text("not really a png" * 100, encoding="utf-8")
 
             try:
                 import app as streamlit_app
@@ -543,7 +543,8 @@ class PipelineTest(unittest.TestCase):
             output = Path(temporary_dir) / "output"
             settings = Settings(output_dir=output, voice_provider="edge", indian_tts_voice="en-IN-PrabhatNeural")
 
-            written = write_voice_daily_artifacts(output, settings, day="2026-05-26")
+            with patch("content_pipeline.bots.audio.generate_hindi_voice_samples", side_effect=RuntimeError("Mocked offline")):
+                written = write_voice_daily_artifacts(output, settings, day="2026-05-26")
             status = voice_status(output, settings, day="2026-05-26")
 
             self.assertTrue((output / "daily" / "2026-05-26" / "voice_status.json").exists())
