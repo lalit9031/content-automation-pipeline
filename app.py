@@ -357,6 +357,10 @@ def apply_pending_voice_preset() -> None:
         apply_voice_preset_by_key(pending_key)
 
 
+def apply_selected_voice_preset() -> None:
+    apply_voice_preset_by_key(str(st.session_state.get("voice_preset_choice", "")))
+
+
 def _voice_preview_fallback_voice(gender: str, language: str = "en-IN") -> str:
     gender = (gender or "all").strip().lower()
     language = (language or "").strip().lower()
@@ -814,12 +818,14 @@ def render_frontdoor(settings: Settings) -> None:
         if preset_default not in preset_map:
             preset_default = preset_options[0].key
             st.session_state["voice_preset_choice"] = preset_default
+            apply_voice_preset_by_key(preset_default)
         st.sidebar.selectbox(
             "Voice preset",
             options=[preset.key for preset in preset_options],
             index=[preset.key for preset in preset_options].index(preset_default),
             format_func=lambda value: f"{preset_map[value].label} - {preset_map[value].description}",
             key="voice_preset_choice",
+            on_change=apply_selected_voice_preset,
         )
         st.sidebar.selectbox(
             "Voice provider",

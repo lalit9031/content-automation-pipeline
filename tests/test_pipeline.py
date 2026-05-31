@@ -217,6 +217,136 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(state, "safe prompt")
         self.assertIn("ready", message)
 
+    def test_voice_preset_queue_applies_before_widget_state_is_reused(self) -> None:
+        preset = next(preset for preset in voice_preview_presets() if preset.key == "hindi_explainer_male")
+        existing_app_module = sys.modules.get("app")
+        fake_streamlit = types.ModuleType("streamlit")
+        fake_streamlit.session_state = {}
+        fake_streamlit.secrets = {}
+        fake_streamlit.sidebar = types.SimpleNamespace()
+        fake_streamlit.rerun = lambda: None
+        fake_streamlit.error = lambda *args, **kwargs: None
+        fake_streamlit.warning = lambda *args, **kwargs: None
+        fake_streamlit.info = lambda *args, **kwargs: None
+        fake_streamlit.success = lambda *args, **kwargs: None
+        fake_streamlit.caption = lambda *args, **kwargs: None
+        fake_streamlit.text_area = lambda *args, **kwargs: None
+        fake_streamlit.selectbox = lambda *args, **kwargs: None
+        fake_streamlit.button = lambda *args, **kwargs: None
+        fake_streamlit.header = lambda *args, **kwargs: None
+        fake_streamlit.subheader = lambda *args, **kwargs: None
+        fake_streamlit.radio = lambda *args, **kwargs: None
+        fake_streamlit.slider = lambda *args, **kwargs: None
+        fake_streamlit.text_input = lambda *args, **kwargs: None
+        fake_streamlit.checkbox = lambda *args, **kwargs: None
+
+        fake_components_v1 = types.ModuleType("streamlit.components.v1")
+        fake_components_v1.html = lambda *args, **kwargs: None
+        fake_components = types.ModuleType("streamlit.components")
+        fake_components.v1 = fake_components_v1
+        fake_streamlit.components = fake_components
+
+        with patch.dict(
+            sys.modules,
+            {
+                "streamlit": fake_streamlit,
+                "streamlit.components": fake_components,
+                "streamlit.components.v1": fake_components_v1,
+            },
+        ):
+            import app as streamlit_app
+
+        session_state = streamlit_app.st.session_state
+        snapshot = dict(session_state)
+
+        try:
+            session_state.clear()
+            session_state["voice_preset_choice"] = "english_explainer"
+            session_state["voice_name_choice"] = "en-IN-PrabhatNeural"
+            session_state["voice_preview_text"] = "Initial preview text"
+
+            streamlit_app.queue_voice_preset_by_key(preset.key)
+
+            self.assertEqual(session_state["voice_preset_pending_key"], preset.key)
+            self.assertEqual(session_state["voice_preset_choice"], "english_explainer")
+            self.assertEqual(session_state["voice_name_choice"], "en-IN-PrabhatNeural")
+            self.assertEqual(session_state["voice_preview_text"], "Initial preview text")
+
+            streamlit_app.apply_pending_voice_preset()
+
+            self.assertNotIn("voice_preset_pending_key", session_state)
+            self.assertEqual(session_state["voice_preset_choice"], preset.key)
+            self.assertEqual(session_state["voice_name_choice"], preset.voice)
+            self.assertEqual(session_state["voice_preview_text"], preset.sample_text)
+        finally:
+            session_state.clear()
+            session_state.update(snapshot)
+            if existing_app_module is None:
+                sys.modules.pop("app", None)
+            else:
+                sys.modules["app"] = existing_app_module
+
+    def test_voice_preset_selection_applies_hindi_preview_immediately(self) -> None:
+        preset = next(preset for preset in voice_preview_presets() if preset.key == "hindi_explainer_male")
+        existing_app_module = sys.modules.get("app")
+        fake_streamlit = types.ModuleType("streamlit")
+        fake_streamlit.session_state = {}
+        fake_streamlit.secrets = {}
+        fake_streamlit.sidebar = types.SimpleNamespace()
+        fake_streamlit.rerun = lambda: None
+        fake_streamlit.error = lambda *args, **kwargs: None
+        fake_streamlit.warning = lambda *args, **kwargs: None
+        fake_streamlit.info = lambda *args, **kwargs: None
+        fake_streamlit.success = lambda *args, **kwargs: None
+        fake_streamlit.caption = lambda *args, **kwargs: None
+        fake_streamlit.text_area = lambda *args, **kwargs: None
+        fake_streamlit.selectbox = lambda *args, **kwargs: None
+        fake_streamlit.button = lambda *args, **kwargs: None
+        fake_streamlit.header = lambda *args, **kwargs: None
+        fake_streamlit.subheader = lambda *args, **kwargs: None
+        fake_streamlit.radio = lambda *args, **kwargs: None
+        fake_streamlit.slider = lambda *args, **kwargs: None
+        fake_streamlit.text_input = lambda *args, **kwargs: None
+        fake_streamlit.checkbox = lambda *args, **kwargs: None
+
+        fake_components_v1 = types.ModuleType("streamlit.components.v1")
+        fake_components_v1.html = lambda *args, **kwargs: None
+        fake_components = types.ModuleType("streamlit.components")
+        fake_components.v1 = fake_components_v1
+        fake_streamlit.components = fake_components
+
+        with patch.dict(
+            sys.modules,
+            {
+                "streamlit": fake_streamlit,
+                "streamlit.components": fake_components,
+                "streamlit.components.v1": fake_components_v1,
+            },
+        ):
+            import app as streamlit_app
+
+        session_state = streamlit_app.st.session_state
+        snapshot = dict(session_state)
+
+        try:
+            session_state.clear()
+            session_state["voice_preset_choice"] = preset.key
+            session_state["voice_name_choice"] = "en-IN-PrabhatNeural"
+            session_state["voice_preview_text"] = "Initial preview text"
+
+            streamlit_app.apply_selected_voice_preset()
+
+            self.assertEqual(session_state["voice_preset_choice"], preset.key)
+            self.assertEqual(session_state["voice_name_choice"], preset.voice)
+            self.assertEqual(session_state["voice_preview_text"], preset.sample_text)
+        finally:
+            session_state.clear()
+            session_state.update(snapshot)
+            if existing_app_module is None:
+                sys.modules.pop("app", None)
+            else:
+                sys.modules["app"] = existing_app_module
+
     def test_image_style_pack_builds_storyboard_and_thumbnail_prompts(self) -> None:
         pack = build_image_style_pack("Agile project management", subject="a team board")
 
