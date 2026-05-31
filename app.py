@@ -741,10 +741,24 @@ def render_frontdoor(settings: Settings) -> None:
         st.subheader("Artifacts")
         day_root = ui_settings.output_dir / "daily" / inspect_date
         if day_root.exists():
+            file_query = st.text_input("Search files", value="", placeholder="Type part of a filename or path")
+            file_type = st.selectbox(
+                "File type",
+                options=["all", "html", "json", "png", "svg", "mp3", "wav", "txt"],
+                index=0,
+            )
             all_files = sorted(
                 [path for path in day_root.rglob("*") if path.is_file()],
                 key=lambda path: path.as_posix(),
             )
+            if file_query:
+                query = file_query.strip().lower()
+                all_files = [
+                    path for path in all_files
+                    if query in path.name.lower() or query in path.as_posix().lower()
+                ]
+            if file_type != "all":
+                all_files = [path for path in all_files if path.suffix.lower().lstrip(".") == file_type]
             if show_json:
                 st.code("\n".join(str(path) for path in all_files), language="text")
             else:
@@ -764,6 +778,8 @@ def render_frontdoor(settings: Settings) -> None:
                 """,
                 unsafe_allow_html=True,
             )
+            if file_query or file_type != "all":
+                st.caption(f"Filtered results: {len(all_files)}")
         else:
             st.info("No daily artifacts found yet for this day.")
 
