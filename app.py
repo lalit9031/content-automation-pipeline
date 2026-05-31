@@ -231,13 +231,18 @@ def apply_voice_preset_by_key(preset_key: str) -> None:
     st.session_state["voice_preview_text"] = preset.sample_text
 
 
-def _voice_preview_fallback_voice(gender: str) -> str:
+def _voice_preview_fallback_voice(gender: str, language: str = "en-IN") -> str:
     gender = (gender or "all").strip().lower()
+    language = (language or "").strip().lower()
     if gender == "male":
+        if language.startswith("hi"):
+            return "hi-IN-AaravNeural"
         return "en-IN-PrabhatNeural"
     if gender == "female":
+        if language.startswith("hi"):
+            return "hi-IN-SwaraNeural"
         return "en-IN-NeerjaNeural"
-    return "echo"
+    return "en-IN-PrabhatNeural"
 
 
 def _generate_voice_preview_with_fallback(
@@ -246,6 +251,7 @@ def _generate_voice_preview_with_fallback(
     preview_path: Path,
     voice: str,
     gender_hint: str = "all",
+    language_hint: str = "en-IN",
 ) -> Path:
     try:
         return generate_voice_preview(
@@ -255,7 +261,7 @@ def _generate_voice_preview_with_fallback(
             voice=voice,
         )
     except Exception as exc:
-        fallback_voice = _voice_preview_fallback_voice(gender_hint)
+        fallback_voice = _voice_preview_fallback_voice(gender_hint, language_hint)
         if voice != fallback_voice:
             try:
                 fallback_path = preview_path.with_name(f"{preview_path.stem}_edge{preview_path.suffix}")
@@ -1273,6 +1279,7 @@ def render_frontdoor(settings: Settings) -> None:
                                 preview_path=preview_path,
                                 voice=preset.voice,
                                 gender_hint=preset.gender,
+                                language_hint=preset.language,
                             )
                             st.session_state["voice_preview_path"] = str(preview_output)
                             st.session_state["voice_provider_choice"] = "edge"
@@ -1301,6 +1308,7 @@ def render_frontdoor(settings: Settings) -> None:
                     preview_path=preview_file,
                     voice=voice_name_choice,
                     gender_hint=st.session_state["voice_gender_filter"],
+                    language_hint=current_voice_preset.language,
                 )
                 st.session_state["voice_preview_path"] = str(preview_output)
             except Exception as exc:

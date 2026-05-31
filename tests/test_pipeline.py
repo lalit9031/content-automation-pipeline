@@ -168,7 +168,7 @@ class PipelineTest(unittest.TestCase):
             self.assertEqual(voice_profile["voice"], "en-IN-PrabhatNeural")
             self.assertIn("A.I.", voice_preview)
             self.assertEqual(samples_manifest["voice"], "en-IN-PrabhatNeural")
-            self.assertEqual(len(samples_manifest["samples"]), 3)
+            self.assertEqual(len(samples_manifest["samples"]), 4)
 
             payload = json.loads((daily / "publish" / "linkedin_payload.json").read_text())
             self.assertIn("#ProjectManagement", payload["hashtags"])
@@ -214,7 +214,9 @@ class PipelineTest(unittest.TestCase):
 
         self.assertIn("en-IN-PrabhatNeural", [voice for voice, _ in edge_options])
         self.assertIn("en-IN-NeerjaNeural", [voice for voice, _ in edge_options])
-        self.assertEqual(["en-IN-PrabhatNeural"], [voice for voice, _ in edge_male_options])
+        self.assertIn("hi-IN-AaravNeural", [voice for voice, _ in edge_options])
+        self.assertIn("en-IN-PrabhatNeural", [voice for voice, _ in edge_male_options])
+        self.assertIn("hi-IN-AaravNeural", [voice for voice, _ in edge_male_options])
 
     def test_voice_preview_presets_include_hindi_and_hinglish(self) -> None:
         presets = voice_preview_presets()
@@ -228,6 +230,7 @@ class PipelineTest(unittest.TestCase):
         self.assertIn("Hinglish teacher", labels)
         self.assertIn("कान्हा", texts)
         self.assertIn("Jira", texts)
+        self.assertTrue(any(preset.voice == "hi-IN-AaravNeural" for preset in presets))
 
     def test_voice_preview_language_options_cover_all_languages(self) -> None:
         languages = voice_preview_language_options()
@@ -265,6 +268,7 @@ class PipelineTest(unittest.TestCase):
                     preview_path=preview_path,
                     voice="unsupported-voice",
                     gender_hint="male",
+                    language_hint="hi-IN",
                 )
 
             self.assertTrue(output.exists())
