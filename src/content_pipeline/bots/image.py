@@ -175,7 +175,7 @@ class GeminiImageProvider:
             self.generate_images_config = None
         self.settings = settings
         self.clients = clients
-        self.model = settings.gemini_image_model
+        self.model = settings.imagen_model
         self.fallback_provider = _fallback_image_provider(settings)
         state_path = settings.output_dir / ".runtime" / "gemini_image_rate_limit.json"
         self.limiter = limiter or GeminiImageLimiter(
@@ -499,7 +499,7 @@ def gemini_image_status(settings: Settings, now: float | None = None) -> dict[st
     return {
         "configured": any(slot["configured"] for slot in configured_slots),
         "configured_key_count": sum(1 for slot in configured_slots if slot["configured"]),
-        "model": settings.gemini_image_model,
+        "model": settings.imagen_model,
         "daily_budget": settings.gemini_image_daily_budget,
         "daily_generated": daily_usage,
         "daily_remaining": daily_remaining,
