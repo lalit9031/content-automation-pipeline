@@ -663,16 +663,40 @@ class OpenAIImageProvider:
         last_error: Exception | None = None
         for client in self.clients:
             try:
+                # We do not pass response_format explicitly to support a wider range of custom and legacy endpoints.
+                # Standard OpenAI endpoints return a temporary URL by default, which we download securely.
                 result = client.images.generate(
                     model=self.model,
                     prompt=prompt,
                     size=_openai_size_for(variant),
-                    quality="low",
                 )
-                image_base64 = result.data[0].b64_json
-                if not image_base64:
-                    raise RuntimeError("OpenAI image generation did not return an image asset.")
-                return base64.b64decode(image_base64)
+                image_base64 = getattr(result.data[0], "b64_json", None)
+                if image_base64:
+                    image_bytes = base64.b64decode(image_base64)
+                else:
+                    image_url = getattr(result.data[0], "url", None)
+                    if not image_url:
+                        raise RuntimeError("OpenAI image generation did not return an image asset.")
+                    import requests
+                    response = requests.get(image_url, timeout=30)
+                    response.raise_for_status()
+                    image_bytes = response.content
+
+                # Process the image to ensure high-fidelity Lanczos upscaling to the exact QHD dimension and save as lossless PNG
+                try:
+                    from PIL import Image
+                    import io
+                    img = Image.open(io.BytesIO(image_bytes))
+                    if img.width < variant.width or img.height < variant.height:
+                        resample_filter = getattr(Image, "Resampling", Image).LANCZOS
+                        img = img.resize((variant.width, variant.height), resample=resample_filter)
+                    out_buffer = io.BytesIO()
+                    img.save(out_buffer, format="PNG")
+                    image_bytes = out_buffer.getvalue()
+                except Exception:
+                    pass
+
+                return image_bytes
             except Exception as exc:
                 last_error = exc
         raise RuntimeError(f"OpenAI image generation failed for all configured keys: {last_error}")
@@ -882,9 +906,9 @@ def _response_image_bytes(response: object) -> bytes | None:
 
 def _openai_size_for(variant: ImageVariant) -> str:
     if variant.aspect_ratio == "16:9":
-        return "1536x1024"
+        return "1792x1024"
     if variant.aspect_ratio == "9:16":
-        return "1024x1536"
+        return "1024x1792"
     return "1024x1024"
 
 
