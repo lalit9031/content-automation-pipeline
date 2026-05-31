@@ -416,6 +416,8 @@ def _generate_voice_preview_with_fallback(
     voice: str,
     gender_hint: str = "all",
     language_hint: str = "en-IN",
+    rate: str = "+0%",
+    pitch: str = "+0Hz",
 ) -> Path:
     attempts = [voice, *_voice_preview_fallback_candidates(gender_hint, language_hint)]
     seen: set[str] = set()
@@ -433,6 +435,8 @@ def _generate_voice_preview_with_fallback(
                 candidate_path,
                 provider="edge",
                 voice=candidate,
+                rate=rate,
+                pitch=pitch,
             )
             if output.exists() and output.stat().st_size > 0:
                 if candidate != voice:
@@ -1823,6 +1827,8 @@ def overlay_lower_third_text(image_path: Path, output_path: Path, text: str):
                                 voice=preset.voice,
                                 gender_hint=preset.gender,
                                 language_hint=preset.language,
+                                rate=preset.rate,
+                                pitch=preset.pitch,
                             )
                             st.session_state["voice_preview_path"] = str(preview_output)
                             queue_voice_preset_by_key(preset.key)
@@ -1851,6 +1857,8 @@ def overlay_lower_third_text(image_path: Path, output_path: Path, text: str):
                     voice=voice_name_choice,
                     gender_hint=st.session_state["voice_gender_filter"],
                     language_hint=current_voice_preset.language,
+                    rate=current_voice_preset.rate,
+                    pitch=current_voice_preset.pitch,
                 )
                 st.session_state["voice_preview_path"] = str(preview_output)
             except Exception as exc:

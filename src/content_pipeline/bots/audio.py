@@ -62,6 +62,8 @@ class VoicePreviewPreset:
     language: str
     gender: str
     sample_text: str
+    rate: str = "+0%"
+    pitch: str = "+0Hz"
 
 
 @dataclass(frozen=True)
@@ -147,18 +149,6 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
         ),
     ),
     VoicePreviewPreset(
-        key="hinglish_shortform",
-        label="Hinglish shortform",
-        description="High-energy Hinglish for shorts, reels, and quick explainers.",
-        provider="edge",
-        voice="en-IN-PrabhatNeural",
-        language="en-IN",
-        gender="male",
-        sample_text=(
-            "Aaj ka quick tip simple hai: planning ko chhota rakho, execution ko sharp rakho, aur har step pe clarity maintain karo."
-        ),
-    ),
-    VoicePreviewPreset(
         key="hindi_explainer",
         label="Hindi explainer",
         description="Professional Hindi narration with a calm teaching tone.",
@@ -172,7 +162,7 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
     ),
     VoicePreviewPreset(
         key="hindi_explainer_male",
-        label="Hindi explainer male",
+        label="Hindi explainer male (Standard)",
         description="Professional Hindi-style narration with a steadier male tone.",
         provider="edge",
         voice="hi-IN-MadhurNeural",
@@ -181,6 +171,78 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
         sample_text=(
             "आज हम इस विषय को सरल और स्पष्ट तरीके से समझेंगे, ताकि हर कदम आसानी से याद रहे।"
         ),
+        rate="+0%",
+        pitch="+0Hz",
+    ),
+    VoicePreviewPreset(
+        key="hindi_energetic_male",
+        label="Hindi energetic male",
+        description="Upbeat and fast-paced Hindi male narration, perfect for technology, marketing, and dynamic explainers.",
+        provider="edge",
+        voice="hi-IN-MadhurNeural",
+        language="hi-IN",
+        gender="male",
+        sample_text=(
+            "आज का क्विक टिप बिल्कुल सिंपल है: प्लानिंग को छोटा रखें, एक्सेक्यूशन को शार्प रखें, और हर कदम पर क्लैरिटी बनाए रखें।"
+        ),
+        rate="+14%",
+        pitch="+0Hz",
+    ),
+    VoicePreviewPreset(
+        key="hindi_deep_narrator",
+        label="Hindi deep narrator",
+        description="A slowed-down, deep-pitched male voice suitable for storytelling, spiritual, and dramatic content.",
+        provider="edge",
+        voice="hi-IN-MadhurNeural",
+        language="hi-IN",
+        gender="male",
+        sample_text=(
+            "समय की गति को धीमा करके, जब हम अपने भीतर की आवाज़ सुनते हैं, तो हर मुश्किल का हल अपने आप मिल जाता है।"
+        ),
+        rate="-8%",
+        pitch="-3Hz",
+    ),
+    VoicePreviewPreset(
+        key="hinglish_guru_male",
+        label="Hinglish tech-guru male",
+        description="Conversational Hinglish (Hindi-English blend) male voice, ideal for tutorial presentations.",
+        provider="edge",
+        voice="en-IN-PrabhatNeural",
+        language="en-IN",
+        gender="male",
+        sample_text=(
+            "Hey techies! Aaj hum simple steps mein samjhenge ki kaise hum workflow ko organize aur automatically deploy kar sakte hain."
+        ),
+        rate="+0%",
+        pitch="+0Hz",
+    ),
+    VoicePreviewPreset(
+        key="hinglish_pitch_male",
+        label="Hinglish high-energy pitch",
+        description="High-impact, fast Hinglish male voice perfect for startup pitches, ads, and short-form video formats.",
+        provider="edge",
+        voice="en-IN-PrabhatNeural",
+        language="en-IN",
+        gender="male",
+        sample_text=(
+            "Chalo fast flow maintain karte hain! Planning ko simplify karo, execution ko full-speed push karo, aur team ko lead karo."
+        ),
+        rate="+12%",
+        pitch="+1Hz",
+    ),
+    VoicePreviewPreset(
+        key="hindi_corporate_male",
+        label="Hindi corporate executive",
+        description="A formal, slow, and authoritative Hindi male narration for corporate, training, and executive modules.",
+        provider="edge",
+        voice="hi-IN-MadhurNeural",
+        language="hi-IN",
+        gender="male",
+        sample_text=(
+            "संगठन की सफलता हमारी प्रतिबद्धता और व्यवस्थित कार्यप्रणाली पर निर्भर करती है। आज हम इसके मुख्य सिद्धांतों की समीक्षा करेंगे।"
+        ),
+        rate="-5%",
+        pitch="+1Hz",
     ),
     VoicePreviewPreset(
         key="motivation_boost",
@@ -193,6 +255,8 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
         sample_text=(
             "This is your reminder to keep going. Small improvements every day lead to a powerful result."
         ),
+        rate="+5%",
+        pitch="+0Hz",
     ),
 )
 
@@ -468,9 +532,42 @@ def generate_indian_voiceover(
     output_path: Path,
     *,
     voice: str = "en-IN-PrabhatNeural",
-    rate: str = "+0%",
-    pitch: str = "+0Hz",
+    rate: str | None = None,
+    pitch: str | None = None,
 ) -> Path:
+    # Resolve rate and pitch dynamically based on the active preset
+    if rate is None or pitch is None:
+        selected_preset = None
+        # Try to read active preset choice if in streamlit context
+        try:
+            import streamlit as st
+            if "voice_preset_choice" in st.session_state:
+                choice = st.session_state["voice_preset_choice"]
+                for p in VOICE_PREVIEW_PRESETS:
+                    if p.key == choice:
+                        selected_preset = p
+                        break
+        except Exception:
+            pass
+            
+        # Fall back to matching by voice name if no active preset session is found
+        if selected_preset is None:
+            for p in VOICE_PREVIEW_PRESETS:
+                if p.voice == voice:
+                    selected_preset = p
+                    break
+                    
+        if selected_preset is not None:
+            if rate is None:
+                rate = selected_preset.rate
+            if pitch is None:
+                pitch = selected_preset.pitch
+        else:
+            if rate is None:
+                rate = "+0%"
+            if pitch is None:
+                pitch = "+0Hz"
+
     _run_async(_write_edge_voice_sample(output_path, voice=voice, text=text, rate=rate, pitch=pitch))
     return output_path
 
@@ -482,12 +579,14 @@ def generate_voice_preview(
     provider: str,
     voice: str,
     openai_api_key: str = "",
+    rate: str = "+0%",
+    pitch: str = "+0Hz",
 ) -> Path:
     provider = (provider or "edge").strip().lower()
     _ = openai_api_key
     if provider != "edge":
         raise ValueError("Voice preview generation currently supports provider='edge' only.")
-    return generate_indian_voiceover(text, output_path, voice=voice)
+    return generate_indian_voiceover(text, output_path, voice=voice, rate=rate, pitch=pitch)
 
 
 def generate_music_preview(output_path: Path, mood: str, *, duration_seconds: int = 8) -> Path:
