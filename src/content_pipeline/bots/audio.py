@@ -138,14 +138,14 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
         label="3-4 Year Old Little Boy (High-Energy Cartoon)",
         description="Cute, native 4-year-old male child voice with natural toddler breathing pacing.",
         provider="edge",
-        voice="en-US-EricNeural",
+        voice="en-US-AnaNeural",
         language="en-US",
         gender="male",
         sample_text=(
             "Wow! See that big shiny computer? The robot is typing so fast! Zoom zoom! We are running very fast!"
         ),
         rate="+2%",
-        pitch="+0Hz",
+        pitch="-3Hz",
     ),
     VoicePreviewPreset(
         key="story_female",

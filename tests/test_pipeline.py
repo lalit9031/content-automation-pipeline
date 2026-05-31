@@ -187,7 +187,7 @@ class PipelineTest(unittest.TestCase):
 
         self.assertIn("Agile project management", prompt)
         self.assertIn("pastel purple and cyan highlights", prompt)
-        self.assertIn("no text, logos, or watermarks", prompt)
+        self.assertIn("Absolutely no large readable text", prompt)
         self.assertIn("hero image", prompt)
 
     def test_cinematic_image_prompt_sanitizes_brand_names(self) -> None:
@@ -389,7 +389,7 @@ class PipelineTest(unittest.TestCase):
         self.assertIn("Hindi story", labels)
         self.assertIn("Hindi devotional", labels)
         self.assertIn("Hindi bulletin", labels)
-        self.assertIn("Hindi explainer male", labels)
+        self.assertIn("Hindi explainer male (Standard)", labels)
         self.assertIn("Hinglish teacher", labels)
         self.assertIn("कान्हा", texts)
         self.assertIn("Jira", texts)
@@ -419,7 +419,7 @@ class PipelineTest(unittest.TestCase):
             except ModuleNotFoundError:
                 self.skipTest("Streamlit is not installed in the test environment")
 
-            def fake_generate_voice_preview(text, output_path, *, provider, voice, openai_api_key=""):
+            def fake_generate_voice_preview(text, output_path, *, provider, voice, openai_api_key="", **kwargs):
                 if voice == "unsupported-voice":
                     raise RuntimeError("voice_failed")
                 output_path.write_bytes(b"edge-fallback")
