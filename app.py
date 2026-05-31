@@ -752,7 +752,7 @@ def render_frontdoor(settings: Settings) -> None:
     show_image_controls = sidebar_mode in {"Image", "All"}
     if show_image_controls:
         st.sidebar.subheader("Image Studio")
-        image_provider_options = ("mock", "free-ai", "imagen", "gemini", "openai")
+        image_provider_options = ("mock", "free-ai", "gemini", "openai")
         current_image_provider = st.session_state.get("image_provider_choice", settings.image_provider)
         if current_image_provider not in image_provider_options:
             image_provider_options = (current_image_provider, *image_provider_options)
