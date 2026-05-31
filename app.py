@@ -216,8 +216,47 @@ def _slugify(value: str) -> str:
 def render_image_preview(path: Path) -> None:
     if path.suffix.lower() == ".svg":
         components.html(path.read_text(encoding="utf-8"), height=720, scrolling=False)
-    else:
+        return
+
+    if not path.exists():
+        st.warning("Image preview is not available yet.")
+        return
+
+    if path.stat().st_size < 1024:
+        st.error(
+            "The image preview file is too small to be a valid image. The generated payload may be an error message."
+        )
+        try:
+            path.unlink()
+        except OSError:
+            pass
+        return
+
+    try:
+        from PIL import Image, UnidentifiedImageError
+    except ImportError:
         st.image(str(path), use_container_width=True)
+        return
+
+    try:
+        with Image.open(path) as image:
+            image.verify()
+        st.image(str(path), use_container_width=True)
+    except (UnidentifiedImageError, OSError, ValueError, SyntaxError):
+        st.error(
+            "The image preview could not be decoded as an image. The generated payload may be a text error or corrupted file."
+        )
+        try:
+            with path.open("r", encoding="utf-8", errors="ignore") as handle:
+                preview = handle.read(240).strip()
+            if preview:
+                st.caption(f"Raw preview: {preview}")
+        except OSError:
+            pass
+        try:
+            path.unlink()
+        except OSError:
+            pass
 
 
 def apply_voice_preset_by_key(preset_key: str) -> None:

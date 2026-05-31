@@ -275,6 +275,29 @@ class PipelineTest(unittest.TestCase):
             self.assertIn("edge", output.name)
             self.assertEqual(output.read_bytes(), b"edge-fallback")
 
+    def test_render_image_preview_cleans_up_invalid_png_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            preview_path = Path(temporary_dir) / "broken.png"
+            preview_path.write_text("not really a png", encoding="utf-8")
+
+            try:
+                import app as streamlit_app
+            except ModuleNotFoundError:
+                self.skipTest("Streamlit is not installed in the test environment")
+
+            with patch.object(streamlit_app.st, "error") as mock_error, patch.object(
+                streamlit_app.st, "warning"
+            ) as mock_warning, patch.object(streamlit_app.st, "caption") as mock_caption, patch.object(
+                streamlit_app.st, "image"
+            ) as mock_image:
+                streamlit_app.render_image_preview(preview_path)
+
+            self.assertFalse(preview_path.exists())
+            mock_error.assert_called()
+            mock_warning.assert_not_called()
+            mock_image.assert_not_called()
+            mock_caption.assert_called()
+
     def test_filter_voice_preview_presets_by_gender(self) -> None:
         presets = voice_preview_presets()
         male_presets = filter_voice_preview_presets(presets, gender="male")
