@@ -292,6 +292,19 @@ def image_preview_status(path: Path | None) -> tuple[str, str]:
         return "broken", f"{path.name} could not be decoded as an image."
 
 
+def image_preview_source_status(path: Path | None) -> tuple[str, str]:
+    if path is None:
+        return "missing", "No preview file selected yet."
+    if not path.exists():
+        return "missing", f"No preview file found at {path.name}."
+    svg_text = _svg_preview_text(path)
+    if svg_text is not None:
+        if "Local renderer baseline" in svg_text:
+            return "mock fallback", "This preview came from the local mock renderer, not a live image API."
+        return "svg preview", "This preview is SVG markup rendered directly in the browser."
+    return "binary preview", "This preview is a binary image file."
+
+
 def image_backend_status(settings: Settings, selected_provider: str) -> tuple[str, str]:
     provider = (selected_provider or "").strip().lower() or "unknown"
     if provider == "gemini" and settings.gcp_project_id:
@@ -1297,6 +1310,7 @@ def render_frontdoor(settings: Settings) -> None:
                 else None
             )
             image_preview_state, image_preview_message = image_preview_status(image_preview_path)
+            image_preview_source_state, image_preview_source_message = image_preview_source_status(image_preview_path)
             st.markdown(
                 f"""
                 <div class="metric-box">
@@ -1323,6 +1337,16 @@ def render_frontdoor(settings: Settings) -> None:
                   <div class="metric-label">Prompt safety</div>
                   <div class="metric-value">{escape(image_prompt_state)}</div>
                   <div style="margin-top:6px;color:#94a3b8;font-size:13px;line-height:1.4;">{escape(image_prompt_message)}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                f"""
+                <div class="metric-box">
+                  <div class="metric-label">Preview source</div>
+                  <div class="metric-value">{escape(image_preview_source_state)}</div>
+                  <div style="margin-top:6px;color:#94a3b8;font-size:13px;line-height:1.4;">{escape(image_preview_source_message)}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -1354,6 +1378,7 @@ def render_frontdoor(settings: Settings) -> None:
                 else None
             )
             image_preview_state, image_preview_message = image_preview_status(image_preview_path)
+            image_preview_source_state, image_preview_source_message = image_preview_source_status(image_preview_path)
             st.markdown(
                 f"""
                 <div class="metric-box">
@@ -1380,6 +1405,16 @@ def render_frontdoor(settings: Settings) -> None:
                   <div class="metric-label">Prompt safety</div>
                   <div class="metric-value">{escape(image_prompt_state)}</div>
                   <div style="margin-top:6px;color:#94a3b8;font-size:13px;line-height:1.4;">{escape(image_prompt_message)}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                f"""
+                <div class="metric-box">
+                  <div class="metric-label">Preview source</div>
+                  <div class="metric-value">{escape(image_preview_source_state)}</div>
+                  <div style="margin-top:6px;color:#94a3b8;font-size:13px;line-height:1.4;">{escape(image_preview_source_message)}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -1415,40 +1450,37 @@ def render_frontdoor(settings: Settings) -> None:
                 st.code(image_prompt, language="text")
             st.info("Switch the sidebar mode to Image or All if you want the full image editor controls.")
 
-        if show_audio_controls:
-            st.markdown("### Music studio")
-            music_mood = st.session_state["music_mood"]
-            music_duration = int(st.session_state["music_duration_seconds"])
-            music_action_cols = st.columns([1, 1])
-            with music_action_cols[0]:
-                if st.button("Generate music preview", use_container_width=True):
-                    try:
-                        preview_path = ui_settings.output_dir / ".runtime" / "music_previews" / (
-                            f"{_slugify(music_mood)}_{music_duration}s.wav"
-                        )
-                        generate_music_preview(preview_path, music_mood, duration_seconds=music_duration)
-                        st.session_state["music_preview_path"] = str(preview_path)
-                        st.success(f"Music preview written to {preview_path}")
-                    except Exception as exc:
-                        st.error(str(exc))
-            with music_action_cols[1]:
-                st.markdown(
-                    f"""
-                    <div class="metric-box">
-                      <div class="metric-label">Selected mood</div>
-                      <div class="metric-value">{escape(music_mood)}</div>
-                      <div style="margin-top:6px;color:#94a3b8;font-size:13px;line-height:1.4;">Preview length: {music_duration} seconds</div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-            if st.session_state["music_preview_path"]:
-                music_preview_path = Path(st.session_state["music_preview_path"])
-                if music_preview_path.exists():
-                    st.audio(str(music_preview_path))
-                    st.caption(str(music_preview_path))
-        else:
-            st.info("Music preview controls are hidden in Image mode. Switch the sidebar mode to Audio or All to use them.")
+        st.markdown("### Music studio")
+        music_mood = st.session_state["music_mood"]
+        music_duration = int(st.session_state["music_duration_seconds"])
+        music_action_cols = st.columns([1, 1])
+        with music_action_cols[0]:
+            if st.button("Generate music preview", use_container_width=True):
+                try:
+                    preview_path = ui_settings.output_dir / ".runtime" / "music_previews" / (
+                        f"{_slugify(music_mood)}_{music_duration}s.wav"
+                    )
+                    generate_music_preview(preview_path, music_mood, duration_seconds=music_duration)
+                    st.session_state["music_preview_path"] = str(preview_path)
+                    st.success(f"Music preview written to {preview_path}")
+                except Exception as exc:
+                    st.error(str(exc))
+        with music_action_cols[1]:
+            st.markdown(
+                f"""
+                <div class="metric-box">
+                  <div class="metric-label">Selected mood</div>
+                  <div class="metric-value">{escape(music_mood)}</div>
+                  <div style="margin-top:6px;color:#94a3b8;font-size:13px;line-height:1.4;">Preview length: {music_duration} seconds</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        if st.session_state["music_preview_path"]:
+            music_preview_path = Path(st.session_state["music_preview_path"])
+            if music_preview_path.exists():
+                st.audio(str(music_preview_path))
+                st.caption(str(music_preview_path))
 
     with tab_run:
         left, right = st.columns([1.2, 0.8])

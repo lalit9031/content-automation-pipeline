@@ -351,6 +351,24 @@ class PipelineTest(unittest.TestCase):
             mock_warning.assert_not_called()
             mock_image.assert_not_called()
 
+    def test_image_preview_source_status_reports_mock_fallback_for_svg_baseline(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            preview_path = Path(temporary_dir) / "mock.png"
+            preview_path.write_text(
+                '<svg xmlns="http://www.w3.org/2000/svg"><text>Local renderer baseline</text></svg>',
+                encoding="utf-8",
+            )
+
+            try:
+                import app as streamlit_app
+            except ModuleNotFoundError:
+                self.skipTest("Streamlit is not installed in the test environment")
+
+            state, message = streamlit_app.image_preview_source_status(preview_path)
+
+            self.assertEqual(state, "mock fallback")
+            self.assertIn("local mock renderer", message)
+
     def test_image_preview_status_reports_ready_missing_and_broken(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_dir:
             ready_path = Path(temporary_dir) / "ready.png"
