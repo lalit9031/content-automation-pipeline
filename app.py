@@ -495,12 +495,14 @@ def render_frontdoor(settings: Settings) -> None:
     ui_output_dir = resolve_output_dir(output_dir_input)
     saved_studio_state = load_studio_state(ui_output_dir)
     default_sidebar_mode = st.session_state.get("sidebar_mode", "Audio")
-    if default_sidebar_mode not in {"Audio", "Video", "All"}:
+    if default_sidebar_mode not in {"Audio", "Image", "All"}:
         default_sidebar_mode = "Audio"
     sidebar_mode = st.sidebar.radio(
         "Sidebar mode",
-        options=("Audio", "Video", "All"),
-        index=("Audio", "Video", "All").index(default_sidebar_mode),
+        options=("Audio", "Image", "All"),
+        index=("Audio", "Image", "All").index(
+            "Image" if default_sidebar_mode == "Video" else default_sidebar_mode
+        ),
         horizontal=True,
         key="sidebar_mode",
     )
@@ -589,8 +591,8 @@ def render_frontdoor(settings: Settings) -> None:
     st.session_state.setdefault("reference_audio_preview_path", "")
     st.session_state.setdefault("reference_audio_bank_size", 24)
     show_audio_controls = sidebar_mode in {"Audio", "All"}
-    show_video_controls = sidebar_mode in {"Video", "All"}
-    if show_video_controls:
+    show_image_controls = sidebar_mode in {"Image", "All"}
+    if show_image_controls:
         st.sidebar.subheader("Image Studio")
         image_provider_options = ("mock", "imagen", "gemini", "openai")
         current_image_provider = st.session_state.get("image_provider_choice", settings.image_provider)
@@ -1154,7 +1156,7 @@ def render_frontdoor(settings: Settings) -> None:
     )
 
     with tab_studio:
-        if show_video_controls:
+        if show_image_controls:
             st.subheader("Image studio")
             image_style_pack = build_image_style_pack(
                 st.session_state["image_topic"],
@@ -1213,7 +1215,7 @@ def render_frontdoor(settings: Settings) -> None:
             with st.expander("Image prompt pack", expanded=False):
                 st.json(image_style_pack.as_dict())
                 st.code(st.session_state["image_prompt"], language="text")
-            st.info("Switch the sidebar mode to Video or All if you want the full image editor controls.")
+            st.info("Switch the sidebar mode to Image or All if you want the full image editor controls.")
 
         if show_audio_controls:
             st.markdown("### Music studio")
@@ -1248,7 +1250,7 @@ def render_frontdoor(settings: Settings) -> None:
                     st.audio(str(music_preview_path))
                     st.caption(str(music_preview_path))
         else:
-            st.info("Music preview controls are hidden in Video mode. Switch the sidebar mode to Audio or All to use them.")
+            st.info("Music preview controls are hidden in Image mode. Switch the sidebar mode to Audio or All to use them.")
 
     with tab_run:
         left, right = st.columns([1.2, 0.8])
