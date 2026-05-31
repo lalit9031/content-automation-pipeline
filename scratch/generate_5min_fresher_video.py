@@ -296,31 +296,37 @@ def main():
         still_filename = f"scene_{index:02d}.png"
         still_path = images_dest_dir / still_filename
 
-        # Generate the high-quality SVG slide using MockImageProvider
-        print(f"-> Rendering premium infographic slide via MockImageProvider...")
-        scene_concepts = get_scene_concepts(index)
-        concepts_str = ", ".join(scene_concepts)
-        
-        # Split narration into readable lines for the center description box
-        l1, l2 = split_narration_into_lines(narration, max_chars=40)
-        
-        # Build structured mock prompt that MockImageProvider parses
-        mock_prompt = (
-            f"Renderer-only headline: \"{title}\"\n"
-            f"Renderer-only hook: \"{on_screen}\"\n"
-            f"Renderer-only desc title: \"Scene {index} Insight\"\n"
-            f"Renderer-only desc line1: \"{l1}\"\n"
-            f"Renderer-only desc line2: \"{l2}\"\n"
-            f"Renderer-only concepts: \"{concepts_str}\"\n"
-            f"Topic: {title}\n"
-            f"Prompt: {prompt}"
-        )
-        
-        # Create the SVG bytes
-        image_bytes = provider.create(mock_prompt, variant)
-        # Convert SVG to lossless PNG via CairoSVG
-        _ensure_png_bytes(image_bytes, still_path)
-        print(f"-> Slide image generated and saved to {still_path} (Size: {still_path.stat().st_size / 1024:.1f} KB)")
+        # For scenes 1 to 5, restore the premium cached illustrations the user loved!
+        local_src_path = settings.output_dir / "video_episodes" / "fresher_in_ai_world_explainer" / "clips" / "auto_2_5d" / f"scene_{index:02d}.png"
+        if index <= 5 and local_src_path.exists():
+            shutil.copyfile(local_src_path, still_path)
+            print(f"-> Preserved premium 3D character illustration copied for Scene {index} (Size: {still_path.stat().st_size / 1024:.1f} KB)")
+        else:
+            # Generate the high-quality SVG slide using MockImageProvider
+            print(f"-> Rendering premium infographic slide via MockImageProvider...")
+            scene_concepts = get_scene_concepts(index)
+            concepts_str = ", ".join(scene_concepts)
+            
+            # Split narration into readable lines for the center description box
+            l1, l2 = split_narration_into_lines(narration, max_chars=40)
+            
+            # Build structured mock prompt that MockImageProvider parses
+            mock_prompt = (
+                f"Renderer-only headline: \"{title}\"\n"
+                f"Renderer-only hook: \"{on_screen}\"\n"
+                f"Renderer-only desc title: \"Scene {index} Insight\"\n"
+                f"Renderer-only desc line1: \"{l1}\"\n"
+                f"Renderer-only desc line2: \"{l2}\"\n"
+                f"Renderer-only concepts: \"{concepts_str}\"\n"
+                f"Topic: {title}\n"
+                f"Prompt: {prompt}"
+            )
+            
+            # Create the SVG bytes
+            image_bytes = provider.create(mock_prompt, variant)
+            # Convert SVG to lossless PNG via CairoSVG
+            _ensure_png_bytes(image_bytes, still_path)
+            print(f"-> Slide image generated and saved to {still_path} (Size: {still_path.stat().st_size / 1024:.1f} KB)")
 
         # Narration Audio (Indian Teacher Voice: en-IN-PrabhatNeural)
         audio_filename = f"scene_{index:02d}.mp3"
