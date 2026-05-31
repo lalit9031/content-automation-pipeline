@@ -296,9 +296,9 @@ def main():
         still_filename = f"scene_{index:02d}.png"
         still_path = images_dest_dir / still_filename
 
-        # For scenes 1 to 6, restore the premium cached/generated illustrations the user loved!
+        # For all 35 scenes, restore the premium cached/generated illustrations the user loved!
         local_src_path = settings.output_dir / "video_episodes" / "fresher_in_ai_world_explainer" / "clips" / "auto_2_5d" / f"scene_{index:02d}.png"
-        if index <= 6 and local_src_path.exists():
+        if index <= 35 and local_src_path.exists():
             shutil.copyfile(local_src_path, still_path)
             print(f"-> Preserved premium 3D character illustration copied for Scene {index} (Size: {still_path.stat().st_size / 1024:.1f} KB)")
         else:
