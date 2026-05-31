@@ -174,6 +174,38 @@ def audio_file_list(paths: list[Path]) -> None:
         st.caption(str(path))
 
 
+def day_overview(day_root: Path) -> dict[str, object]:
+    dashboard_path = day_root / "daily_dashboard.html"
+    audio_path = day_root / "audio_status.html"
+    voice_path = day_root / "voice_status.html"
+    if day_root.exists():
+        file_count = sum(1 for path in day_root.rglob("*") if path.is_file())
+    else:
+        file_count = 0
+    return {
+        "file_count": file_count,
+        "dashboard_exists": dashboard_path.exists(),
+        "audio_exists": audio_path.exists(),
+        "voice_exists": voice_path.exists(),
+        "dashboard_path": dashboard_path,
+        "audio_path": audio_path,
+        "voice_path": voice_path,
+    }
+
+
+def render_overview_card(title: str, value: str, detail: str) -> None:
+    st.markdown(
+        f"""
+        <div class="metric-box">
+          <div class="metric-label">{escape(title)}</div>
+          <div class="metric-value">{escape(value)}</div>
+          <div style="margin-top:6px;color:#94a3b8;font-size:13px;line-height:1.4;">{escape(detail)}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def render_frontdoor(settings: Settings) -> None:
     latest_day = latest_daily_day(settings.output_dir)
     default_day = date.fromisoformat(latest_day) if latest_day else date.today()
@@ -364,9 +396,15 @@ def render_frontdoor(settings: Settings) -> None:
     latest_dashboard = latest_dir / "daily_dashboard.html" if latest_dir else None
     latest_audio = latest_dir / "audio_status.html" if latest_dir else None
     latest_voice = latest_dir / "voice_status.html" if latest_dir else None
-    latest_file_count = 0
-    if latest_dir and latest_dir.exists():
-        latest_file_count = sum(1 for path in latest_dir.rglob("*") if path.is_file())
+    latest_overview = day_overview(latest_dir) if latest_dir else {
+        "file_count": 0,
+        "dashboard_exists": False,
+        "audio_exists": False,
+        "voice_exists": False,
+        "dashboard_path": None,
+        "audio_path": None,
+        "voice_path": None,
+    }
 
     st.markdown(
         f"""
@@ -426,6 +464,32 @@ def render_frontdoor(settings: Settings) -> None:
             )
         else:
             st.caption("No audio front door yet.")
+
+    overview_cols = st.columns(4)
+    with overview_cols[0]:
+        render_overview_card(
+            "Selected day",
+            inspect_date,
+            "The day currently shown in the dashboard and artifact panels.",
+        )
+    with overview_cols[1]:
+        render_overview_card(
+            "Artifacts",
+            str(latest_overview["file_count"]),
+            "Total files in the latest daily folder.",
+        )
+    with overview_cols[2]:
+        render_overview_card(
+            "Dashboard",
+            "ready" if latest_overview["dashboard_exists"] else "missing",
+            "The daily dashboard HTML for the latest run.",
+        )
+    with overview_cols[3]:
+        render_overview_card(
+            "Audio bundle",
+            "ready" if latest_overview["audio_exists"] else "missing",
+            "The unified audio status front door for the latest run.",
+        )
 
     if run_clicked:
         with st.spinner(f"Generating the daily run for {run_date}..."):
@@ -507,9 +571,10 @@ def render_frontdoor(settings: Settings) -> None:
         with right:
             st.subheader("Quick launch")
             current_day_dir = ui_settings.output_dir / "daily" / inspect_date
-            dashboard_path = current_day_dir / "daily_dashboard.html"
-            audio_path = current_day_dir / "audio_status.html"
-            voice_path = current_day_dir / "voice_status.html"
+            overview = day_overview(current_day_dir)
+            dashboard_path = overview["dashboard_path"]
+            audio_path = overview["audio_path"]
+            voice_path = overview["voice_path"]
             st.markdown(file_chip("Daily dashboard", dashboard_path), unsafe_allow_html=True)
             st.markdown(file_chip("Audio front door", audio_path), unsafe_allow_html=True)
             st.markdown(file_chip("Voice status", voice_path), unsafe_allow_html=True)
@@ -517,6 +582,8 @@ def render_frontdoor(settings: Settings) -> None:
                 st.markdown(f"[Open daily dashboard]({dashboard_path.as_uri()})")
             if audio_path.exists():
                 st.markdown(f"[Open audio front door]({audio_path.as_uri()})")
+            if voice_path.exists():
+                st.markdown(f"[Open voice status]({voice_path.as_uri()})")
 
     with tab_dashboard:
         st.subheader("Daily dashboard")
@@ -527,6 +594,10 @@ def render_frontdoor(settings: Settings) -> None:
         else:
             st.info("Run the pipeline or pick a day that already has a daily dashboard.")
             st.caption(str(dashboard_path))
+        st.markdown(
+            f"[Open dashboard file]({dashboard_path.as_uri()})" if dashboard_path.exists() else "",
+            unsafe_allow_html=True,
+        )
 
     with tab_audio:
         st.subheader("Audio front door")
@@ -560,6 +631,20 @@ def render_frontdoor(settings: Settings) -> None:
                 audio_file_list(sample_files)
             else:
                 st.write("No voice bundle found for this day.")
+
+        day_root = ui_settings.output_dir / "daily" / inspect_date
+        overview = day_overview(day_root)
+        st.markdown(
+            f"""
+            <div class="status-strip">
+              {status_pill("Files", str(overview["file_count"]))}
+              {status_pill("Dashboard", "ready" if overview["dashboard_exists"] else "missing")}
+              {status_pill("Audio", "ready" if overview["audio_exists"] else "missing")}
+              {status_pill("Voice", "ready" if overview["voice_exists"] else "missing")}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     with tab_files:
         st.subheader("Artifacts")
