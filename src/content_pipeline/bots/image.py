@@ -28,7 +28,7 @@ class ImageVariant:
 
 VARIANTS = [
     ImageVariant("1:1", 1080, 1080, "images/image_square"),
-    ImageVariant("16:9", 1280, 720, "images/image_landscape"),
+    ImageVariant("16:9", 1920, 1080, "images/image_landscape"),
     ImageVariant("9:16", 1080, 1920, "images/image_portrait"),
 ]
 
@@ -696,11 +696,11 @@ class PollinationsImageProvider:
         url = (
             f"https://image.pollinations.ai/prompt/{encoded_prompt}"
             f"?width={variant.width}&height={variant.height}"
-            f"&model=flux&seed={random_seed}"
+            f"&model=flux&seed={random_seed}&enhance=false"
         )
         try:
             time.sleep(3)  # Anti-rate-limiting delay
-            response = requests.get(url, timeout=45)
+            response = requests.get(url, timeout=60)
             response.raise_for_status()
             return response.content
         except Exception:
