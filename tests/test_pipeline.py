@@ -753,60 +753,56 @@ class PipelineTest(unittest.TestCase):
             def __init__(self, index: int, calls: list[int]) -> None:
                 self.index = index
                 self.calls = calls
-                self.models = types.SimpleNamespace(generate_content=self.generate_content)
+                self.models = types.SimpleNamespace(generate_images=self.generate_images)
 
-            def generate_content(self, **kwargs):
+            def generate_images(self, **kwargs):
                 self.calls.append(self.index)
                 return types.SimpleNamespace(
-                    candidates=[
+                    generated_images=[
                         types.SimpleNamespace(
-                            content=types.SimpleNamespace(
-                                parts=[
-                                    types.SimpleNamespace(
-                                        inline_data=types.SimpleNamespace(data=b"fake-image-bytes")
-                                    )
-                                ]
-                            )
+                            image=types.SimpleNamespace(image_bytes=b"fake-image-bytes")
                         )
                     ]
                 )
 
-        clock = FakeClock()
-        calls: list[int] = []
-        clients = [FakeClient(index, calls) for index in range(4)]
-        settings = Settings(
-            output_dir=Path("output"),
-            image_provider="gemini",
-            gemini_api_key="key-1",
-            gemini_image_daily_budget=50,
-            gemini_image_min_interval_seconds=10,
-            gemini_image_max_attempts=4,
-            gemini_image_retry_backoff_seconds=30,
-        )
-        limiter = GeminiImageLimiter(
-            key_count=4,
-            daily_budget=50,
-            min_interval_seconds=10,
-            max_attempts=4,
-            retry_backoff_seconds=30,
-            now_fn=clock.time,
-            sleep_fn=clock.sleep,
-        )
-        provider = GeminiImageProvider(
-            settings,
-            clients=clients,
-            limiter=limiter,
-            now_fn=clock.time,
-            sleep_fn=clock.sleep,
-        )
-        variant = ImageVariant("16:9", 1280, 720, "unused")
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            output = Path(temporary_dir) / "output"
+            clock = FakeClock()
+            calls: list[int] = []
+            clients = [FakeClient(index, calls) for index in range(4)]
+            settings = Settings(
+                output_dir=output,
+                image_provider="gemini",
+                gemini_api_key="key-1",
+                gemini_image_daily_budget=50,
+                gemini_image_min_interval_seconds=1,
+                gemini_image_max_attempts=4,
+                gemini_image_retry_backoff_seconds=30,
+            )
+            limiter = GeminiImageLimiter(
+                key_count=4,
+                daily_budget=50,
+                min_interval_seconds=1,
+                max_attempts=4,
+                retry_backoff_seconds=30,
+                now_fn=clock.time,
+                sleep_fn=clock.sleep,
+            )
+            provider = GeminiImageProvider(
+                settings,
+                clients=clients,
+                limiter=limiter,
+                now_fn=clock.time,
+                sleep_fn=clock.sleep,
+            )
+            variant = ImageVariant("16:9", 1280, 720, "unused")
 
-        for _ in range(5):
-            image_bytes = provider.create("Prompt text", variant)
-            self.assertEqual(image_bytes, b"fake-image-bytes")
+            for _ in range(5):
+                image_bytes = provider.create("Prompt text", variant)
+                self.assertEqual(image_bytes, b"fake-image-bytes")
 
-        self.assertEqual(calls, [0, 1, 2, 3, 0])
-        self.assertIn(10.0, clock.sleeps)
+            self.assertEqual(calls, [0, 1, 2, 3, 0])
+            self.assertIn(1.0, clock.sleeps)
 
     def test_gemini_image_provider_retries_on_rate_limit(self) -> None:
         class FakeClock:
@@ -825,9 +821,9 @@ class PipelineTest(unittest.TestCase):
             def __init__(self, index: int, calls: list[int]) -> None:
                 self.index = index
                 self.calls = calls
-                self.models = types.SimpleNamespace(generate_content=self.generate_content)
+                self.models = types.SimpleNamespace(generate_images=self.generate_images)
 
-            def generate_content(self, **kwargs):
+            def generate_images(self, **kwargs):
                 self.calls.append(self.index)
                 raise RuntimeError("429 Too Many Requests")
 
@@ -835,64 +831,60 @@ class PipelineTest(unittest.TestCase):
             def __init__(self, index: int, calls: list[int]) -> None:
                 self.index = index
                 self.calls = calls
-                self.models = types.SimpleNamespace(generate_content=self.generate_content)
+                self.models = types.SimpleNamespace(generate_images=self.generate_images)
 
-            def generate_content(self, **kwargs):
+            def generate_images(self, **kwargs):
                 self.calls.append(self.index)
                 return types.SimpleNamespace(
-                    candidates=[
+                    generated_images=[
                         types.SimpleNamespace(
-                            content=types.SimpleNamespace(
-                                parts=[
-                                    types.SimpleNamespace(
-                                        inline_data=types.SimpleNamespace(data=b"ok")
-                                    )
-                                ]
-                            )
+                            image=types.SimpleNamespace(image_bytes=b"ok")
                         )
                     ]
                 )
 
-        clock = FakeClock()
-        calls: list[int] = []
-        clients = [ErrorClient(0, calls), SuccessClient(1, calls)]
-        settings = Settings(
-            output_dir=Path("output"),
-            image_provider="gemini",
-            gemini_api_key="key-1",
-            gemini_image_daily_budget=50,
-            gemini_image_min_interval_seconds=10,
-            gemini_image_max_attempts=4,
-            gemini_image_retry_backoff_seconds=30,
-        )
-        provider = GeminiImageProvider(
-            settings,
-            clients=clients,
-            limiter=GeminiImageLimiter(
-                key_count=2,
-                daily_budget=50,
-                min_interval_seconds=10,
-                max_attempts=4,
-                retry_backoff_seconds=30,
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            output = Path(temporary_dir) / "output"
+            clock = FakeClock()
+            calls: list[int] = []
+            clients = [ErrorClient(0, calls), SuccessClient(1, calls)]
+            settings = Settings(
+                output_dir=output,
+                image_provider="gemini",
+                gemini_api_key="key-1",
+                gemini_image_daily_budget=50,
+                gemini_image_min_interval_seconds=10,
+                gemini_image_max_attempts=4,
+                gemini_image_retry_backoff_seconds=30,
+            )
+            provider = GeminiImageProvider(
+                settings,
+                clients=clients,
+                limiter=GeminiImageLimiter(
+                    key_count=2,
+                    daily_budget=50,
+                    min_interval_seconds=10,
+                    max_attempts=4,
+                    retry_backoff_seconds=30,
+                    now_fn=clock.time,
+                    sleep_fn=clock.sleep,
+                ),
                 now_fn=clock.time,
                 sleep_fn=clock.sleep,
-            ),
-            now_fn=clock.time,
-            sleep_fn=clock.sleep,
-        )
-        variant = ImageVariant("1:1", 1080, 1080, "unused")
+            )
+            variant = ImageVariant("1:1", 1080, 1080, "unused")
 
-        image_bytes = provider.create("Prompt text", variant)
+            image_bytes = provider.create("Prompt text", variant)
 
-        self.assertEqual(image_bytes, b"ok")
-        self.assertEqual(calls, [0, 1])
+            self.assertEqual(image_bytes, b"ok")
+            self.assertEqual(calls, [0, 1])
 
     def test_gemini_image_provider_falls_back_on_quota_exhaustion_after_retries(self) -> None:
         class QuotaClient:
             def __init__(self) -> None:
-                self.models = types.SimpleNamespace(generate_content=self.generate_content)
+                self.models = types.SimpleNamespace(generate_images=self.generate_images)
 
-            def generate_content(self, **kwargs):
+            def generate_images(self, **kwargs):
                 raise RuntimeError(
                     "429 RESOURCE_EXHAUSTED: You exceeded your current quota for gemini-2.5-flash-preview-image"
                 )
@@ -1018,10 +1010,10 @@ class PipelineTest(unittest.TestCase):
     def test_gemini_image_provider_refuses_batch_when_daily_budget_is_too_small(self) -> None:
         class FakeClient:
             def __init__(self) -> None:
-                self.models = types.SimpleNamespace(generate_content=self.generate_content)
+                self.models = types.SimpleNamespace(generate_images=self.generate_images)
 
-            def generate_content(self, **kwargs):
-                raise AssertionError("generate_content should not be called when budget is insufficient")
+            def generate_images(self, **kwargs):
+                raise AssertionError("generate_images should not be called when budget is insufficient")
 
         settings = Settings(
             output_dir=Path("output"),
@@ -1040,9 +1032,9 @@ class PipelineTest(unittest.TestCase):
     def test_gemini_image_provider_falls_back_to_mock_when_daily_budget_is_exhausted(self) -> None:
         class FakeClient:
             def __init__(self) -> None:
-                self.models = types.SimpleNamespace(generate_content=self.generate_content)
+                self.models = types.SimpleNamespace(generate_images=self.generate_images)
 
-            def generate_content(self, **kwargs):
+            def generate_images(self, **kwargs):
                 raise AssertionError("Gemini client should not be called after budget exhaustion")
 
         with tempfile.TemporaryDirectory() as temporary_dir:
@@ -1088,9 +1080,9 @@ class PipelineTest(unittest.TestCase):
     def test_gemini_image_provider_falls_back_when_all_keys_are_stuck_waiting(self) -> None:
         class FakeClient:
             def __init__(self) -> None:
-                self.models = types.SimpleNamespace(generate_content=self.generate_content)
+                self.models = types.SimpleNamespace(generate_images=self.generate_images)
 
-            def generate_content(self, **kwargs):
+            def generate_images(self, **kwargs):
                 raise AssertionError("Gemini client should not be called when keys are waiting too long")
 
         with tempfile.TemporaryDirectory() as temporary_dir:
@@ -1460,6 +1452,20 @@ class PipelineTest(unittest.TestCase):
             svg_content = images[0].read_text(encoding="utf-8")
             self.assertIn("THE PM AI QUESTION", svg_content)
             self.assertIn("no API cost", svg_content)
+
+    def test_krishna_planned_images_pace_requests_between_shots(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            output = Path(temporary_dir) / "output"
+            with patch("content_pipeline.bots.krishna_agents.time.sleep") as sleep_mock:
+                images = generate_planned_images(
+                    bal_krishna_image_plan(),
+                    MockImageProvider(),
+                    output,
+                    request_delay_seconds=2.5,
+                )
+
+            self.assertEqual(len(images), 2)
+            sleep_mock.assert_called_once_with(2.5)
 
     def test_selected_krishna_voice_records_creator_approved_edge_voice(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_dir:

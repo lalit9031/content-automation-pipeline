@@ -166,12 +166,16 @@ class GeminiImageProvider:
         if clients is None:
             try:
                 from google import genai
+                from google.genai.types import GenerateImagesConfig
             except ImportError as exc:
                 raise RuntimeError("Install live dependencies with: pip install -e '.[live]'") from exc
+            self.generate_images_config = GenerateImagesConfig
             clients = [genai.Client(api_key=key) for key in (settings.gemini_api_keys or (settings.gemini_api_key,))]
+        else:
+            self.generate_images_config = None
         self.settings = settings
         self.clients = clients
-        self.model = settings.gemini_image_model
+        self.model = settings.imagen_model
         self.fallback_provider = _fallback_image_provider(settings)
         state_path = settings.output_dir / ".runtime" / "gemini_image_rate_limit.json"
         self.limiter = limiter or GeminiImageLimiter(
@@ -202,12 +206,17 @@ class GeminiImageProvider:
                 return self.fallback_provider.create(prompt, variant)
             client = self.clients[client_index]
             try:
-                response = client.models.generate_content(
+                config = None
+                if self.generate_images_config is not None:
+                    config = self.generate_images_config(
+                        number_of_images=1,
+                        aspect_ratio=variant.aspect_ratio,
+                        output_mime_type="image/png",
+                    )
+                response = client.models.generate_images(
                     model=self.model,
-                    contents=(
-                        f"Create a polished, high-contrast presentation image for a {variant.aspect_ratio} canvas. "
-                        f"Use this creative brief: {prompt}"
-                    ),
+                    prompt=prompt,
+                    config=config,
                 )
                 image_bytes = _response_image_bytes(response)
                 if image_bytes is None:
@@ -490,7 +499,7 @@ def gemini_image_status(settings: Settings, now: float | None = None) -> dict[st
     return {
         "configured": any(slot["configured"] for slot in configured_slots),
         "configured_key_count": sum(1 for slot in configured_slots if slot["configured"]),
-        "model": settings.gemini_image_model,
+        "model": settings.imagen_model,
         "daily_budget": settings.gemini_image_daily_budget,
         "daily_generated": daily_usage,
         "daily_remaining": daily_remaining,
@@ -676,6 +685,7 @@ def generate_images(
     *,
     max_dimension: int = 2048,
     max_bytes: int = 5 * 1024 * 1024,
+    request_delay_seconds: float = 0.0,
 ) -> list[str]:
     files: list[str] = []
     batch_provider = provider
@@ -694,12 +704,14 @@ def generate_images(
                     batch_provider = provider.fallback_provider
                 else:
                     raise
-    for variant in VARIANTS:
+    for index, variant in enumerate(VARIANTS):
         filename = variant.filename + batch_provider.extension
         image_bytes = batch_provider.create(package.image_prompt, variant)
         _assert_image_limits(image_bytes, batch_provider.extension, filename, max_dimension, max_bytes)
         storage.write_bytes(package.date, filename, image_bytes)
         files.append(filename)
+        if request_delay_seconds > 0 and index + 1 < len(VARIANTS):
+            time.sleep(request_delay_seconds)
     return files
 
 
@@ -736,6 +748,15 @@ def _png_dimensions(image_bytes: bytes) -> tuple[int, int]:
 
 
 def _response_image_bytes(response: object) -> bytes | None:
+    generated_images = getattr(response, "generated_images", None)
+    if generated_images:
+        for generated_image in generated_images:
+            image = getattr(generated_image, "image", None)
+            if image is None:
+                continue
+            image_bytes = getattr(image, "image_bytes", None)
+            if image_bytes:
+                return bytes(image_bytes)
     candidates = []
     parts = getattr(response, "parts", None)
     if parts:

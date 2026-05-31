@@ -51,6 +51,7 @@ def run_linkedin_mvp(day: str, settings: Settings) -> dict[str, object]:
         storage,
         max_dimension=settings.image_max_dimension,
         max_bytes=settings.image_max_bytes,
+        request_delay_seconds=settings.image_request_delay_seconds,
     )
     image_quota_status = gemini_image_status(settings)
     quota_status_path = storage.write_json(day, "gemini_image_status.json", image_quota_status)

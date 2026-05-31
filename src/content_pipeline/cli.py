@@ -929,7 +929,12 @@ def main() -> int:
         if args.generate_images:
             provider = image_provider(settings)
             print(f"Generating {len(script.scenes)} scene images...")
-            generate_scene_images(workspace_dir, script, provider)
+            generate_scene_images(
+                workspace_dir,
+                script,
+                provider,
+                request_delay_seconds=settings.image_request_delay_seconds,
+            )
         if args.generate_audio:
             print(f"Generating {len(script.scenes)} narration audio files...")
             generate_narration_audio(workspace_dir, script, settings, voice=settings.indian_tts_voice)
@@ -972,7 +977,12 @@ def main() -> int:
     if args.command == "krishna-image-generate":
         plan_path = args.plan if args.plan.is_absolute() else project_dir / args.plan
         plan = ImagePlan.from_dict(json.loads(plan_path.read_text(encoding="utf-8")))
-        for path in generate_planned_images(plan, image_provider(settings), settings.output_dir):
+        for path in generate_planned_images(
+            plan,
+            image_provider(settings),
+            settings.output_dir,
+            request_delay_seconds=settings.image_request_delay_seconds,
+        ):
             print(path)
         return 0
     if args.command == "krishna-character-validation-init":
@@ -1366,6 +1376,7 @@ def main() -> int:
             gemini_key_count=max(1, len(settings.gemini_api_keys)),
             preview_without_audio=args.preview_without_audio,
             scene_image_provider=scene_image_provider,
+            request_delay_seconds=settings.image_request_delay_seconds,
         )
         for path in paths:
             print(path)

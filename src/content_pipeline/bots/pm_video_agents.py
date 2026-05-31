@@ -5,6 +5,7 @@ import math
 import json
 import shutil
 import subprocess
+import time
 from dataclasses import asdict, dataclass
 from datetime import date
 from html import escape
@@ -209,6 +210,7 @@ def create_daily_pm_video_batch(
     gemini_key_count: int = 4,
     preview_without_audio: bool = False,
     scene_image_provider: ImageProvider | None = None,
+    request_delay_seconds: float = 0.0,
 ) -> list[Path]:
     history = ContentHistory.load(output_dir)
     topics = daily_pm_video_topics(day, shorts_count + youtube_count, used_topics=history.topic_keys())
@@ -246,6 +248,7 @@ def create_daily_pm_video_batch(
             youtube_channel_url=youtube_channel_url,
             preview_without_audio=preview_without_audio,
             scene_image_provider=scene_image_provider,
+            request_delay_seconds=request_delay_seconds,
         )
         written.extend(paths)
         manifest["episodes"].append(_manifest_row(SHORTS_AGENT, episode, paths[0].parent))
@@ -283,6 +286,7 @@ def create_daily_pm_video_batch(
             youtube_channel_url=youtube_channel_url,
             preview_without_audio=preview_without_audio,
             scene_image_provider=scene_image_provider,
+            request_delay_seconds=request_delay_seconds,
         )
         written.extend(paths)
         manifest["episodes"].append(_manifest_row(YOUTUBE_AGENT, episode, paths[0].parent))
@@ -317,6 +321,7 @@ def create_pm_video_workspace(
     youtube_channel_url: str = "",
     preview_without_audio: bool = False,
     scene_image_provider: ImageProvider | None = None,
+    request_delay_seconds: float = 0.0,
 ) -> list[Path]:
     voice_sample_path = voice_sample_path or _default_voice_sample_path()
     root = output_dir / agent.output_folder / episode.episode_id[:10] / episode.episode_id
@@ -392,16 +397,17 @@ def create_pm_video_workspace(
         paths.append(_copy_voice_sample(audio_reference, voice_sample_path))
     if render_video:
         paths.append(
-        render_pm_episode_preview(
-            root,
-            episode,
-            agent,
-            openai_api_key=openai_api_key,
-            tts_voice=tts_voice,
-            voiceover_file=voiceover_file,
-            preview_without_audio=preview_without_audio,
-            scene_image_provider=scene_image_provider,
-        )
+            render_pm_episode_preview(
+                root,
+                episode,
+                agent,
+                openai_api_key=openai_api_key,
+                tts_voice=tts_voice,
+                voiceover_file=voiceover_file,
+                preview_without_audio=preview_without_audio,
+                scene_image_provider=scene_image_provider,
+                request_delay_seconds=request_delay_seconds,
+            )
         )
     return paths
 
@@ -415,6 +421,7 @@ def render_pm_episode_preview(
     voiceover_file: Path | None = None,
     preview_without_audio: bool = False,
     scene_image_provider: ImageProvider | None = None,
+    request_delay_seconds: float = 0.0,
 ) -> Path:
     executable = shutil.which("ffmpeg")
     if not executable:
@@ -434,6 +441,8 @@ def render_pm_episode_preview(
         art_path = None
         if scene_image_provider is not None:
             art_path = _render_scene_art(root, episode, clip, index, scene_image_provider)
+            if request_delay_seconds > 0 and index < len(episode.clips):
+                time.sleep(request_delay_seconds)
         art_paths.append(art_path)
         svg = _scene_svg(episode, agent, clip, index, art_path=art_path)
         svg_path = scene_dir / f"scene_{index:02d}.svg"
