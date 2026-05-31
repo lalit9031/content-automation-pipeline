@@ -206,6 +206,20 @@ def render_overview_card(title: str, value: str, detail: str) -> None:
     )
 
 
+def render_link_card(title: str, detail: str, link_label: str | None, link_url: str | None) -> None:
+    body = f"""
+        <div class="action-card">
+          <h3>{escape(title)}</h3>
+          <p>{escape(detail)}</p>
+    """
+    if link_label and link_url:
+        body += f'<div class="action-link"><a href="{escape(link_url, quote=True)}" target="_blank">{escape(link_label)}</a></div>'
+    else:
+        body += '<div class="action-link" style="color:#94a3b8;">Not available yet.</div>'
+    body += "</div>"
+    st.markdown(body, unsafe_allow_html=True)
+
+
 def render_frontdoor(settings: Settings) -> None:
     latest_day = latest_daily_day(settings.output_dir)
     default_day = date.fromisoformat(latest_day) if latest_day else date.today()
@@ -217,17 +231,20 @@ def render_frontdoor(settings: Settings) -> None:
         st.session_state["inspect_day"] = default_day
         st.rerun()
     recent_days = recent_daily_days(settings.output_dir)
-    selected_day = st.sidebar.selectbox(
-        "Recent days",
-        options=recent_days,
-        index=0 if recent_days else None,
-        disabled=not recent_days,
-    )
-    if st.sidebar.button("Load selected day", use_container_width=True, disabled=not recent_days):
-        selected = date.fromisoformat(selected_day)
-        st.session_state["run_day"] = selected
-        st.session_state["inspect_day"] = selected
-        st.rerun()
+    selected_day = latest_day or default_day.isoformat()
+    if recent_days:
+        selected_day = st.sidebar.selectbox(
+            "Recent days",
+            options=recent_days,
+            index=0,
+        )
+        if st.sidebar.button("Load selected day", use_container_width=True):
+            selected = date.fromisoformat(selected_day)
+            st.session_state["run_day"] = selected
+            st.session_state["inspect_day"] = selected
+            st.rerun()
+    else:
+        st.sidebar.caption("No recent runs yet.")
     run_day = st.sidebar.date_input(
         "Run day",
         value=st.session_state.get("run_day", default_day),
@@ -459,6 +476,29 @@ def render_frontdoor(settings: Settings) -> None:
         else:
             st.caption("No audio front door yet.")
 
+    link_cols = st.columns(3)
+    with link_cols[0]:
+        render_link_card(
+            "Selected dashboard",
+            "Open the dashboard for the day you are currently inspecting.",
+            "Open dashboard",
+            selected_overview["dashboard_path"].as_uri() if selected_overview["dashboard_exists"] else None,
+        )
+    with link_cols[1]:
+        render_link_card(
+            "Selected audio",
+            "Open the audio front door for the currently selected day.",
+            "Open audio",
+            selected_overview["audio_path"].as_uri() if selected_overview["audio_exists"] else None,
+        )
+    with link_cols[2]:
+        render_link_card(
+            "Selected voice",
+            "Open the voice bundle for the currently selected day.",
+            "Open voice",
+            selected_overview["voice_path"].as_uri() if selected_overview["voice_exists"] else None,
+        )
+
     overview_cols = st.columns(4)
     with overview_cols[0]:
         render_overview_card(
@@ -588,10 +628,8 @@ def render_frontdoor(settings: Settings) -> None:
         else:
             st.info("Run the pipeline or pick a day that already has a daily dashboard.")
             st.caption(str(dashboard_path))
-        st.markdown(
-            f"[Open dashboard file]({dashboard_path.as_uri()})" if dashboard_path.exists() else "",
-            unsafe_allow_html=True,
-        )
+        if dashboard_path.exists():
+            st.markdown(f"[Open dashboard file]({dashboard_path.as_uri()})")
 
     with tab_audio:
         st.subheader("Audio front door")
@@ -626,7 +664,6 @@ def render_frontdoor(settings: Settings) -> None:
             else:
                 st.write("No voice bundle found for this day.")
 
-        day_root = selected_day_dir
         overview = selected_overview
         st.markdown(
             f"""
