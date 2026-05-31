@@ -702,6 +702,8 @@ def generate_indian_voiceover(
                 break
                 
     if selected_preset is not None:
+        # Override the voice name to the preset's native base voice model
+        voice = selected_preset.voice
         if rate is None:
             rate = selected_preset.rate
         if pitch is None:
