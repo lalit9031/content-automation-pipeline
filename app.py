@@ -23,6 +23,8 @@ from content_pipeline.bots.audio import available_voice_options
 from content_pipeline.bots.audio import generate_music_preview
 from content_pipeline.bots.audio import generate_voice_preview
 from content_pipeline.bots.audio import normalize_voice_text
+from content_pipeline.bots.audio import reference_audio_language_options
+from content_pipeline.bots.audio import scan_reference_audio_library
 from content_pipeline.bots.audio import voice_preview_language_options
 from content_pipeline.bots.audio import voice_preview_presets
 from content_pipeline.bots.image import ImageVariant, image_provider
@@ -92,6 +94,7 @@ def _apply_streamlit_secrets() -> None:
         "PIPELINE_MODE",
         "PROMPT_PROVIDER",
         "IMAGE_PROVIDER",
+        "REFERENCE_AUDIO_DIR",
     ]
     for key in direct_keys:
         value = _secret(key)
@@ -128,6 +131,13 @@ def resolve_output_dir(raw_value: str) -> Path:
     if not output_dir.is_absolute():
         output_dir = PROJECT_ROOT / output_dir
     return output_dir
+
+
+def resolve_project_path(raw_value: str) -> Path:
+    path = Path(raw_value).expanduser()
+    if not path.is_absolute():
+        path = PROJECT_ROOT / path
+    return path
 
 
 def latest_daily_day(output_dir: Path) -> str | None:
@@ -169,6 +179,9 @@ def load_studio_state(output_dir: Path) -> dict[str, str]:
         "voice_preview_text",
         "voice_preview_path",
         "voice_library_language_filter",
+        "reference_audio_root",
+        "reference_audio_language_filter",
+        "reference_audio_preview_path",
         "image_provider",
         "image_topic",
         "image_subject",
@@ -411,12 +424,31 @@ def render_frontdoor(settings: Settings) -> None:
         )
         st.session_state["music_mood"] = saved_studio_state.get("music_mood", "cinematic")
         st.session_state["music_duration_seconds"] = int(saved_studio_state.get("music_duration_seconds", "8"))
+        st.session_state["reference_audio_root"] = saved_studio_state.get(
+            "reference_audio_root",
+            str(
+                settings.reference_audio_dir
+                if settings.reference_audio_dir is not None
+                else ui_output_dir / "reference_audio" / "indian_languages_audio_dataset"
+            ),
+        )
+        st.session_state["reference_audio_language_filter"] = saved_studio_state.get(
+            "reference_audio_language_filter",
+            "all",
+        )
+        st.session_state["reference_audio_preview_path"] = saved_studio_state.get(
+            "reference_audio_preview_path",
+            "",
+        )
         st.session_state["image_preview_path"] = ""
         st.session_state["music_preview_path"] = ""
     st.session_state.setdefault("image_preview_path", "")
     st.session_state.setdefault("music_preview_path", "")
     st.session_state.setdefault("voice_preview_path", "")
     st.session_state.setdefault("voice_library_language_filter", "all")
+    st.session_state.setdefault("reference_audio_root", "")
+    st.session_state.setdefault("reference_audio_language_filter", "all")
+    st.session_state.setdefault("reference_audio_preview_path", "")
     st.sidebar.subheader("Voice Studio")
     preset_options = voice_preview_presets()
     preset_map = {preset.key: preset for preset in preset_options}
@@ -514,6 +546,32 @@ def render_frontdoor(settings: Settings) -> None:
         key="music_mood",
     )
     st.sidebar.slider("Music preview length (seconds)", 4, 15, key="music_duration_seconds")
+    st.sidebar.subheader("Reference Audio")
+    default_reference_audio_root = (
+        str(settings.reference_audio_dir)
+        if settings.reference_audio_dir is not None
+        else str(ui_output_dir / "reference_audio" / "indian_languages_audio_dataset")
+    )
+    if not st.session_state["reference_audio_root"]:
+        st.session_state["reference_audio_root"] = default_reference_audio_root
+    st.sidebar.text_input(
+        "Reference dataset folder",
+        key="reference_audio_root",
+        help="Point this to the downloaded Kaggle dataset folder with language subfolders of MP3 clips.",
+    )
+    reference_audio_options = reference_audio_language_options()
+    reference_audio_language_map = {value: label for value, label in reference_audio_options}
+    if st.session_state["reference_audio_language_filter"] not in reference_audio_language_map:
+        st.session_state["reference_audio_language_filter"] = "all"
+    st.sidebar.selectbox(
+        "Reference language",
+        options=[value for value, _ in reference_audio_options],
+        index=[value for value, _ in reference_audio_options].index(
+            st.session_state["reference_audio_language_filter"]
+        ),
+        format_func=lambda value: reference_audio_language_map.get(value, value),
+        key="reference_audio_language_filter",
+    )
     if st.sidebar.button("Load latest day", use_container_width=True, disabled=not latest_day):
         st.session_state["run_day"] = default_day
         st.session_state["inspect_day"] = default_day
@@ -1146,6 +1204,53 @@ def render_frontdoor(settings: Settings) -> None:
             st.audio(str(preview_file))
             st.caption(str(preview_file))
 
+        st.markdown("#### Reference audio explorer")
+        reference_audio_root = resolve_project_path(st.session_state["reference_audio_root"])
+        reference_samples = scan_reference_audio_library(reference_audio_root)
+        available_languages = sorted({sample.language for sample in reference_samples})
+        reference_language_options = reference_audio_language_options(available_languages or None)
+        reference_language_map = {value: label for value, label in reference_language_options}
+        if st.session_state["reference_audio_language_filter"] not in reference_language_map:
+            st.session_state["reference_audio_language_filter"] = "all"
+        if not reference_samples:
+            st.info(
+                "No reference audio found yet. Download the Kaggle dataset into the folder shown in the sidebar, "
+                "then each language folder will appear here as a playable reference library."
+            )
+            st.caption(
+                "The Kaggle dataset is useful as a language and pronunciation reference library. "
+                "It is not used as a generation source."
+            )
+        else:
+            selected_reference_language = st.session_state["reference_audio_language_filter"]
+            filtered_reference_samples = [
+                sample
+                for sample in reference_samples
+                if selected_reference_language == "all" or sample.language == selected_reference_language
+            ]
+            st.caption(
+                f"Found {len(reference_samples)} reference clips across {len(available_languages)} language folders. "
+                f"Showing {len(filtered_reference_samples)} clip(s) for {reference_language_map.get(selected_reference_language, selected_reference_language)}."
+            )
+            reference_cols = st.columns(2)
+            for index, sample in enumerate(filtered_reference_samples[:12]):
+                column = reference_cols[index % 2]
+                with column:
+                    st.markdown(
+                        f"""
+                        <div class="metric-box">
+                          <div class="metric-label">{escape(sample.language)}</div>
+                          <div class="metric-value">{escape(sample.source_label)}</div>
+                          <div style="margin-top:6px;color:#94a3b8;font-size:13px;line-height:1.45;">{escape(Path(sample.path).name)}</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                    st.audio(sample.path)
+                    st.caption(sample.path)
+            if len(filtered_reference_samples) > 12:
+                st.caption("Showing the first 12 matching clips only to keep the studio responsive.")
+
         overview = selected_overview
         st.markdown(
             f"""
@@ -1220,6 +1325,9 @@ def render_frontdoor(settings: Settings) -> None:
             "image_prompt": str(st.session_state["image_prompt"]),
             "music_mood": str(st.session_state["music_mood"]),
             "music_duration_seconds": str(st.session_state["music_duration_seconds"]),
+            "reference_audio_root": str(st.session_state["reference_audio_root"]),
+            "reference_audio_language_filter": str(st.session_state["reference_audio_language_filter"]),
+            "reference_audio_preview_path": str(st.session_state["reference_audio_preview_path"]),
         },
     )
 

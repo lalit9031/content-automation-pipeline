@@ -77,6 +77,13 @@ class VoicePreviewPreset:
     sample_text: str
 
 
+@dataclass(frozen=True)
+class ReferenceAudioSample:
+    language: str
+    path: str
+    source_label: str
+
+
 VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
     VoicePreviewPreset(
         key="english_explainer",
@@ -255,6 +262,67 @@ def voice_preview_language_options() -> tuple[tuple[str, str], ...]:
         "hi-IN": "Hindi",
     }
     return tuple([("all", "All languages"), *[(language, labels.get(language, language)) for language in seen]])
+
+
+def reference_audio_language_options(languages: list[str] | None = None) -> tuple[tuple[str, str], ...]:
+    labels = {
+        "all": "All languages",
+        "bengali": "Bengali",
+        "gujarati": "Gujarati",
+        "hindi": "Hindi",
+        "kannada": "Kannada",
+        "malayalam": "Malayalam",
+        "marathi": "Marathi",
+        "punjabi": "Punjabi",
+        "tamil": "Tamil",
+        "telugu": "Telugu",
+        "urdu": "Urdu",
+    }
+    if languages is None:
+        languages = [
+            "bengali",
+            "gujarati",
+            "hindi",
+            "kannada",
+            "malayalam",
+            "marathi",
+            "punjabi",
+            "tamil",
+            "telugu",
+            "urdu",
+        ]
+    ordered = ["all", *[language for language in languages if language != "all"]]
+    seen: list[str] = []
+    for language in ordered:
+        if language not in seen:
+            seen.append(language)
+    return tuple((language, labels.get(language, language.title())) for language in seen)
+
+
+def scan_reference_audio_library(root: Path) -> list[ReferenceAudioSample]:
+    if not root.exists():
+        return []
+    samples: list[ReferenceAudioSample] = []
+    for path in sorted(root.rglob("*")):
+        if not path.is_file():
+            continue
+        if path.suffix.lower() not in {".mp3", ".wav", ".m4a", ".aac", ".ogg"}:
+            continue
+        try:
+            relative = path.relative_to(root)
+        except ValueError:
+            relative = path
+        language = relative.parts[0] if len(relative.parts) > 1 else path.parent.name
+        language = language.strip().lower() or "unknown"
+        source_label = path.stem.replace("_", " ").replace("-", " ").strip() or path.name
+        samples.append(
+            ReferenceAudioSample(
+                language=language,
+                path=str(path),
+                source_label=source_label,
+            )
+        )
+    return samples
 
 
 def normalize_voice_text(text: str) -> str:

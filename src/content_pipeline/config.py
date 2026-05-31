@@ -46,6 +46,7 @@ class Settings:
     luma_api_key: str = ""
     luma_image_model: str = "photon-1"
     luma_video_model: str = "ray-2"
+    reference_audio_dir: Path | None = None
     gemini_api_key: str = ""
     gemini_api_keys: tuple[str, ...] = ()
     gemini_video_model: str = "veo-3.0-fast-generate-001"
@@ -117,6 +118,11 @@ class Settings:
             luma_api_key=os.getenv("LUMAAI_API_KEY", ""),
             luma_image_model=os.getenv("LUMA_IMAGE_MODEL", "photon-1"),
             luma_video_model=os.getenv("LUMA_VIDEO_MODEL", "ray-2"),
+            reference_audio_dir=(
+                Path(ref_audio_dir)
+                if (ref_audio_dir := os.getenv("REFERENCE_AUDIO_DIR", "").strip())
+                else None
+            ),
             gemini_api_keys=(_gemini_keys := _read_key_pool("GEMINI_API_KEY", 5, fallback_env="GOOGLE_API_KEY")),
             gemini_api_key=_first_key(
                 _gemini_keys,

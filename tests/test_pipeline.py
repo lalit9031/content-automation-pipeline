@@ -87,6 +87,8 @@ from content_pipeline.bots.audio import available_voice_options
 from content_pipeline.bots.audio import generate_music_preview
 from content_pipeline.bots.audio import normalize_voice_text
 from content_pipeline.bots.audio import render_audio_status_html
+from content_pipeline.bots.audio import reference_audio_language_options
+from content_pipeline.bots.audio import scan_reference_audio_library
 from content_pipeline.bots.audio import voice_preview_language_options
 from content_pipeline.bots.audio import voice_preview_presets
 from content_pipeline.bots.audio import voice_status
@@ -230,6 +232,28 @@ class PipelineTest(unittest.TestCase):
         self.assertIn(("en-US", "English"), languages)
         self.assertIn(("en-IN", "Hinglish"), languages)
         self.assertIn(("hi-IN", "Hindi"), languages)
+
+    def test_reference_audio_language_options_cover_indian_languages(self) -> None:
+        languages = reference_audio_language_options(["hindi", "tamil", "urdu"])
+
+        self.assertIn(("all", "All languages"), languages)
+        self.assertIn(("hindi", "Hindi"), languages)
+        self.assertIn(("tamil", "Tamil"), languages)
+        self.assertIn(("urdu", "Urdu"), languages)
+
+    def test_scan_reference_audio_library_discovers_language_folder_samples(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            root = Path(temporary_dir) / "reference_audio" / "indian_languages_audio_dataset"
+            hindi_dir = root / "hindi"
+            hindi_dir.mkdir(parents=True, exist_ok=True)
+            sample = hindi_dir / "sample_001.mp3"
+            sample.write_bytes(b"fake-mp3-bytes")
+
+            samples = scan_reference_audio_library(root)
+
+            self.assertEqual(len(samples), 1)
+            self.assertEqual(samples[0].language, "hindi")
+            self.assertEqual(samples[0].path, str(sample))
 
     def test_music_preview_writes_wav_file(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_dir:

@@ -321,6 +321,8 @@ For voice:
 - `voice-status` prints the current voice provider, selected voice, and whether the daily bundle has real audio or manifest-only metadata.
 - `audio-status` summarizes the daily voice bundle plus the latest science and PM audio manifests.
 - Install `edge-tts` in your environment if you want to use the free Indian voice path.
+- `REFERENCE_AUDIO_DIR` can point the Streamlit Audio tab at a local reference corpus such as the Kaggle Indian Languages Audio Dataset.
+- The Streamlit Audio tab now includes a reference audio explorer that can filter and play local Hindi, Hinglish, and other Indian-language sample clips.
 
 Science video workspaces also write:
 
