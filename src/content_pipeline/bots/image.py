@@ -166,9 +166,13 @@ class GeminiImageProvider:
         if clients is None:
             try:
                 from google import genai
+                from google.genai.types import GenerateImagesConfig
             except ImportError as exc:
                 raise RuntimeError("Install live dependencies with: pip install -e '.[live]'") from exc
+            self.generate_images_config = GenerateImagesConfig
             clients = [genai.Client(api_key=key) for key in (settings.gemini_api_keys or (settings.gemini_api_key,))]
+        else:
+            self.generate_images_config = None
         self.settings = settings
         self.clients = clients
         self.model = settings.gemini_image_model
@@ -202,12 +206,17 @@ class GeminiImageProvider:
                 return self.fallback_provider.create(prompt, variant)
             client = self.clients[client_index]
             try:
-                response = client.models.generate_content(
+                config = None
+                if self.generate_images_config is not None:
+                    config = self.generate_images_config(
+                        number_of_images=1,
+                        aspect_ratio=variant.aspect_ratio,
+                        output_mime_type="image/png",
+                    )
+                response = client.models.generate_images(
                     model=self.model,
-                    contents=(
-                        f"Create a polished, high-contrast presentation image for a {variant.aspect_ratio} canvas. "
-                        f"Use this creative brief: {prompt}"
-                    ),
+                    prompt=prompt,
+                    config=config,
                 )
                 image_bytes = _response_image_bytes(response)
                 if image_bytes is None:
@@ -736,6 +745,15 @@ def _png_dimensions(image_bytes: bytes) -> tuple[int, int]:
 
 
 def _response_image_bytes(response: object) -> bytes | None:
+    generated_images = getattr(response, "generated_images", None)
+    if generated_images:
+        for generated_image in generated_images:
+            image = getattr(generated_image, "image", None)
+            if image is None:
+                continue
+            image_bytes = getattr(image, "image_bytes", None)
+            if image_bytes:
+                return bytes(image_bytes)
     candidates = []
     parts = getattr(response, "parts", None)
     if parts:
