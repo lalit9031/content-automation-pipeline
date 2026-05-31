@@ -245,6 +245,39 @@ def _voice_preview_fallback_voice(gender: str, language: str = "en-IN") -> str:
     return "en-IN-PrabhatNeural"
 
 
+def _voice_preview_fallback_candidates(gender: str, language: str = "en-IN") -> list[str]:
+    language = (language or "").strip().lower()
+    gender = (gender or "all").strip().lower()
+    candidates: list[str] = []
+    if language.startswith("hi"):
+        if gender == "male":
+            candidates.extend(["hi-IN-AaravNeural", "hi-IN-KunalNeural", "hi-IN-RehaanNeural"])
+        elif gender == "female":
+            candidates.extend(["hi-IN-SwaraNeural", "hi-IN-AnanyaNeural", "hi-IN-KavyaNeural"])
+        else:
+            candidates.extend(
+                [
+                    "hi-IN-AaravNeural",
+                    "hi-IN-KunalNeural",
+                    "hi-IN-RehaanNeural",
+                    "hi-IN-SwaraNeural",
+                ]
+            )
+    if gender == "male":
+        candidates.extend(["en-IN-PrabhatNeural", "en-IN-KunalNeural"])
+    elif gender == "female":
+        candidates.extend(["en-IN-NeerjaNeural", "hi-IN-SwaraNeural"])
+    else:
+        candidates.extend(["en-IN-PrabhatNeural", "en-IN-NeerjaNeural"])
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for candidate in candidates:
+        if candidate not in seen:
+            seen.add(candidate)
+            ordered.append(candidate)
+    return ordered
+
+
 def _generate_voice_preview_with_fallback(
     *,
     text: str,
@@ -253,29 +286,35 @@ def _generate_voice_preview_with_fallback(
     gender_hint: str = "all",
     language_hint: str = "en-IN",
 ) -> Path:
-    try:
-        return generate_voice_preview(
-            text,
-            preview_path,
-            provider="edge",
-            voice=voice,
+    attempts = [voice, *_voice_preview_fallback_candidates(gender_hint, language_hint)]
+    seen: set[str] = set()
+    last_error: Exception | None = None
+    for index, candidate in enumerate(attempts):
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        candidate_path = preview_path if index == 0 else preview_path.with_name(
+            f"{preview_path.stem}_{candidate}{preview_path.suffix}"
         )
-    except Exception as exc:
-        fallback_voice = _voice_preview_fallback_voice(gender_hint, language_hint)
-        if voice != fallback_voice:
-            try:
-                fallback_path = preview_path.with_name(f"{preview_path.stem}_edge{preview_path.suffix}")
-                generate_voice_preview(
-                    text,
-                    fallback_path,
-                    provider="edge",
-                    voice=fallback_voice,
-                )
-                st.warning("Voice preview could not run with the selected voice, so the app fell back to Edge TTS.")
-                return fallback_path
-            except Exception:
-                pass
-        raise exc
+        try:
+            output = generate_voice_preview(
+                text,
+                candidate_path,
+                provider="edge",
+                voice=candidate,
+            )
+            if output.exists() and output.stat().st_size > 0:
+                if candidate != voice:
+                    st.warning(
+                        f"Voice preview could not run with the selected voice, so the app fell back to {candidate}."
+                    )
+                return output
+            raise RuntimeError("No audio was received.")
+        except Exception as exc:
+            last_error = exc
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("Voice preview could not be generated.")
 
 
 def file_chip(label: str, path: Path) -> str:
@@ -454,6 +493,16 @@ def render_frontdoor(settings: Settings) -> None:
     output_dir_input = st.sidebar.text_input("Output directory", value=str(settings.output_dir))
     ui_output_dir = resolve_output_dir(output_dir_input)
     saved_studio_state = load_studio_state(ui_output_dir)
+    default_sidebar_mode = st.session_state.get("sidebar_mode", "Audio")
+    if default_sidebar_mode not in {"Audio", "Video", "All"}:
+        default_sidebar_mode = "Audio"
+    sidebar_mode = st.sidebar.radio(
+        "Sidebar mode",
+        options=("Audio", "Video", "All"),
+        index=("Audio", "Video", "All").index(default_sidebar_mode),
+        horizontal=True,
+        key="sidebar_mode",
+    )
     if st.session_state.get("_studio_output_dir") != str(ui_output_dir):
         st.session_state["_studio_output_dir"] = str(ui_output_dir)
         st.session_state["voice_preset_choice"] = saved_studio_state.get("voice_preset_choice", "english_explainer")
@@ -529,6 +578,7 @@ def render_frontdoor(settings: Settings) -> None:
     st.session_state.setdefault("image_preview_path", "")
     st.session_state.setdefault("music_preview_path", "")
     st.session_state.setdefault("voice_preview_path", "")
+    st.session_state.setdefault("sidebar_mode", "Audio")
     st.session_state.setdefault("voice_library_language_filter", "all")
     st.session_state.setdefault("voice_gender_filter", "all")
     st.session_state.setdefault("reference_audio_root", "")
@@ -537,153 +587,196 @@ def render_frontdoor(settings: Settings) -> None:
     st.session_state.setdefault("reference_audio_selected_clip", "")
     st.session_state.setdefault("reference_audio_preview_path", "")
     st.session_state.setdefault("reference_audio_bank_size", 24)
-    st.sidebar.subheader("Voice Studio")
+    show_audio_controls = sidebar_mode in {"Audio", "All"}
+    show_video_controls = sidebar_mode in {"Video", "All"}
+    if show_video_controls:
+        st.sidebar.subheader("Image Studio")
+        image_provider_options = ("mock", "imagen", "gemini", "openai")
+        current_image_provider = st.session_state.get("image_provider_choice", settings.image_provider)
+        if current_image_provider not in image_provider_options:
+            image_provider_options = (current_image_provider, *image_provider_options)
+        st.sidebar.selectbox(
+            "Image provider",
+            options=image_provider_options,
+            key="image_provider_choice",
+        )
+        st.sidebar.text_input("Image topic", key="image_topic")
+        st.sidebar.text_input("Image subject", key="image_subject")
+        if st.sidebar.button("Build image prompt", use_container_width=True):
+            st.session_state["image_prompt"] = build_cinematic_image_prompt(
+                st.session_state["image_topic"],
+                st.session_state["image_subject"],
+            )
+            st.rerun()
+        st.sidebar.text_area(
+            "Image prompt",
+            key="image_prompt",
+            height=180,
+            help="Edit the prompt here before generating the image preview.",
+        )
+        if st.sidebar.button("Generate image preview", use_container_width=True):
+            try:
+                image_settings = replace(settings, output_dir=ui_output_dir)
+                provider = image_provider(replace(image_settings, image_provider=st.session_state["image_provider_choice"]))
+                variant = ImageVariant("1:1", 1080, 1080, "image_preview")
+                preview_path = ui_output_dir / ".runtime" / "image_previews" / (
+                    f"{_slugify(st.session_state['image_topic'])}_{_slugify(st.session_state['image_subject'])}_{st.session_state['image_provider_choice']}{provider.extension}"
+                )
+                preview_path.parent.mkdir(parents=True, exist_ok=True)
+                preview_path.write_bytes(provider.create(st.session_state["image_prompt"], variant))
+                st.session_state["image_preview_path"] = str(preview_path)
+                st.sidebar.success(f"Image preview written to {preview_path}")
+            except Exception as exc:
+                st.sidebar.error(str(exc))
+        if st.session_state.get("image_preview_path"):
+            st.sidebar.caption("Preview ready in the Studio tab.")
+    if show_audio_controls:
+        st.sidebar.subheader("Voice Studio")
     gender_options = voice_gender_options()
     gender_map = {value: label for value, label in gender_options}
     default_voice_gender = st.session_state.get("voice_gender_filter", "all")
     if default_voice_gender not in gender_map:
         default_voice_gender = "all"
         st.session_state["voice_gender_filter"] = default_voice_gender
-    st.sidebar.selectbox(
-        "Voice gender",
-        options=[value for value, _ in gender_options],
-        index=[value for value, _ in gender_options].index(default_voice_gender),
-        format_func=lambda value: gender_map.get(value, value),
-        key="voice_gender_filter",
-    )
-    preset_options = filter_voice_preview_presets(
-        voice_preview_presets(),
-        gender=st.session_state["voice_gender_filter"],
-    )
-    if not preset_options:
-        preset_options = voice_preview_presets()
-    preset_map = {preset.key: preset for preset in preset_options}
-    preset_default = st.session_state.get("voice_preset_choice", preset_options[0].key)
-    if preset_default not in preset_map:
-        preset_default = preset_options[0].key
-        st.session_state["voice_preset_choice"] = preset_default
-    st.sidebar.selectbox(
-        "Voice preset",
-        options=[preset.key for preset in preset_options],
-        index=[preset.key for preset in preset_options].index(preset_default),
-        format_func=lambda value: f"{preset_map[value].label} - {preset_map[value].description}",
-        key="voice_preset_choice",
-    )
-    apply_voice_preset = st.sidebar.button("Apply voice preset", use_container_width=True)
-    if apply_voice_preset:
-        preset = preset_map[st.session_state["voice_preset_choice"]]
-        st.session_state["voice_provider_choice"] = "edge"
-        st.session_state["voice_name_choice"] = preset.voice
-        st.session_state["voice_preview_text"] = preset.sample_text
-        st.rerun()
-    st.sidebar.selectbox(
-        "Voice provider",
-        options=("edge",),
-        index=0,
-        key="voice_provider_choice",
-    )
-    voice_provider_choice = "edge"
-    voice_options = available_voice_options("edge", st.session_state["voice_gender_filter"])
-    if not voice_options:
-        voice_options = available_voice_options("edge")
-    voice_option_values = [voice for voice, _ in voice_options]
-    default_voice = st.session_state["voice_name_choice"] or settings.indian_tts_voice
-    if default_voice not in voice_option_values:
-        default_voice = voice_option_values[0]
-    if st.session_state["voice_name_choice"] not in voice_option_values:
-        st.session_state["voice_name_choice"] = default_voice
-    voice_name_choice = st.sidebar.selectbox(
-        "Voice name",
-        options=voice_option_values,
-        index=voice_option_values.index(st.session_state["voice_name_choice"]),
-        format_func=lambda value: next(label for voice, label in voice_options if voice == value),
-        key="voice_name_choice",
-    )
-    voice_preview_text = st.sidebar.text_area(
-        "Voiceover script preview",
-        value=st.session_state["voice_preview_text"],
-        height=140,
-        key="voice_preview_text",
-    )
-    current_voice_preset = preset_map[st.session_state["voice_preset_choice"]]
-    st.sidebar.caption(
-        f"Preset: {current_voice_preset.label} · Script language: {current_voice_preset.language} · Voice type: {current_voice_preset.gender}"
-    )
-    language_options = voice_preview_language_options()
-    language_map = {value: label for value, label in language_options}
-    default_language_filter = st.session_state.get("voice_library_language_filter", "all")
-    if default_language_filter not in language_map:
-        default_language_filter = "all"
-        st.session_state["voice_library_language_filter"] = default_language_filter
-    st.sidebar.selectbox(
-        "Voice library language",
-        options=[value for value, _ in language_options],
-        index=[value for value, _ in language_options].index(default_language_filter),
-        format_func=lambda value: language_map.get(value, value),
-        key="voice_library_language_filter",
-    )
-    st.sidebar.caption(
-        f"Voice gender filter: {gender_map.get(st.session_state['voice_gender_filter'], st.session_state['voice_gender_filter'])}"
-    )
-    st.sidebar.subheader("Image Studio")
-    image_provider_options = ("mock", "gemini", "imagen", "openai")
-    image_provider_default = st.session_state["image_provider_choice"]
-    if image_provider_default not in image_provider_options:
-        image_provider_default = settings.image_provider if settings.image_provider in image_provider_options else "mock"
-        st.session_state["image_provider_choice"] = image_provider_default
-    st.sidebar.selectbox(
-        "Image provider",
-        options=image_provider_options,
-        index=image_provider_options.index(image_provider_default),
-        key="image_provider_choice",
-    )
-    st.sidebar.text_input("Image topic", key="image_topic")
-    st.sidebar.text_input("Image subject", key="image_subject")
-    st.sidebar.subheader("Music Studio")
-    music_mood_options = ("cinematic", "focus", "warm", "uplift", "ambient")
-    music_mood_default = st.session_state["music_mood"]
-    if music_mood_default not in music_mood_options:
-        music_mood_default = "cinematic"
-        st.session_state["music_mood"] = music_mood_default
-    st.sidebar.selectbox(
-        "Music mood",
-        options=music_mood_options,
-        index=music_mood_options.index(music_mood_default),
-        key="music_mood",
-    )
-    st.sidebar.slider("Music preview length (seconds)", 4, 15, key="music_duration_seconds")
-    st.sidebar.subheader("Reference Audio")
-    default_reference_audio_root = (
-        str(settings.reference_audio_dir)
-        if settings.reference_audio_dir is not None
-        else str(ui_output_dir / "reference_audio" / "indian_languages_audio_dataset")
-    )
-    if not st.session_state["reference_audio_root"]:
-        st.session_state["reference_audio_root"] = default_reference_audio_root
-    st.sidebar.text_input(
-        "Reference dataset folder",
-        key="reference_audio_root",
-        help="Point this to the downloaded Kaggle dataset folder with language subfolders of MP3 clips.",
-    )
-    st.sidebar.text_input(
-        "Reference bank language",
-        key="reference_audio_default_language",
-        help="Use this when the folder is flat, such as a single Hindi audio bank with numeric filenames.",
-    )
-    st.sidebar.slider("Reference bank size", 20, 30, key="reference_audio_bank_size")
-    reference_audio_options = reference_audio_language_options()
-    reference_audio_language_map = {value: label for value, label in reference_audio_options}
-    if st.session_state["reference_audio_language_filter"] not in reference_audio_language_map:
-        st.session_state["reference_audio_language_filter"] = "all"
-    st.sidebar.selectbox(
-        "Reference language",
-        options=[value for value, _ in reference_audio_options],
-        index=[value for value, _ in reference_audio_options].index(
-            st.session_state["reference_audio_language_filter"]
-        ),
-        format_func=lambda value: reference_audio_language_map.get(value, value),
-        key="reference_audio_language_filter",
-    )
+    if show_audio_controls:
+        st.sidebar.selectbox(
+            "Voice gender",
+            options=[value for value, _ in gender_options],
+            index=[value for value, _ in gender_options].index(default_voice_gender),
+            format_func=lambda value: gender_map.get(value, value),
+            key="voice_gender_filter",
+        )
+        preset_options = filter_voice_preview_presets(
+            voice_preview_presets(),
+            gender=st.session_state["voice_gender_filter"],
+        )
+        if not preset_options:
+            preset_options = voice_preview_presets()
+        preset_map = {preset.key: preset for preset in preset_options}
+        preset_default = st.session_state.get("voice_preset_choice", preset_options[0].key)
+        if preset_default not in preset_map:
+            preset_default = preset_options[0].key
+            st.session_state["voice_preset_choice"] = preset_default
+        st.sidebar.selectbox(
+            "Voice preset",
+            options=[preset.key for preset in preset_options],
+            index=[preset.key for preset in preset_options].index(preset_default),
+            format_func=lambda value: f"{preset_map[value].label} - {preset_map[value].description}",
+            key="voice_preset_choice",
+        )
+        apply_voice_preset = st.sidebar.button("Apply voice preset", use_container_width=True)
+        if apply_voice_preset:
+            preset = preset_map[st.session_state["voice_preset_choice"]]
+            st.session_state["voice_provider_choice"] = "edge"
+            st.session_state["voice_name_choice"] = preset.voice
+            st.session_state["voice_preview_text"] = preset.sample_text
+            st.rerun()
+        st.sidebar.selectbox(
+            "Voice provider",
+            options=("edge",),
+            index=0,
+            key="voice_provider_choice",
+        )
+        voice_provider_choice = "edge"
+        voice_options = available_voice_options("edge", st.session_state["voice_gender_filter"])
+        if not voice_options:
+            voice_options = available_voice_options("edge")
+        voice_option_values = [voice for voice, _ in voice_options]
+        default_voice = st.session_state["voice_name_choice"] or settings.indian_tts_voice
+        if default_voice not in voice_option_values:
+            default_voice = voice_option_values[0]
+        if st.session_state["voice_name_choice"] not in voice_option_values:
+            st.session_state["voice_name_choice"] = default_voice
+        voice_name_choice = st.sidebar.selectbox(
+            "Voice name",
+            options=voice_option_values,
+            index=voice_option_values.index(st.session_state["voice_name_choice"]),
+            format_func=lambda value: next(label for voice, label in voice_options if voice == value),
+            key="voice_name_choice",
+        )
+        voice_preview_text = st.sidebar.text_area(
+            "Voiceover script preview",
+            value=st.session_state["voice_preview_text"],
+            height=140,
+            key="voice_preview_text",
+        )
+        current_voice_preset = preset_map[st.session_state["voice_preset_choice"]]
+        st.sidebar.caption(
+            f"Preset: {current_voice_preset.label} · Script language: {current_voice_preset.language} · Voice type: {current_voice_preset.gender}"
+        )
+        language_options = voice_preview_language_options()
+        language_map = {value: label for value, label in language_options}
+        default_language_filter = st.session_state.get("voice_library_language_filter", "all")
+        if default_language_filter not in language_map:
+            default_language_filter = "all"
+            st.session_state["voice_library_language_filter"] = default_language_filter
+        st.sidebar.selectbox(
+            "Voice library language",
+            options=[value for value, _ in language_options],
+            index=[value for value, _ in language_options].index(default_language_filter),
+            format_func=lambda value: language_map.get(value, value),
+            key="voice_library_language_filter",
+        )
+        st.sidebar.caption(
+            f"Voice gender filter: {gender_map.get(st.session_state['voice_gender_filter'], st.session_state['voice_gender_filter'])}"
+        )
+        st.sidebar.subheader("Music Studio")
+        music_mood_options = ("cinematic", "focus", "warm", "uplift", "ambient")
+        music_mood_default = st.session_state["music_mood"]
+        if music_mood_default not in music_mood_options:
+            music_mood_default = "cinematic"
+            st.session_state["music_mood"] = music_mood_default
+        st.sidebar.selectbox(
+            "Music mood",
+            options=music_mood_options,
+            index=music_mood_options.index(music_mood_default),
+            key="music_mood",
+        )
+        st.sidebar.slider("Music preview length (seconds)", 4, 15, key="music_duration_seconds")
+        st.sidebar.subheader("Reference Audio")
+        default_reference_audio_root = (
+            str(settings.reference_audio_dir)
+            if settings.reference_audio_dir is not None
+            else str(ui_output_dir / "reference_audio" / "indian_languages_audio_dataset")
+        )
+        if not st.session_state["reference_audio_root"]:
+            st.session_state["reference_audio_root"] = default_reference_audio_root
+        st.sidebar.text_input(
+            "Reference dataset folder",
+            key="reference_audio_root",
+            help="Point this to the downloaded Kaggle dataset folder with language subfolders of MP3 clips.",
+        )
+        st.sidebar.text_input(
+            "Reference bank language",
+            key="reference_audio_default_language",
+            help="Use this when the folder is flat, such as a single Hindi audio bank with numeric filenames.",
+        )
+        st.sidebar.slider("Reference bank size", 20, 30, key="reference_audio_bank_size")
+        reference_audio_options = reference_audio_language_options()
+        reference_audio_language_map = {value: label for value, label in reference_audio_options}
+        if st.session_state["reference_audio_language_filter"] not in reference_audio_language_map:
+            st.session_state["reference_audio_language_filter"] = "all"
+        st.sidebar.selectbox(
+            "Reference language",
+            options=[value for value, _ in reference_audio_options],
+            index=[value for value, _ in reference_audio_options].index(
+                st.session_state["reference_audio_language_filter"]
+            ),
+            format_func=lambda value: reference_audio_language_map.get(value, value),
+            key="reference_audio_language_filter",
+        )
+    else:
+        voice_provider_choice = "edge"
+        voice_option_values = available_voice_options("edge")
+        voice_name_choice = st.session_state["voice_name_choice"]
+        current_voice_preset = next(
+            (preset for preset in voice_preview_presets() if preset.key == st.session_state["voice_preset_choice"]),
+            voice_preview_presets()[0],
+        )
+        voice_preview_text = st.session_state["voice_preview_text"]
+        language_map = {value: label for value, label in voice_preview_language_options()}
+        reference_audio_language_map = {value: label for value, label in reference_audio_language_options()}
+        reference_samples = []
     if st.sidebar.button("Load latest day", use_container_width=True, disabled=not latest_day):
         st.session_state["run_day"] = default_day
         st.session_state["inspect_day"] = default_day
@@ -1060,83 +1153,61 @@ def render_frontdoor(settings: Settings) -> None:
     )
 
     with tab_studio:
-        st.subheader("Image studio")
-        image_style_pack = build_image_style_pack(
-            st.session_state["image_topic"],
-            subject=st.session_state["image_subject"],
-        )
-        image_provider_choice = st.session_state["image_provider_choice"]
-        image_prompt_default = st.session_state["image_prompt"] or build_cinematic_image_prompt(
-            st.session_state["image_topic"],
-            st.session_state["image_subject"],
-        )
-        image_prompt = st.text_area("Image prompt", value=image_prompt_default, height=180, key="image_prompt")
-        st.caption("Tip: keep the prompt vivid, specific, and free of text, logos, and watermarks.")
-        image_action_cols = st.columns([1, 1])
-        with image_action_cols[0]:
-            if st.button("Generate image preview", use_container_width=True):
-                try:
-                    provider = image_provider(replace(ui_settings, image_provider=image_provider_choice))
-                    variant = ImageVariant("1:1", 1080, 1080, "image_preview")
-                    preview_path = ui_settings.output_dir / ".runtime" / "image_previews" / (
-                        f"{_slugify(st.session_state['image_topic'])}_{_slugify(st.session_state['image_subject'])}_{image_provider_choice}{provider.extension}"
-                    )
-                    preview_path.parent.mkdir(parents=True, exist_ok=True)
-                    preview_path.write_bytes(provider.create(image_prompt, variant))
-                    st.session_state["image_preview_path"] = str(preview_path)
-                    st.success(f"Image preview written to {preview_path}")
-                except Exception as exc:
-                    st.error(str(exc))
-        with image_action_cols[1]:
-            st.markdown(
-                f"""
-                <div class="metric-box">
-                  <div class="metric-label">Selected image provider</div>
-                  <div class="metric-value">{escape(image_provider_choice)}</div>
-                  <div style="margin-top:6px;color:#94a3b8;font-size:13px;line-height:1.4;">Topic: {escape(st.session_state['image_topic'])}<br>Subject: {escape(st.session_state['image_subject'])}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
+        if show_video_controls:
+            st.subheader("Image studio")
+            image_style_pack = build_image_style_pack(
+                st.session_state["image_topic"],
+                subject=st.session_state["image_subject"],
             )
-        if st.session_state["image_preview_path"]:
-            preview_path = Path(st.session_state["image_preview_path"])
-            if preview_path.exists():
-                render_image_preview(preview_path)
-        with st.expander("Image prompt pack", expanded=False):
-            st.json(image_style_pack.as_dict())
-            st.code(image_prompt, language="text")
+            image_provider_choice = st.session_state["image_provider_choice"]
+            image_prompt = st.session_state["image_prompt"]
+            st.caption("Tip: keep the prompt vivid, specific, and free of text, logos, and watermarks.")
+            if st.session_state["image_preview_path"]:
+                preview_path = Path(st.session_state["image_preview_path"])
+                if preview_path.exists():
+                    render_image_preview(preview_path)
+            with st.expander("Image prompt pack", expanded=False):
+                st.json(image_style_pack.as_dict())
+                st.code(image_prompt, language="text")
+        else:
+            st.info(
+                "Video tools are hidden in Audio mode. Switch the sidebar mode to Video or All to edit image prompts and generate previews."
+            )
 
-        st.markdown("### Music studio")
-        music_mood = st.session_state["music_mood"]
-        music_duration = int(st.session_state["music_duration_seconds"])
-        music_action_cols = st.columns([1, 1])
-        with music_action_cols[0]:
-            if st.button("Generate music preview", use_container_width=True):
-                try:
-                    preview_path = ui_settings.output_dir / ".runtime" / "music_previews" / (
-                        f"{_slugify(music_mood)}_{music_duration}s.wav"
-                    )
-                    generate_music_preview(preview_path, music_mood, duration_seconds=music_duration)
-                    st.session_state["music_preview_path"] = str(preview_path)
-                    st.success(f"Music preview written to {preview_path}")
-                except Exception as exc:
-                    st.error(str(exc))
-        with music_action_cols[1]:
-            st.markdown(
-                f"""
-                <div class="metric-box">
-                  <div class="metric-label">Selected mood</div>
-                  <div class="metric-value">{escape(music_mood)}</div>
-                  <div style="margin-top:6px;color:#94a3b8;font-size:13px;line-height:1.4;">Preview length: {music_duration} seconds</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-        if st.session_state["music_preview_path"]:
-            music_preview_path = Path(st.session_state["music_preview_path"])
-            if music_preview_path.exists():
-                st.audio(str(music_preview_path))
-                st.caption(str(music_preview_path))
+        if show_audio_controls:
+            st.markdown("### Music studio")
+            music_mood = st.session_state["music_mood"]
+            music_duration = int(st.session_state["music_duration_seconds"])
+            music_action_cols = st.columns([1, 1])
+            with music_action_cols[0]:
+                if st.button("Generate music preview", use_container_width=True):
+                    try:
+                        preview_path = ui_settings.output_dir / ".runtime" / "music_previews" / (
+                            f"{_slugify(music_mood)}_{music_duration}s.wav"
+                        )
+                        generate_music_preview(preview_path, music_mood, duration_seconds=music_duration)
+                        st.session_state["music_preview_path"] = str(preview_path)
+                        st.success(f"Music preview written to {preview_path}")
+                    except Exception as exc:
+                        st.error(str(exc))
+            with music_action_cols[1]:
+                st.markdown(
+                    f"""
+                    <div class="metric-box">
+                      <div class="metric-label">Selected mood</div>
+                      <div class="metric-value">{escape(music_mood)}</div>
+                      <div style="margin-top:6px;color:#94a3b8;font-size:13px;line-height:1.4;">Preview length: {music_duration} seconds</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+            if st.session_state["music_preview_path"]:
+                music_preview_path = Path(st.session_state["music_preview_path"])
+                if music_preview_path.exists():
+                    st.audio(str(music_preview_path))
+                    st.caption(str(music_preview_path))
+        else:
+            st.info("Music preview controls are hidden in Video mode. Switch the sidebar mode to Audio or All to use them.")
 
     with tab_run:
         left, right = st.columns([1.2, 0.8])
