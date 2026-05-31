@@ -199,6 +199,22 @@ class PipelineTest(unittest.TestCase):
         self.assertIn("project dashboard", prompt)
         self.assertIn("project dashboard workflow management", prompt)
 
+    def test_image_prompt_safety_status_reports_safe_prompt(self) -> None:
+        try:
+            import app as streamlit_app
+        except ModuleNotFoundError:
+            self.skipTest("Streamlit is not installed in the test environment")
+
+        state, message = streamlit_app.image_prompt_safety_status(
+            build_cinematic_image_prompt(
+                "Agile project management",
+                "a team reviewing a glowing workflow board",
+            )
+        )
+
+        self.assertEqual(state, "safe prompt")
+        self.assertIn("ready", message)
+
     def test_image_style_pack_builds_storyboard_and_thumbnail_prompts(self) -> None:
         pack = build_image_style_pack("Agile project management", subject="a team board")
 

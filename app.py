@@ -33,6 +33,7 @@ from content_pipeline.bots.audio import voice_preview_presets
 from content_pipeline.bots.image import ImageVariant, gemini_image_package_plan, image_provider
 from content_pipeline.bots.prompt import build_cinematic_image_prompt
 from content_pipeline.bots.prompt import build_image_style_pack
+from content_pipeline.bots.prompt import sanitize_image_prompt_text
 from content_pipeline.config import Settings
 from content_pipeline.pipeline import run_linkedin_mvp
 
@@ -296,6 +297,13 @@ def image_backend_status(settings: Settings, selected_provider: str) -> tuple[st
     if bool(plan.get("stop_before_failure")):
         return "fallback ready", "Gemini is close to a limit. The fallback path is ready if needed."
     return "gemini ready", "Gemini can handle one image preview now."
+
+
+def image_prompt_safety_status(prompt: str) -> tuple[str, str]:
+    sanitized_prompt = sanitize_image_prompt_text(prompt)
+    if sanitized_prompt != prompt:
+        return "safe prompt", "Brand-heavy terms were softened before the image request."
+    return "safe prompt", "Prompt is ready for a single image preview."
 
 
 def apply_voice_preset_by_key(preset_key: str) -> None:
@@ -1271,6 +1279,7 @@ def render_frontdoor(settings: Settings) -> None:
             image_provider_choice = st.session_state["image_provider_choice"]
             image_backend_state, image_backend_message = image_backend_status(settings, image_provider_choice)
             image_prompt = st.session_state["image_prompt"]
+            image_prompt_state, image_prompt_message = image_prompt_safety_status(image_prompt)
             image_preview_path = (
                 Path(st.session_state["image_preview_path"])
                 if st.session_state.get("image_preview_path")
@@ -1297,6 +1306,16 @@ def render_frontdoor(settings: Settings) -> None:
                 """,
                 unsafe_allow_html=True,
             )
+            st.markdown(
+                f"""
+                <div class="metric-box">
+                  <div class="metric-label">Prompt safety</div>
+                  <div class="metric-value">{escape(image_prompt_state)}</div>
+                  <div style="margin-top:6px;color:#94a3b8;font-size:13px;line-height:1.4;">{escape(image_prompt_message)}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
             st.caption(image_request_note)
             st.caption("Tip: keep the prompt vivid, specific, and free of text, logos, and watermarks.")
             st.text_area("Current image prompt", value=image_prompt, height=170, disabled=True)
@@ -1316,6 +1335,8 @@ def render_frontdoor(settings: Settings) -> None:
             )
             image_provider_choice = st.session_state["image_provider_choice"]
             image_backend_state, image_backend_message = image_backend_status(settings, image_provider_choice)
+            image_prompt = st.session_state["image_prompt"]
+            image_prompt_state, image_prompt_message = image_prompt_safety_status(image_prompt)
             image_preview_path = (
                 Path(st.session_state["image_preview_path"])
                 if st.session_state.get("image_preview_path")
@@ -1342,12 +1363,22 @@ def render_frontdoor(settings: Settings) -> None:
                 """,
                 unsafe_allow_html=True,
             )
+            st.markdown(
+                f"""
+                <div class="metric-box">
+                  <div class="metric-label">Prompt safety</div>
+                  <div class="metric-value">{escape(image_prompt_state)}</div>
+                  <div style="margin-top:6px;color:#94a3b8;font-size:13px;line-height:1.4;">{escape(image_prompt_message)}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
             st.caption(
                 "Audio mode keeps the full image editor hidden, but you can still generate one confirmation image from the current prompt."
             )
             st.caption(image_request_note)
-            st.text_area("Current image prompt", value=st.session_state["image_prompt"], height=170, disabled=True)
-            components.html(copy_prompt_button(st.session_state["image_prompt"], button_id="copy-quick-image-prompt"), height=52)
+            st.text_area("Current image prompt", value=image_prompt, height=170, disabled=True)
+            components.html(copy_prompt_button(image_prompt, button_id="copy-quick-image-prompt"), height=52)
             if st.button("Generate 1 image preview", key="studio_quick_image_preview", use_container_width=True):
                 try:
                     image_settings = replace(settings, output_dir=ui_output_dir)
@@ -1359,7 +1390,7 @@ def render_frontdoor(settings: Settings) -> None:
                         f"{_slugify(st.session_state['image_topic'])}_{_slugify(st.session_state['image_subject'])}_{st.session_state['image_provider_choice']}{provider.extension}"
                     )
                     preview_path.parent.mkdir(parents=True, exist_ok=True)
-                    preview_path.write_bytes(provider.create(st.session_state["image_prompt"], variant))
+                    preview_path.write_bytes(provider.create(image_prompt, variant))
                     st.session_state["image_preview_path"] = str(preview_path)
                     st.success(f"Image preview written to {preview_path}")
                 except Exception as exc:
@@ -1370,7 +1401,7 @@ def render_frontdoor(settings: Settings) -> None:
                     render_image_preview(preview_path)
             with st.expander("Image prompt pack", expanded=False):
                 st.json(image_style_pack.as_dict())
-                st.code(st.session_state["image_prompt"], language="text")
+                st.code(image_prompt, language="text")
             st.info("Switch the sidebar mode to Image or All if you want the full image editor controls.")
 
         if show_audio_controls:

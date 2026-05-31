@@ -85,6 +85,10 @@ def _sanitize_image_prompt_text(value: str) -> str:
     return sanitized
 
 
+def sanitize_image_prompt_text(value: str) -> str:
+    return _sanitize_image_prompt_text(value)
+
+
 class PromptProvider(Protocol):
     def generate(self, day: str, avoid_topics: list[str] | None = None) -> ContentPackage: ...
 
