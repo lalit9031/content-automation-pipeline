@@ -664,13 +664,6 @@ def render_frontdoor(settings: Settings) -> None:
             format_func=lambda value: f"{preset_map[value].label} - {preset_map[value].description}",
             key="voice_preset_choice",
         )
-        apply_voice_preset = st.sidebar.button("Apply voice preset", use_container_width=True)
-        if apply_voice_preset:
-            preset = preset_map[st.session_state["voice_preset_choice"]]
-            st.session_state["voice_provider_choice"] = "edge"
-            st.session_state["voice_name_choice"] = preset.voice
-            st.session_state["voice_preview_text"] = preset.sample_text
-            st.rerun()
         st.sidebar.selectbox(
             "Voice provider",
             options=("edge",),
@@ -720,6 +713,13 @@ def render_frontdoor(settings: Settings) -> None:
         st.sidebar.caption(
             f"Voice gender filter: {gender_map.get(st.session_state['voice_gender_filter'], st.session_state['voice_gender_filter'])}"
         )
+        apply_voice_preset = st.sidebar.button("Apply voice preset", use_container_width=True)
+        if apply_voice_preset:
+            preset = preset_map[st.session_state["voice_preset_choice"]]
+            st.session_state["voice_provider_choice"] = "edge"
+            st.session_state["voice_name_choice"] = preset.voice
+            st.session_state["voice_preview_text"] = preset.sample_text
+            st.rerun()
         st.sidebar.subheader("Music Studio")
         music_mood_options = ("cinematic", "focus", "warm", "uplift", "ambient")
         music_mood_default = st.session_state["music_mood"]
