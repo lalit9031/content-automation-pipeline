@@ -82,6 +82,7 @@ from content_pipeline.bots.video import (
     subtitles_for_scenes,
 )
 from content_pipeline.bots.audio import audio_status
+from content_pipeline.bots.audio import available_voice_options
 from content_pipeline.bots.audio import normalize_voice_text
 from content_pipeline.bots.audio import render_audio_status_html
 from content_pipeline.bots.audio import voice_status
@@ -196,6 +197,15 @@ class PipelineTest(unittest.TestCase):
         self.assertIn("P.M.", normalized)
         self.assertIn("Jee-ra", normalized)
         self.assertIn("Skrum", normalized)
+
+    def test_available_voice_options_cover_edge_and_openai(self) -> None:
+        edge_options = available_voice_options("edge")
+        openai_options = available_voice_options("openai")
+
+        self.assertIn("en-IN-PrabhatNeural", [voice for voice, _ in edge_options])
+        self.assertIn("en-IN-NeerjaNeural", [voice for voice, _ in edge_options])
+        self.assertIn("echo", [voice for voice, _ in openai_options])
+        self.assertIn("nova", [voice for voice, _ in openai_options])
 
     def test_voice_daily_artifacts_write_status_bundle(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_dir:

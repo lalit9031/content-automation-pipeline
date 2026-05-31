@@ -35,6 +35,15 @@ FREE_INDIAN_EDGE_VOICE_VARIANTS = [
     ("sample_03_swara_neural.mp3", "hi-IN-SwaraNeural", "Clear Hindi female voice for family-friendly narration."),
 ]
 
+OPENAI_TTS_VOICES = (
+    "alloy",
+    "echo",
+    "fable",
+    "onyx",
+    "nova",
+    "shimmer",
+)
+
 
 @dataclass(frozen=True)
 class VoiceEngineProfile:
@@ -96,6 +105,13 @@ def build_voice_profile(
     if provider == "edge":
         return VoiceEngineProfile(name="edge-tts", language=language, voice=voice, rate="+0%", pitch="+0Hz")
     return VoiceEngineProfile(name="openai-tts", language=language, voice=voice, rate="+0%", pitch="+0Hz")
+
+
+def available_voice_options(provider: str) -> list[tuple[str, str]]:
+    provider = (provider or "").strip().lower()
+    if provider == "edge":
+        return [(voice, f"{voice} - {description}") for _, voice, description in FREE_INDIAN_EDGE_VOICE_VARIANTS]
+    return [(voice, voice.title()) for voice in OPENAI_TTS_VOICES]
 
 
 def normalize_voice_text(text: str) -> str:
@@ -161,6 +177,38 @@ def generate_indian_voiceover(
     pitch: str = "+0Hz",
 ) -> Path:
     _run_async(_write_edge_voice_sample(output_path, voice=voice, text=text, rate=rate, pitch=pitch))
+    return output_path
+
+
+def generate_voice_preview(
+    text: str,
+    output_path: Path,
+    *,
+    provider: str,
+    voice: str,
+    openai_api_key: str = "",
+) -> Path:
+    provider = (provider or "").strip().lower()
+    if provider == "edge":
+        return generate_indian_voiceover(text, output_path, voice=voice)
+    if not openai_api_key:
+        raise ValueError("OPENAI_API_KEY is required to generate an OpenAI voice preview.")
+    try:
+        from openai import OpenAI
+    except ImportError as exc:
+        raise RuntimeError("Install live dependencies with: pip install -e '.[live]'") from exc
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    client = OpenAI(api_key=openai_api_key)
+    result = client.audio.speech.create(
+        model="gpt-4o-mini-tts",
+        voice=voice,
+        input=normalize_voice_text(text),
+        instructions=(
+            "Speak clearly and naturally for narration preview. "
+            "Keep pacing steady and pronunciation crisp."
+        ),
+    )
+    output_path.write_bytes(result.read())
     return output_path
 
 

@@ -18,6 +18,9 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from content_pipeline.bots.audio import audio_status, render_audio_status_html
+from content_pipeline.bots.audio import available_voice_options
+from content_pipeline.bots.audio import generate_voice_preview
+from content_pipeline.bots.audio import normalize_voice_text
 from content_pipeline.config import Settings
 from content_pipeline.pipeline import run_linkedin_mvp
 
@@ -320,6 +323,39 @@ def render_frontdoor(settings: Settings) -> None:
 
     st.sidebar.header("Studio Controls")
     output_dir_input = st.sidebar.text_input("Output directory", value=str(settings.output_dir))
+    st.sidebar.subheader("Voice Studio")
+    voice_provider_options = ("edge", "openai")
+    default_voice_provider = settings.voice_provider if settings.voice_provider in voice_provider_options else "edge"
+    voice_provider_choice = st.sidebar.selectbox(
+        "Voice provider",
+        options=voice_provider_options,
+        index=voice_provider_options.index(default_voice_provider),
+    )
+    voice_options = available_voice_options(voice_provider_choice)
+    voice_option_values = [voice for voice, _ in voice_options]
+    default_voice = (
+        settings.indian_tts_voice if voice_provider_choice == "edge" else "echo"
+    )
+    if default_voice not in voice_option_values:
+        default_voice = voice_option_values[0]
+    if "voice_name_choice" not in st.session_state or st.session_state["voice_name_choice"] not in voice_option_values:
+        st.session_state["voice_name_choice"] = default_voice
+    voice_name_choice = st.sidebar.selectbox(
+        "Voice name",
+        options=voice_option_values,
+        index=voice_option_values.index(st.session_state["voice_name_choice"]),
+        format_func=lambda value: next(label for voice, label in voice_options if voice == value),
+        key="voice_name_choice",
+    )
+    voice_preview_text = st.sidebar.text_area(
+        "Voiceover script preview",
+        value=st.session_state.get(
+            "voice_preview_text",
+            "AI for PM teams using Jira and Scrum. The A.I. flow should sound clear and calm.",
+        ),
+        height=140,
+        key="voice_preview_text",
+    )
     if st.sidebar.button("Load latest day", use_container_width=True, disabled=not latest_day):
         st.session_state["run_day"] = default_day
         st.session_state["inspect_day"] = default_day
@@ -352,6 +388,11 @@ def render_frontdoor(settings: Settings) -> None:
     show_json = st.sidebar.checkbox("Show raw JSON", value=False)
 
     ui_settings = replace(settings, output_dir=resolve_output_dir(output_dir_input))
+    ui_settings = replace(
+        ui_settings,
+        voice_provider=voice_provider_choice,
+        indian_tts_voice=voice_name_choice,
+    )
     run_date = run_day.isoformat()
     inspect_date = inspect_day.isoformat()
 
@@ -525,7 +566,8 @@ def render_frontdoor(settings: Settings) -> None:
         <div class="status-strip">
           {status_pill("Prompt provider", settings.prompt_provider)}
           {status_pill("Image provider", settings.image_provider)}
-          {status_pill("Voice provider", settings.voice_provider)}
+          {status_pill("Voice provider", voice_provider_choice)}
+          {status_pill("Voice preset", voice_name_choice)}
           {status_pill("Selected day", inspect_date)}
           {status_pill("Latest day", latest_day or "none yet")}
         </div>
@@ -780,6 +822,32 @@ def render_frontdoor(settings: Settings) -> None:
                         st.caption(str(path))
             else:
                 st.write("No voice bundle found for this day.")
+
+        st.markdown("#### Voice studio")
+        st.caption(
+            f"Provider: {voice_provider_choice} · Voice: {voice_name_choice} · Normalized for narration preview."
+        )
+        normalized_preview = normalize_voice_text(voice_preview_text)
+        st.text_area("Normalized script", value=normalized_preview, height=140, disabled=True)
+        preview_root = ui_settings.output_dir / ".runtime" / "voice_previews"
+        preview_root.mkdir(parents=True, exist_ok=True)
+        preview_file = preview_root / f"{voice_provider_choice}_{voice_name_choice}.mp3"
+        if st.button("Generate voice preview", use_container_width=True):
+            try:
+                generate_voice_preview(
+                    voice_preview_text,
+                    preview_file,
+                    provider=voice_provider_choice,
+                    voice=voice_name_choice,
+                    openai_api_key=ui_settings.openai_api_key,
+                )
+            except Exception as exc:
+                st.error(str(exc))
+            else:
+                st.success(f"Preview written to {preview_file}")
+        if preview_file.exists():
+            st.audio(str(preview_file))
+            st.caption(str(preview_file))
 
         overview = selected_overview
         st.markdown(
