@@ -74,6 +74,7 @@ class VoicePreviewPreset:
     provider: str
     voice: str
     language: str
+    gender: str
     sample_text: str
 
 
@@ -92,6 +93,7 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
         provider="openai",
         voice="echo",
         language="en-US",
+        gender="male",
         sample_text=(
             "Let's break this workflow into simple steps. "
             "We will explain the idea clearly, show the challenge, and then walk through the fix."
@@ -104,6 +106,7 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
         provider="openai",
         voice="fable",
         language="en-US",
+        gender="female",
         sample_text=(
             "Once upon a workflow, a small team learned to trust its process, refine every step, and ship with calm confidence."
         ),
@@ -115,6 +118,7 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
         provider="edge",
         voice="hi-IN-SwaraNeural",
         language="hi-IN",
+        gender="female",
         sample_text=(
             "आज हम एक सरल कहानी सुनेंगे। गोकुल की सुबह में कान्हा मुस्कुराते हैं और यशोदा मैया स्नेह से उन्हें पुकारती हैं।"
         ),
@@ -126,6 +130,7 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
         provider="edge",
         voice="hi-IN-SwaraNeural",
         language="hi-IN",
+        gender="female",
         sample_text=(
             "वृंदावन की पवित्र गलियों में, श्यामसुंदर की लीलाएँ हर मन को भक्ति और शांति से भर देती हैं।"
         ),
@@ -137,6 +142,7 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
         provider="edge",
         voice="hi-IN-SwaraNeural",
         language="hi-IN",
+        gender="female",
         sample_text=(
             "आज की मुख्य खबर यह है कि टीम ने अपने सभी लक्ष्य समय पर पूरे कर लिए हैं और अगला चरण शुरू हो चुका है।"
         ),
@@ -148,6 +154,7 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
         provider="edge",
         voice="en-IN-NeerjaNeural",
         language="en-IN",
+        gender="female",
         sample_text=(
             "Aaj hum simple steps mein samjhenge kaise AI, Jira, aur Scrum ko smart way se use karte hain."
         ),
@@ -159,6 +166,7 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
         provider="edge",
         voice="en-IN-PrabhatNeural",
         language="en-IN",
+        gender="male",
         sample_text=(
             "Aaj ka quick tip simple hai: planning ko chhota rakho, execution ko sharp rakho, aur har step pe clarity maintain karo."
         ),
@@ -170,6 +178,7 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
         provider="openai",
         voice="nova",
         language="hi-IN",
+        gender="female",
         sample_text=(
             "आज हम इस विषय को सरल और स्पष्ट तरीके से समझेंगे, ताकि हर कदम आसानी से याद रहे।"
         ),
@@ -181,6 +190,7 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
         provider="openai",
         voice="shimmer",
         language="en-US",
+        gender="female",
         sample_text=(
             "This is your reminder to keep going. Small improvements every day lead to a powerful result."
         ),
@@ -240,15 +250,67 @@ def build_voice_profile(
     return VoiceEngineProfile(name="openai-tts", language=language, voice=voice, rate="+0%", pitch="+0Hz")
 
 
-def available_voice_options(provider: str) -> list[tuple[str, str]]:
+def _voice_gender(provider: str, voice: str) -> str:
     provider = (provider or "").strip().lower()
+    voice = (voice or "").strip()
+    gender_map = {
+        "edge": {
+            "en-IN-PrabhatNeural": "male",
+            "en-IN-NeerjaNeural": "female",
+            "hi-IN-SwaraNeural": "female",
+        },
+        "openai": {
+            "alloy": "neutral",
+            "echo": "male",
+            "fable": "female",
+            "onyx": "male",
+            "nova": "female",
+            "shimmer": "female",
+        },
+    }
+    return gender_map.get(provider, {}).get(voice, "neutral")
+
+
+def available_voice_options(provider: str, gender: str = "all") -> list[tuple[str, str]]:
+    provider = (provider or "").strip().lower()
+    gender = (gender or "all").strip().lower()
     if provider == "edge":
-        return [(voice, f"{voice} - {description}") for _, voice, description in FREE_INDIAN_EDGE_VOICE_VARIANTS]
-    return [(voice, voice.title()) for voice in OPENAI_TTS_VOICES]
+        options = [(voice, f"{voice} - {description}") for _, voice, description in FREE_INDIAN_EDGE_VOICE_VARIANTS]
+    else:
+        options = [(voice, voice.title()) for voice in OPENAI_TTS_VOICES]
+    if gender == "all":
+        return options
+    return [option for option in options if _voice_gender(provider, option[0]) == gender]
 
 
 def voice_preview_presets() -> tuple[VoicePreviewPreset, ...]:
     return VOICE_PREVIEW_PRESETS
+
+
+def voice_gender_options() -> tuple[tuple[str, str], ...]:
+    return (
+        ("all", "All voices"),
+        ("male", "Male voices"),
+        ("female", "Female voices"),
+        ("neutral", "Neutral voices"),
+    )
+
+
+def filter_voice_preview_presets(
+    presets: tuple[VoicePreviewPreset, ...],
+    *,
+    language: str = "all",
+    gender: str = "all",
+) -> tuple[VoicePreviewPreset, ...]:
+    language = (language or "all").strip().lower()
+    gender = (gender or "all").strip().lower()
+    filtered = [
+        preset
+        for preset in presets
+        if (language == "all" or preset.language == language)
+        and (gender == "all" or preset.gender == gender)
+    ]
+    return tuple(filtered)
 
 
 def voice_preview_language_options() -> tuple[tuple[str, str], ...]:

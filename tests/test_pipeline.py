@@ -85,10 +85,12 @@ from content_pipeline.bots.video import (
 from content_pipeline.bots.audio import audio_status
 from content_pipeline.bots.audio import available_voice_options
 from content_pipeline.bots.audio import generate_music_preview
+from content_pipeline.bots.audio import filter_voice_preview_presets
 from content_pipeline.bots.audio import normalize_voice_text
 from content_pipeline.bots.audio import render_audio_status_html
 from content_pipeline.bots.audio import reference_audio_language_options
 from content_pipeline.bots.audio import scan_reference_audio_library
+from content_pipeline.bots.audio import voice_gender_options
 from content_pipeline.bots.audio import voice_preview_language_options
 from content_pipeline.bots.audio import voice_preview_presets
 from content_pipeline.bots.audio import voice_status
@@ -207,11 +209,16 @@ class PipelineTest(unittest.TestCase):
     def test_available_voice_options_cover_edge_and_openai(self) -> None:
         edge_options = available_voice_options("edge")
         openai_options = available_voice_options("openai")
+        edge_male_options = available_voice_options("edge", "male")
+        openai_female_options = available_voice_options("openai", "female")
 
         self.assertIn("en-IN-PrabhatNeural", [voice for voice, _ in edge_options])
         self.assertIn("en-IN-NeerjaNeural", [voice for voice, _ in edge_options])
         self.assertIn("echo", [voice for voice, _ in openai_options])
         self.assertIn("nova", [voice for voice, _ in openai_options])
+        self.assertEqual(["en-IN-PrabhatNeural"], [voice for voice, _ in edge_male_options])
+        self.assertIn("fable", [voice for voice, _ in openai_female_options])
+        self.assertNotIn("echo", [voice for voice, _ in openai_female_options])
 
     def test_voice_preview_presets_include_hindi_and_hinglish(self) -> None:
         presets = voice_preview_presets()
@@ -232,6 +239,24 @@ class PipelineTest(unittest.TestCase):
         self.assertIn(("en-US", "English"), languages)
         self.assertIn(("en-IN", "Hinglish"), languages)
         self.assertIn(("hi-IN", "Hindi"), languages)
+
+    def test_voice_gender_options_cover_all_gender_filters(self) -> None:
+        genders = voice_gender_options()
+
+        self.assertIn(("all", "All voices"), genders)
+        self.assertIn(("male", "Male voices"), genders)
+        self.assertIn(("female", "Female voices"), genders)
+        self.assertIn(("neutral", "Neutral voices"), genders)
+
+    def test_filter_voice_preview_presets_by_gender(self) -> None:
+        presets = voice_preview_presets()
+        male_presets = filter_voice_preview_presets(presets, gender="male")
+        female_presets = filter_voice_preview_presets(presets, gender="female")
+
+        self.assertTrue(any(preset.gender == "male" for preset in male_presets))
+        self.assertTrue(any(preset.gender == "female" for preset in female_presets))
+        self.assertTrue(all(preset.gender == "male" for preset in male_presets))
+        self.assertTrue(all(preset.gender == "female" for preset in female_presets))
 
     def test_reference_audio_language_options_cover_indian_languages(self) -> None:
         languages = reference_audio_language_options(["hindi", "tamil", "urdu"])

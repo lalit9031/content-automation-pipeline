@@ -22,9 +22,11 @@ from content_pipeline.bots.audio import audio_status, render_audio_status_html
 from content_pipeline.bots.audio import available_voice_options
 from content_pipeline.bots.audio import generate_music_preview
 from content_pipeline.bots.audio import generate_voice_preview
+from content_pipeline.bots.audio import filter_voice_preview_presets
 from content_pipeline.bots.audio import normalize_voice_text
 from content_pipeline.bots.audio import reference_audio_language_options
 from content_pipeline.bots.audio import scan_reference_audio_library
+from content_pipeline.bots.audio import voice_gender_options
 from content_pipeline.bots.audio import voice_preview_language_options
 from content_pipeline.bots.audio import voice_preview_presets
 from content_pipeline.bots.image import ImageVariant, image_provider
@@ -179,6 +181,7 @@ def load_studio_state(output_dir: Path) -> dict[str, str]:
         "voice_preview_text",
         "voice_preview_path",
         "voice_library_language_filter",
+        "voice_gender_filter",
         "reference_audio_root",
         "reference_audio_language_filter",
         "reference_audio_preview_path",
@@ -465,15 +468,35 @@ def render_frontdoor(settings: Settings) -> None:
     st.session_state.setdefault("music_preview_path", "")
     st.session_state.setdefault("voice_preview_path", "")
     st.session_state.setdefault("voice_library_language_filter", "all")
+    st.session_state.setdefault("voice_gender_filter", "all")
     st.session_state.setdefault("reference_audio_root", "")
     st.session_state.setdefault("reference_audio_language_filter", "all")
     st.session_state.setdefault("reference_audio_preview_path", "")
     st.sidebar.subheader("Voice Studio")
-    preset_options = voice_preview_presets()
+    gender_options = voice_gender_options()
+    gender_map = {value: label for value, label in gender_options}
+    default_voice_gender = st.session_state.get("voice_gender_filter", "all")
+    if default_voice_gender not in gender_map:
+        default_voice_gender = "all"
+        st.session_state["voice_gender_filter"] = default_voice_gender
+    st.sidebar.selectbox(
+        "Voice gender",
+        options=[value for value, _ in gender_options],
+        index=[value for value, _ in gender_options].index(default_voice_gender),
+        format_func=lambda value: gender_map.get(value, value),
+        key="voice_gender_filter",
+    )
+    preset_options = filter_voice_preview_presets(
+        voice_preview_presets(),
+        gender=st.session_state["voice_gender_filter"],
+    )
+    if not preset_options:
+        preset_options = voice_preview_presets()
     preset_map = {preset.key: preset for preset in preset_options}
     preset_default = st.session_state.get("voice_preset_choice", preset_options[0].key)
     if preset_default not in preset_map:
         preset_default = preset_options[0].key
+        st.session_state["voice_preset_choice"] = preset_default
     st.sidebar.selectbox(
         "Voice preset",
         options=[preset.key for preset in preset_options],
@@ -499,7 +522,9 @@ def render_frontdoor(settings: Settings) -> None:
         index=voice_provider_options.index(default_voice_provider),
         key="voice_provider_choice",
     )
-    voice_options = available_voice_options(voice_provider_choice)
+    voice_options = available_voice_options(voice_provider_choice, st.session_state["voice_gender_filter"])
+    if not voice_options:
+        voice_options = available_voice_options(voice_provider_choice)
     voice_option_values = [voice for voice, _ in voice_options]
     default_voice = st.session_state["voice_name_choice"] or (
         settings.indian_tts_voice if voice_provider_choice == "edge" else "echo"
@@ -523,7 +548,7 @@ def render_frontdoor(settings: Settings) -> None:
     )
     current_voice_preset = preset_map[st.session_state["voice_preset_choice"]]
     st.sidebar.caption(
-        f"Preset: {current_voice_preset.label} · Script language: {current_voice_preset.language}"
+        f"Preset: {current_voice_preset.label} · Script language: {current_voice_preset.language} · Voice type: {current_voice_preset.gender}"
     )
     language_options = voice_preview_language_options()
     language_map = {value: label for value, label in language_options}
@@ -537,6 +562,9 @@ def render_frontdoor(settings: Settings) -> None:
         index=[value for value, _ in language_options].index(default_language_filter),
         format_func=lambda value: language_map.get(value, value),
         key="voice_library_language_filter",
+    )
+    st.sidebar.caption(
+        f"Voice gender filter: {gender_map.get(st.session_state['voice_gender_filter'], st.session_state['voice_gender_filter'])}"
     )
     st.sidebar.subheader("Image Studio")
     image_provider_options = ("mock", "gemini", "imagen", "openai")
@@ -1140,13 +1168,16 @@ def render_frontdoor(settings: Settings) -> None:
         st.markdown("#### Voice library")
         preset_options = voice_preview_presets()
         library_language = st.session_state.get("voice_library_language_filter", "all")
-        visible_presets = [
-            preset for preset in preset_options
-            if library_language == "all" or preset.language == library_language
-        ]
+        library_gender = st.session_state.get("voice_gender_filter", "all")
+        visible_presets = filter_voice_preview_presets(
+            preset_options,
+            language=library_language,
+            gender=library_gender,
+        )
         st.caption(
             f"Showing {len(visible_presets)} of {len(preset_options)} presets "
-            f"for {language_map.get(library_language, library_language)}"
+            f"for {language_map.get(library_language, library_language)} · "
+            f"{gender_map.get(library_gender, library_gender)}"
         )
         library_cols = st.columns(2)
         if not visible_presets:
@@ -1338,6 +1369,7 @@ def render_frontdoor(settings: Settings) -> None:
             "voice_preview_text": str(st.session_state["voice_preview_text"]),
             "voice_preview_path": str(st.session_state["voice_preview_path"]),
             "voice_library_language_filter": str(st.session_state["voice_library_language_filter"]),
+            "voice_gender_filter": str(st.session_state["voice_gender_filter"]),
             "image_provider": str(st.session_state["image_provider_choice"]),
             "image_topic": str(st.session_state["image_topic"]),
             "image_subject": str(st.session_state["image_subject"]),
