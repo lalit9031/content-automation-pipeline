@@ -415,6 +415,31 @@ def scan_reference_audio_library(root: Path, *, default_language: str = "unknown
     return samples
 
 
+def curate_reference_audio_bank(
+    samples: list[ReferenceAudioSample],
+    *,
+    limit: int = 24,
+) -> list[ReferenceAudioSample]:
+    if limit <= 0 or len(samples) <= limit:
+        return samples
+    if limit == 1:
+        return [samples[len(samples) // 2]]
+    step = (len(samples) - 1) / (limit - 1)
+    indexes: list[int] = []
+    for index in range(limit):
+        candidate = round(index * step)
+        if candidate not in indexes:
+            indexes.append(candidate)
+    while len(indexes) < limit:
+        candidate = len(indexes)
+        if candidate not in indexes:
+            indexes.append(candidate)
+    indexes = sorted(set(indexes))
+    if len(indexes) > limit:
+        indexes = indexes[:limit]
+    return [samples[index] for index in indexes]
+
+
 def normalize_voice_text(text: str) -> str:
     replacements = [
         (r"\bAI\b", "A.I."),

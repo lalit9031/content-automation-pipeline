@@ -324,6 +324,8 @@ For voice:
 - The Streamlit Voice Studio includes a `Voice gender` filter so you can quickly narrow the preset list and available voices to male, female, neutral, or all voices.
 - `REFERENCE_AUDIO_DIR` can point the Streamlit Audio tab at a local reference corpus such as the Kaggle Indian Languages Audio Dataset.
 - If your reference bank is a flat folder like `output/audio`, set the sidebar `Reference bank language` hint so the explorer can label and filter that collection sensibly.
+- The reference explorer now curates a smaller listening bank from large folders, so a 1,000-file directory will show a sampled set of about 20 to 30 clips instead of trying to render everything at once.
+- If OpenAI voice preview runs out of quota, the UI falls back to Edge TTS for the preview instead of crashing the page.
 - The Streamlit Audio tab now includes a reference audio explorer that can filter and play local Hindi, Hinglish, and other Indian-language sample clips.
 
 Science video workspaces also write:

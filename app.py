@@ -19,6 +19,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from content_pipeline.bots.audio import audio_status, render_audio_status_html
+from content_pipeline.bots.audio import curate_reference_audio_bank
 from content_pipeline.bots.audio import available_voice_options
 from content_pipeline.bots.audio import generate_music_preview
 from content_pipeline.bots.audio import generate_voice_preview
@@ -187,6 +188,7 @@ def load_studio_state(output_dir: Path) -> dict[str, str]:
         "reference_audio_language_filter",
         "reference_audio_selected_clip",
         "reference_audio_preview_path",
+        "reference_audio_bank_size",
         "image_provider",
         "image_topic",
         "image_subject",
@@ -227,6 +229,60 @@ def apply_voice_preset_by_key(preset_key: str) -> None:
     st.session_state["voice_provider_choice"] = preset.provider
     st.session_state["voice_name_choice"] = preset.voice
     st.session_state["voice_preview_text"] = preset.sample_text
+
+
+def _voice_preview_fallback_voice(provider: str, gender: str) -> str:
+    provider = (provider or "").strip().lower()
+    gender = (gender or "all").strip().lower()
+    if provider == "edge":
+        if gender == "male":
+            return "en-IN-PrabhatNeural"
+        if gender == "female":
+            return "en-IN-NeerjaNeural"
+        return "hi-IN-SwaraNeural"
+    if gender == "male":
+        return "onyx"
+    if gender == "female":
+        return "nova"
+    return "echo"
+
+
+def _generate_voice_preview_with_fallback(
+    *,
+    text: str,
+    preview_path: Path,
+    provider: str,
+    voice: str,
+    openai_api_key: str,
+    gender_hint: str = "all",
+) -> Path:
+    try:
+        return generate_voice_preview(
+            text,
+            preview_path,
+            provider=provider,
+            voice=voice,
+            openai_api_key=openai_api_key,
+        )
+    except Exception as exc:
+        if provider.strip().lower() == "openai":
+            fallback_voice = _voice_preview_fallback_voice("edge", gender_hint)
+            try:
+                fallback_path = preview_path.with_name(f"{preview_path.stem}_edge{preview_path.suffix}")
+                generate_voice_preview(
+                    text,
+                    fallback_path,
+                    provider="edge",
+                    voice=fallback_voice,
+                    openai_api_key="",
+                )
+                st.warning(
+                    "OpenAI voice preview could not run for this account, so the app fell back to Edge TTS."
+                )
+                return fallback_path
+            except Exception:
+                pass
+        raise exc
 
 
 def file_chip(label: str, path: Path) -> str:
@@ -449,6 +505,9 @@ def render_frontdoor(settings: Settings) -> None:
             "reference_audio_selected_clip",
             "",
         )
+        st.session_state["reference_audio_bank_size"] = int(
+            saved_studio_state.get("reference_audio_bank_size", "24")
+        )
         st.session_state["reference_audio_default_language"] = saved_studio_state.get(
             "reference_audio_default_language",
             "hindi",
@@ -484,6 +543,7 @@ def render_frontdoor(settings: Settings) -> None:
     st.session_state.setdefault("reference_audio_language_filter", "all")
     st.session_state.setdefault("reference_audio_selected_clip", "")
     st.session_state.setdefault("reference_audio_preview_path", "")
+    st.session_state.setdefault("reference_audio_bank_size", 24)
     st.sidebar.subheader("Voice Studio")
     gender_options = voice_gender_options()
     gender_map = {value: label for value, label in gender_options}
@@ -623,6 +683,7 @@ def render_frontdoor(settings: Settings) -> None:
         key="reference_audio_default_language",
         help="Use this when the folder is flat, such as a single Hindi audio bank with numeric filenames.",
     )
+    st.sidebar.slider("Reference bank size", 20, 30, key="reference_audio_bank_size")
     reference_audio_options = reference_audio_language_options()
     reference_audio_language_map = {value: label for value, label in reference_audio_options}
     if st.session_state["reference_audio_language_filter"] not in reference_audio_language_map:
@@ -1226,18 +1287,19 @@ def render_frontdoor(settings: Settings) -> None:
                             preview_dir = ui_settings.output_dir / ".runtime" / "voice_previews" / "library"
                             preview_dir.mkdir(parents=True, exist_ok=True)
                             preview_path = preview_dir / f"{preset.key}.mp3"
-                            generate_voice_preview(
-                                preset.sample_text,
-                                preview_path,
+                            preview_output = _generate_voice_preview_with_fallback(
+                                text=preset.sample_text,
+                                preview_path=preview_path,
                                 provider=preset.provider,
                                 voice=preset.voice,
                                 openai_api_key=ui_settings.openai_api_key,
+                                gender_hint=preset.gender,
                             )
-                            st.session_state["voice_preview_path"] = str(preview_path)
+                            st.session_state["voice_preview_path"] = str(preview_output)
                             st.session_state["voice_provider_choice"] = preset.provider
                             st.session_state["voice_name_choice"] = preset.voice
                             st.session_state["voice_preview_text"] = preset.sample_text
-                            st.success(f"Sample written to {preview_path}")
+                            st.success(f"Sample written to {preview_output}")
                         except Exception as exc:
                             st.error(str(exc))
                 if sample_path.exists():
@@ -1255,27 +1317,34 @@ def render_frontdoor(settings: Settings) -> None:
         preview_file = preview_root / f"{voice_provider_choice}_{voice_name_choice}.mp3"
         if st.button("Generate voice preview", use_container_width=True):
             try:
-                generate_voice_preview(
-                    voice_preview_text,
-                    preview_file,
+                preview_output = _generate_voice_preview_with_fallback(
+                    text=voice_preview_text,
+                    preview_path=preview_file,
                     provider=voice_provider_choice,
                     voice=voice_name_choice,
                     openai_api_key=ui_settings.openai_api_key,
+                    gender_hint=st.session_state["voice_gender_filter"],
                 )
-                st.session_state["voice_preview_path"] = str(preview_file)
+                st.session_state["voice_preview_path"] = str(preview_output)
             except Exception as exc:
                 st.error(str(exc))
             else:
-                st.success(f"Preview written to {preview_file}")
-        if preview_file.exists():
-            st.audio(str(preview_file))
-            st.caption(str(preview_file))
+                st.success(f"Preview written to {st.session_state['voice_preview_path']}")
+        if st.session_state.get("voice_preview_path"):
+            preview_output_path = Path(st.session_state["voice_preview_path"])
+            if preview_output_path.exists():
+                st.audio(str(preview_output_path))
+                st.caption(str(preview_output_path))
 
         st.markdown("#### Reference audio explorer")
         reference_audio_root = resolve_project_path(st.session_state["reference_audio_root"])
         reference_samples = scan_reference_audio_library(
             reference_audio_root,
             default_language=st.session_state["reference_audio_default_language"],
+        )
+        reference_samples = curate_reference_audio_bank(
+            reference_samples,
+            limit=int(st.session_state["reference_audio_bank_size"]),
         )
         available_languages = sorted({sample.language for sample in reference_samples})
         reference_language_options = reference_audio_language_options(available_languages or None)
@@ -1314,7 +1383,7 @@ def render_frontdoor(settings: Settings) -> None:
                     or query in sample.collection.lower()
                 ]
             st.caption(
-                f"Found {len(reference_samples)} reference clips across {len({sample.collection for sample in reference_samples})} collection(s). "
+                f"Found {len(reference_samples)} curated reference clips across {len({sample.collection for sample in reference_samples})} collection(s). "
                 f"Showing {len(filtered_reference_samples)} clip(s) for {reference_language_map.get(selected_reference_language, selected_reference_language)}."
             )
             if filtered_reference_samples:
@@ -1444,6 +1513,7 @@ def render_frontdoor(settings: Settings) -> None:
             "reference_audio_language_filter": str(st.session_state["reference_audio_language_filter"]),
             "reference_audio_selected_clip": str(st.session_state["reference_audio_selected_clip"]),
             "reference_audio_preview_path": str(st.session_state["reference_audio_preview_path"]),
+            "reference_audio_bank_size": str(st.session_state["reference_audio_bank_size"]),
         },
     )
 

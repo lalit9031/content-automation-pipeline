@@ -83,6 +83,8 @@ from content_pipeline.bots.video import (
     subtitles_for_scenes,
 )
 from content_pipeline.bots.audio import audio_status
+from content_pipeline.bots.audio import ReferenceAudioSample
+from content_pipeline.bots.audio import curate_reference_audio_bank
 from content_pipeline.bots.audio import available_voice_options
 from content_pipeline.bots.audio import generate_music_preview
 from content_pipeline.bots.audio import filter_voice_preview_presets
@@ -249,6 +251,35 @@ class PipelineTest(unittest.TestCase):
         self.assertIn(("female", "Female voices"), genders)
         self.assertIn(("neutral", "Neutral voices"), genders)
 
+    def test_voice_preview_fallback_uses_edge_when_openai_quota_exhausted(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            preview_path = Path(temporary_dir) / "preview.mp3"
+
+            try:
+                import app as streamlit_app
+            except ModuleNotFoundError:
+                self.skipTest("Streamlit is not installed in the test environment")
+
+            def fake_generate_voice_preview(text, output_path, *, provider, voice, openai_api_key=""):
+                if provider == "openai":
+                    raise RuntimeError("insufficient_quota")
+                output_path.write_bytes(b"edge-fallback")
+                return output_path
+
+            with patch.object(streamlit_app, "generate_voice_preview", side_effect=fake_generate_voice_preview):
+                output = streamlit_app._generate_voice_preview_with_fallback(
+                    text="नमस्ते",
+                    preview_path=preview_path,
+                    provider="openai",
+                    voice="onyx",
+                    openai_api_key="sk-test",
+                    gender_hint="male",
+                )
+
+            self.assertTrue(output.exists())
+            self.assertIn("edge", output.name)
+            self.assertEqual(output.read_bytes(), b"edge-fallback")
+
     def test_filter_voice_preview_presets_by_gender(self) -> None:
         presets = voice_preview_presets()
         male_presets = filter_voice_preview_presets(presets, gender="male")
@@ -295,6 +326,23 @@ class PipelineTest(unittest.TestCase):
             self.assertEqual(samples[0].collection, "audio")
             self.assertEqual(samples[0].language, "hindi")
             self.assertEqual(samples[0].path, str(sample))
+
+    def test_curate_reference_audio_bank_spreads_samples_across_collection(self) -> None:
+        samples = [
+            ReferenceAudioSample(
+                collection="audio",
+                language="hindi",
+                path=f"/tmp/{index}.mp3",
+                source_label=f"clip {index}",
+            )
+            for index in range(100)
+        ]
+
+        curated = curate_reference_audio_bank(samples, limit=25)
+
+        self.assertEqual(len(curated), 25)
+        self.assertEqual(curated[0].path, "/tmp/0.mp3")
+        self.assertEqual(curated[-1].path, "/tmp/99.mp3")
 
     def test_music_preview_writes_wav_file(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_dir:
