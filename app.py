@@ -1286,14 +1286,24 @@ def render_frontdoor(settings: Settings) -> None:
                 apply_cols = st.columns([1.5, 1.5, 7])
                 with apply_cols[0]:
                     if st.button("✅ Apply", key="btn_apply_prosody", use_container_width=True):
+                        active_scene_idx = st.session_state["scene_index"]
+                        # Synchronize the script editor text area and active scene narration in memory & DB!
+                        st.session_state[f"dialogue_editor_{active_scene_idx}"] = active_preset.sample_text
+                        scenes_data[active_scene_idx]["narration"] = active_preset.sample_text
+                        try:
+                            with open(json_path, "w", encoding="utf-8") as f:
+                                json.dump(scenes_data, f, indent=2, ensure_ascii=False)
+                        except Exception:
+                            pass
+
                         with st.spinner("Applying adjustments..."):
                             try:
                                 preview_root = ui_output_dir / ".runtime" / "voice_previews"
                                 preview_root.mkdir(parents=True, exist_ok=True)
-                                preview_file = preview_root / f"scene_{st.session_state['scene_index'] + 1}_preview.mp3"
+                                preview_file = preview_root / f"scene_{active_scene_idx + 1}_preview.mp3"
 
                                 generate_voice_preview(
-                                    text=scenes_data[st.session_state["scene_index"]]["narration"],
+                                    text=active_preset.sample_text,
                                     output_path=preview_file,
                                     provider="edge",
                                     voice=active_preset.voice,
@@ -1307,16 +1317,27 @@ def render_frontdoor(settings: Settings) -> None:
                                 st.error(f"Vocal synthesis error: {e}")
                 with apply_cols[1]:
                     if st.button("🔄 Reset", key="btn_reset_prosody", use_container_width=True):
+                        active_scene_idx = st.session_state["scene_index"]
                         st.session_state["voice_pitch_tweak_slider"] = active_preset.pitch or "+0Hz"
                         st.session_state["voice_rate_tweak_slider"] = active_preset.rate or "+0%"
+                        
+                        # Reset script editor text area and active scene narration in memory & DB!
+                        st.session_state[f"dialogue_editor_{active_scene_idx}"] = active_preset.sample_text
+                        scenes_data[active_scene_idx]["narration"] = active_preset.sample_text
+                        try:
+                            with open(json_path, "w", encoding="utf-8") as f:
+                                json.dump(scenes_data, f, indent=2, ensure_ascii=False)
+                        except Exception:
+                            pass
+
                         with st.spinner("Resetting to defaults..."):
                             try:
                                 preview_root = ui_output_dir / ".runtime" / "voice_previews"
                                 preview_root.mkdir(parents=True, exist_ok=True)
-                                preview_file = preview_root / f"scene_{st.session_state['scene_index'] + 1}_preview.mp3"
+                                preview_file = preview_root / f"scene_{active_scene_idx + 1}_preview.mp3"
 
                                 generate_voice_preview(
-                                    text=scenes_data[st.session_state["scene_index"]]["narration"],
+                                    text=active_preset.sample_text,
                                     output_path=preview_file,
                                     provider="edge",
                                     voice=active_preset.voice,
