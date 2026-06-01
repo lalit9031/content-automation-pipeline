@@ -770,6 +770,11 @@ def render_frontdoor(settings: Settings) -> None:
             options=image_provider_options,
             key="image_provider_choice",
         )
+        if st.session_state["image_provider_choice"] == "gemini":
+            st.sidebar.info(
+                "💡 **Note on Gemini:** Dedicated image generation (`Imagen 3`/`4`) is only supported on Google AI Studio keys that have **billing enabled** (paid plan). "
+                "If your key is on the free tier, please select the **`free-ai`** (Pollinations) provider to generate real Pixar 3D illustrations for free."
+            )
         st.sidebar.text_input("Image topic", key="image_topic")
         st.sidebar.text_input("Image subject", key="image_subject")
         if st.sidebar.button("Build image prompt", use_container_width=True):
@@ -795,7 +800,13 @@ def render_frontdoor(settings: Settings) -> None:
                 preview_path.parent.mkdir(parents=True, exist_ok=True)
                 preview_path.write_bytes(provider.create(st.session_state["image_prompt"], variant))
                 st.session_state["image_preview_path"] = str(preview_path)
-                st.sidebar.success(f"Image preview written to {preview_path}")
+                if st.session_state["image_provider_choice"] != "mock" and _svg_preview_text(preview_path) is not None:
+                    st.sidebar.warning(
+                        "⚠️ **Fallback to Mock:** The selected provider failed to generate the image (likely due to API billing/limit constraints) and silently fell back to the Mock provider. "
+                        "Please check your API keys or switch to the **`free-ai`** (Pollinations) provider to generate real Pixar illustrations for free."
+                    )
+                else:
+                    st.sidebar.success(f"Image preview written to {preview_path}")
             except Exception as exc:
                 st.sidebar.error(str(exc))
         if st.session_state.get("image_preview_path"):
