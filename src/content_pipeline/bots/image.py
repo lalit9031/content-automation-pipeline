@@ -875,11 +875,10 @@ class PollinationsImageProvider:
                 req_height = max_api_dim
 
         encoded_prompt = urllib.parse.quote(prompt)
-        random_seed = random.randint(10000, 99999)
         url = (
             f"https://image.pollinations.ai/prompt/{encoded_prompt}"
             f"?width={req_width}&height={req_height}"
-            f"&model=flux&seed={random_seed}&enhance=false"
+            f"&nologo=true&model=flux&enhance=true&seed=999&private=true"
         )
         
         max_retries = 3
