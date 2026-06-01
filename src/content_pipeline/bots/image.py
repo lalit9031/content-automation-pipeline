@@ -372,7 +372,7 @@ class GeminiImageProvider:
         for _ in range(self.limiter.max_attempts):
             client_index = self.limiter.acquire_key(max_wait_seconds=max(5.0, self.limiter.min_interval_seconds))
             if client_index is None:
-                return self.fallback_provider.create(prompt, variant)
+                continue
             client = self.clients[client_index]
             try:
                 config = None
@@ -396,14 +396,12 @@ class GeminiImageProvider:
                 last_error = exc
                 if not self.limiter.is_retryable(exc):
                     self.limiter.record_failure(client_index, exc, retryable=False)
-                    return self.fallback_provider.create(prompt, variant)
-                self.limiter.record_failure(client_index, exc, retryable=True)
-        if last_error is not None and self.limiter.is_retryable(last_error):
-            return self.fallback_provider.create(prompt, variant)
-        raise RuntimeError(
-            "Gemini image generation failed after exhausting the configured keys and retries: "
-            f"{last_error}"
-        )
+                else:
+                    self.limiter.record_failure(client_index, exc, retryable=True)
+        if last_error is not None:
+            import logging
+            logging.warning(f"Gemini image generation exhausted all keys. Last error: {last_error}")
+        return self.fallback_provider.create(prompt, variant)
 
 
 @dataclass
