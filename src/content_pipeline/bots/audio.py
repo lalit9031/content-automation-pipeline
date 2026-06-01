@@ -176,15 +176,14 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
     ),
     VoicePreviewPreset(
         key="english_explainer",
-        label="English explainer",
-        description="Clear English narration for tutorials and walkthroughs.",
+        label="Both (English-Hindi) explainer",
+        description="Clear English-Hindi mix narration for tutorials and walkthroughs.",
         provider="edge",
         voice="en-IN-PrabhatNeural",
         language="en-IN",
         gender="male",
         sample_text=(
-            "Let's break this workflow into simple steps. "
-            "We will explain the idea clearly, show the challenge, and then walk through the fix."
+            "Let's break this workflow into simple steps. Hum dynamic presets use karenge and then we will explain the code flow clearly."
         ),
     ),
     VoicePreviewPreset(
@@ -196,7 +195,7 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
         language="all",
         gender="female",
         sample_text=(
-            "Once upon a workflow, a small team learned to trust its process, refine every step, and ship with calm confidence."
+            "Once upon a time, Ek pyaare se workflow mein, a small team learned to trust its process, refine every step, and ship with confidence."
         ),
     ),
     VoicePreviewPreset(
@@ -225,7 +224,7 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
     ),
     VoicePreviewPreset(
         key="hinglish_teacher",
-        label="Hinglish teacher",
+        label="Both (Hinglish) teacher",
         description="Friendly Hindi-English mix for learning content.",
         provider="edge",
         voice="en-IN-NeerjaNeural",
@@ -305,7 +304,7 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
     ),
     VoicePreviewPreset(
         key="hinglish_guru_male",
-        label="Hinglish tech-guru male",
+        label="Both (Hinglish) tech-guru male",
         description="Conversational Hinglish (Hindi-English blend) male voice, ideal for tutorial presentations.",
         provider="edge",
         voice="en-IN-PrabhatNeural",
@@ -319,7 +318,7 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
     ),
     VoicePreviewPreset(
         key="hinglish_pitch_male",
-        label="Hinglish high-energy pitch",
+        label="Both (Hinglish) high-energy pitch",
         description="High-impact, fast Hinglish male voice perfect for startup pitches, ads, and short-form video formats.",
         provider="edge",
         voice="en-IN-PrabhatNeural",
@@ -347,14 +346,14 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
     ),
     VoicePreviewPreset(
         key="motivation_boost",
-        label="Motivation boost",
-        description="Bright, energetic English delivery for motivational clips.",
+        label="Motivation boost (Both English/Hindi)",
+        description="Bright, energetic delivery for motivational clips, blending English and Hindi.",
         provider="edge",
         voice="en-IN-PrabhatNeural",
         language="en-IN",
         gender="male",
         sample_text=(
-            "This is your reminder to keep going. Small improvements every day lead to a powerful result."
+            "This is your reminder to keep going. Har din thoda aur hard work karo, small improvements lead to a powerful result!"
         ),
         rate="+5%",
         pitch="+0Hz",
@@ -457,11 +456,20 @@ def filter_voice_preview_presets(
     for preset in presets:
         preset_lang = preset.language.strip().lower()
         preset_gender = preset.gender.strip().lower()
-        lang_match = (
-            language == "all"
-            or preset_lang == "all"
-            or preset_lang == language
-        )
+        
+        # Match language
+        if language == "all" or preset_lang == "all":
+            lang_match = True
+        elif language == "en-us":  # "English" filter: matches en-us, en-in, and all
+            lang_match = preset_lang in ("en-us", "en-in")
+        elif language == "en-in":  # "Both" filter: matches en-in (Hinglish) and all
+            lang_match = preset_lang == "en-in"
+        elif language == "hi-in":  # "Hindi" filter: matches hi-in and all
+            lang_match = preset_lang == "hi-in"
+        else:
+            lang_match = (preset_lang == language)
+            
+        # Match gender
         gender_match = (
             gender == "all"
             or preset_gender == "all"
@@ -473,17 +481,12 @@ def filter_voice_preview_presets(
 
 
 def voice_preview_language_options() -> tuple[tuple[str, str], ...]:
-    seen: list[str] = []
-    for preset in VOICE_PREVIEW_PRESETS:
-        preset_lang = preset.language
-        if preset_lang != "all" and preset_lang not in seen:
-            seen.append(preset_lang)
-    labels = {
-        "en-US": "English",
-        "en-IN": "Hinglish",
-        "hi-IN": "Hindi",
-    }
-    return tuple([("all", "All languages"), *[(language, labels.get(language, language)) for language in seen]])
+    return (
+        ("all", "All languages"),
+        ("en-US", "English"),
+        ("hi-IN", "Hindi"),
+        ("en-IN", "Both"),
+    )
 
 
 def reference_audio_language_options(languages: list[str] | None = None) -> tuple[tuple[str, str], ...]:

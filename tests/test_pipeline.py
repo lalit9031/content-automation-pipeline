@@ -390,7 +390,7 @@ class PipelineTest(unittest.TestCase):
         self.assertIn("Hindi devotional", labels)
         self.assertIn("Hindi bulletin", labels)
         self.assertIn("Hindi explainer male (Standard)", labels)
-        self.assertIn("Hinglish teacher", labels)
+        self.assertIn("Both (Hinglish) teacher", labels)
         self.assertIn("Jira", texts)
         self.assertTrue(any(preset.voice == "hi-IN-MadhurNeural" for preset in presets))
 
@@ -398,7 +398,7 @@ class PipelineTest(unittest.TestCase):
         languages = voice_preview_language_options()
 
         self.assertIn(("all", "All languages"), languages)
-        self.assertIn(("en-IN", "Hinglish"), languages)
+        self.assertIn(("en-IN", "Both"), languages)
         self.assertIn(("hi-IN", "Hindi"), languages)
 
     def test_voice_gender_options_cover_all_gender_filters(self) -> None:
