@@ -118,11 +118,11 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
     ),
     VoicePreviewPreset(
         key="toddler_girl",
-        label="3-4 Year Old Little Girl (Excited & Playful)",
+        label="3-4 Year Old Little Girl (Common English/Hindi)",
         description="Cute, native 3-year-old female child voice with natural toddler breathing pacing.",
         provider="edge",
         voice="en-US-AnaNeural",
-        language="en-US",
+        language="all",
         gender="female",
         sample_text=(
             "Look look! A friendly robot is here! It is holding my hand and helping me win the career race! Yay!"
@@ -132,11 +132,11 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
     ),
     VoicePreviewPreset(
         key="toddler_boy",
-        label="3-4 Year Old Little Boy (High-Energy Cartoon)",
+        label="3-4 Year Old Little Boy (Common English/Hindi)",
         description="Cute, native 4-year-old male child voice with natural toddler breathing pacing.",
         provider="edge",
         voice="en-US-AnaNeural",
-        language="en-US",
+        language="all",
         gender="male",
         sample_text=(
             "Wow! See that big shiny computer? The robot is typing so fast! Zoom zoom! We are running very fast!"
@@ -146,11 +146,11 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
     ),
     VoicePreviewPreset(
         key="story_female",
-        label="Soothing Female Storyteller (Warm & Patient Audio)",
+        label="Soothing Female Storyteller (Common English/Hindi)",
         description="Calm, maternal, soothing story narration voice for bedside or educational tellings.",
         provider="edge",
         voice="en-IN-NeerjaNeural",
-        language="en-IN",
+        language="all",
         gender="female",
         sample_text=(
             "Once upon a time, in a world moving faster than light, a young fresher stood at the edge of a massive career race. "
@@ -161,11 +161,11 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
     ),
     VoicePreviewPreset(
         key="story_male",
-        label="Deep Charismatic Male Storyteller (Calm & Authoritative)",
+        label="Deep Charismatic Male Storyteller (Common English/Hindi)",
         description="Deep, grandfatherly baritone storyteller pacing for documentaries and motivational clips.",
         provider="edge",
         voice="en-IN-PrabhatNeural",
-        language="en-IN",
+        language="all",
         gender="male",
         sample_text=(
             "Once upon a time, in a world moving faster than light, a young fresher stood at the edge of a massive career race. "
@@ -188,27 +188,15 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
         ),
     ),
     VoicePreviewPreset(
-        key="english_storyteller",
-        label="English storyteller",
-        description="Soft English narration with a warm storytelling flow.",
+        key="storyteller_common",
+        label="Storyteller (Common English/Hindi)",
+        description="A warm storytelling voice, common for both English and Hindi narration.",
         provider="edge",
         voice="en-IN-NeerjaNeural",
-        language="en-IN",
+        language="all",
         gender="female",
         sample_text=(
             "Once upon a workflow, a small team learned to trust its process, refine every step, and ship with calm confidence."
-        ),
-    ),
-    VoicePreviewPreset(
-        key="hindi_story",
-        label="Hindi story",
-        description="Pure Hindi narration for stories and devotional content.",
-        provider="edge",
-        voice="hi-IN-SwaraNeural",
-        language="hi-IN",
-        gender="female",
-        sample_text=(
-            "आज हम एक सरल कहानी सुनेंगे। गोकुल की सुबह में कान्हा मुस्कुराते हैं और यशोदा मैया स्नेह से उन्हें पुकारती हैं।"
         ),
     ),
     VoicePreviewPreset(
@@ -465,20 +453,31 @@ def filter_voice_preview_presets(
 ) -> tuple[VoicePreviewPreset, ...]:
     language = (language or "all").strip().lower()
     gender = (gender or "all").strip().lower()
-    filtered = [
-        preset
-        for preset in presets
-        if (language == "all" or preset.language == language)
-        and (gender == "all" or preset.gender == gender)
-    ]
+    filtered = []
+    for preset in presets:
+        preset_lang = preset.language.strip().lower()
+        preset_gender = preset.gender.strip().lower()
+        lang_match = (
+            language == "all"
+            or preset_lang == "all"
+            or preset_lang == language
+        )
+        gender_match = (
+            gender == "all"
+            or preset_gender == "all"
+            or preset_gender == gender
+        )
+        if lang_match and gender_match:
+            filtered.append(preset)
     return tuple(filtered)
 
 
 def voice_preview_language_options() -> tuple[tuple[str, str], ...]:
     seen: list[str] = []
     for preset in VOICE_PREVIEW_PRESETS:
-        if preset.language not in seen:
-            seen.append(preset.language)
+        preset_lang = preset.language
+        if preset_lang != "all" and preset_lang not in seen:
+            seen.append(preset_lang)
     labels = {
         "en-US": "English",
         "en-IN": "Hinglish",
@@ -701,8 +700,34 @@ def generate_indian_voiceover(
                 break
                 
     if selected_preset is not None:
-        # Override the voice name to the preset's native base voice model
+        # Check if text contains Devanagari characters or if language filter is Hindi
+        is_hindi = False
+        try:
+            import streamlit as st
+            if st.session_state.get("voice_library_language_filter") == "hi-in":
+                is_hindi = True
+        except Exception:
+            pass
+        if not is_hindi:
+            is_hindi = any("\u0900" <= char <= "\u097f" for char in text)
+
+        # Override the voice name dynamically for common presets
         voice = selected_preset.voice
+        if is_hindi:
+            if selected_preset.key in ("toddler_girl", "toddler_boy"):
+                voice = "hi-IN-SwaraNeural"
+            elif selected_preset.key in ("story_female", "storyteller_common"):
+                voice = "hi-IN-SwaraNeural"
+            elif selected_preset.key == "story_male":
+                voice = "hi-IN-MadhurNeural"
+        else:
+            if selected_preset.key in ("toddler_girl", "toddler_boy"):
+                voice = "en-US-AnaNeural"
+            elif selected_preset.key in ("story_female", "storyteller_common"):
+                voice = "en-IN-NeerjaNeural"
+            elif selected_preset.key == "story_male":
+                voice = "en-IN-PrabhatNeural"
+
         if rate is None:
             rate = selected_preset.rate
         if pitch is None:
@@ -711,7 +736,7 @@ def generate_indian_voiceover(
         # Apply specialized breathing and dramatic pacing filters if applicable!
         if selected_preset.key in ("toddler_girl", "toddler_boy"):
             text = humanize_child_pacing_punctuation(text)
-        elif selected_preset.key in ("story_female", "story_male"):
+        elif selected_preset.key in ("story_female", "story_male", "storyteller_common"):
             text = inject_dramatic_story_pauses_punctuation(text)
     else:
         if rate is None:

@@ -834,8 +834,10 @@ def render_frontdoor(settings: Settings) -> None:
                         st.session_state["voice_preset_choice"] = preset.key
                         st.session_state["voice_name_choice"] = preset.voice
                         st.session_state["voice_preview_text"] = preset.sample_text
-                        st.session_state["voice_gender_filter"] = preset.gender
-                        st.session_state["voice_library_language_filter"] = preset.language
+                        if preset.gender != "all":
+                            st.session_state["voice_gender_filter"] = preset.gender
+                        if preset.language != "all":
+                            st.session_state["voice_library_language_filter"] = preset.language
                         st.session_state.pop("modal_playing_preset", None)
                         st.rerun()
 
@@ -1186,6 +1188,7 @@ def render_frontdoor(settings: Settings) -> None:
                 st.session_state["voice_preset_choice"] = active_preset_key
                 st.session_state["voice_name_choice"] = preset_map[active_preset_key].voice
                 st.session_state["voice_preview_text"] = preset_map[active_preset_key].sample_text
+                st.rerun()
 
             active_preset = preset_map[active_preset_key]
 
