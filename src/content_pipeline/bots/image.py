@@ -342,8 +342,9 @@ class GeminiImageProvider:
         self.settings = settings
         self.clients = clients
         self.model = settings.imagen_model
-        if self.model == "imagen-3.0-generate-002":
-            self.model = "imagen-4.0-generate-001"
+        if self.model in ("imagen-4.0-generate-001", "imagen-3.0-generate-002"):
+            # For Google AI Studio (Gemini GenAI Client), use the verified, widely available imagen-3.0-generate-002 model!
+            self.model = "imagen-3.0-generate-002"
         self.fallback_provider = _fallback_image_provider(settings)
         state_path = settings.output_dir / ".runtime" / "gemini_image_rate_limit.json"
         self.limiter = limiter or GeminiImageLimiter(
