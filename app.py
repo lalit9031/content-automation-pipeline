@@ -834,6 +834,17 @@ def render_frontdoor(settings: Settings) -> None:
                         st.session_state["voice_preset_choice"] = preset.key
                         st.session_state["voice_name_choice"] = preset.voice
                         st.session_state["voice_preview_text"] = preset.sample_text
+                        
+                        # Sync script editor text area & DB
+                        active_scene_idx = st.session_state["scene_index"]
+                        st.session_state[f"dialogue_editor_{active_scene_idx}"] = preset.sample_text
+                        scenes_data[active_scene_idx]["narration"] = preset.sample_text
+                        try:
+                            with open(json_path, "w", encoding="utf-8") as f:
+                                json.dump(scenes_data, f, indent=2, ensure_ascii=False)
+                        except Exception:
+                            pass
+
                         if preset.gender != "all":
                             st.session_state["voice_gender_filter"] = preset.gender
                         if preset.language != "all":
@@ -1188,6 +1199,17 @@ def render_frontdoor(settings: Settings) -> None:
                 st.session_state["voice_preset_choice"] = active_preset_key
                 st.session_state["voice_name_choice"] = preset_map[active_preset_key].voice
                 st.session_state["voice_preview_text"] = preset_map[active_preset_key].sample_text
+                
+                # Sync script editor text area & DB
+                active_scene_idx = st.session_state["scene_index"]
+                st.session_state[f"dialogue_editor_{active_scene_idx}"] = preset_map[active_preset_key].sample_text
+                scenes_data[active_scene_idx]["narration"] = preset_map[active_preset_key].sample_text
+                try:
+                    with open(json_path, "w", encoding="utf-8") as f:
+                        json.dump(scenes_data, f, indent=2, ensure_ascii=False)
+                except Exception:
+                    pass
+                    
                 st.rerun()
 
             active_preset = preset_map[active_preset_key]
@@ -1252,6 +1274,17 @@ def render_frontdoor(settings: Settings) -> None:
                         st.session_state["voice_preset_choice"] = selected_preset_key
                         st.session_state["voice_name_choice"] = preset_map[selected_preset_key].voice
                         st.session_state["voice_preview_text"] = preset_map[selected_preset_key].sample_text
+                        
+                        # Sync script editor text area & DB
+                        active_scene_idx = st.session_state["scene_index"]
+                        st.session_state[f"dialogue_editor_{active_scene_idx}"] = preset_map[selected_preset_key].sample_text
+                        scenes_data[active_scene_idx]["narration"] = preset_map[selected_preset_key].sample_text
+                        try:
+                            with open(json_path, "w", encoding="utf-8") as f:
+                                json.dump(scenes_data, f, indent=2, ensure_ascii=False)
+                        except Exception:
+                            pass
+                            
                         st.rerun()
 
                 st.markdown("##### SSML Prosody Adjustments")
