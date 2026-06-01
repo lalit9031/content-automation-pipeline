@@ -391,6 +391,21 @@ class GeminiImageProvider:
                 if image_bytes is None:
                     raise RuntimeError("Gemini image generation did not return an image asset.")
                 self.limiter.record_success(client_index)
+
+                # Process the image to ensure high-fidelity Lanczos upscaling to the exact QHD dimension and save as lossless PNG
+                try:
+                    from PIL import Image
+                    import io
+                    img = Image.open(io.BytesIO(image_bytes))
+                    if img.width < variant.width or img.height < variant.height:
+                        resample_filter = getattr(Image, "Resampling", Image).LANCZOS
+                        img = img.resize((variant.width, variant.height), resample=resample_filter)
+                    out_buffer = io.BytesIO()
+                    img.save(out_buffer, format="PNG")
+                    image_bytes = out_buffer.getvalue()
+                except Exception:
+                    pass
+
                 return image_bytes
             except Exception as exc:
                 last_error = exc

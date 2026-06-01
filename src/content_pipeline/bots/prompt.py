@@ -37,7 +37,8 @@ CINEMATIC_IMAGE_STYLE = (
     "Includes a friendly little robotic AI assistant with glowing yellow eyes floating nearby. "
     "Color Palette: Soft pastel purple and cyan highlights, subtle orange/gold glow, deep blue-grey background studio environment. "
     "Lighting: Soft volumetric studio lighting, gentle depth of field, subtle glowing particles, dramatic contrast. "
-    "Absolutely no large readable text inside the image. Reserve a clean typography-safe area for text overlays."
+    "Absolutely no large readable text inside the image. Reserve a clean typography-safe area for text overlays. "
+    "Include clean high-tech interface dashboard backgrounds, flawless vector icons, clean background elements, sharp focus, masterpiece, 8k resolution, and absolutely no gibberish text, no distorted symbols."
 )
 
 THUMBNAIL_IMAGE_STYLE = (
