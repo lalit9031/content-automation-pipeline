@@ -125,7 +125,7 @@ class Settings:
                 if (ref_audio_dir := os.getenv("REFERENCE_AUDIO_DIR", "").strip())
                 else None
             ),
-            gemini_api_keys=(_gemini_keys := _read_key_pool("GEMINI_API_KEY", 5, fallback_env="GOOGLE_API_KEY")),
+            gemini_api_keys=(_gemini_keys := _read_key_pool("GEMINI_API_KEY", 10, fallback_env="GOOGLE_API_KEY")),
             gemini_api_key=_first_key(
                 _gemini_keys,
                 os.getenv("GEMINI_API_KEY", "") or os.getenv("GOOGLE_API_KEY", ""),

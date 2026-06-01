@@ -108,7 +108,7 @@ def _apply_streamlit_secrets() -> None:
     gemini_keys = []
     nested_gemini = secrets.get("gemini_keys", {})
     if isinstance(nested_gemini, Mapping):
-        for index in range(1, 5):
+        for index in range(1, 11):
             value = nested_gemini.get(f"key_{index}")
             if value:
                 gemini_keys.append(str(value))
@@ -126,7 +126,7 @@ def _apply_streamlit_secrets() -> None:
     openai_keys = []
     nested_openai = secrets.get("openai_keys", {})
     if isinstance(nested_openai, Mapping):
-        for index in range(1, 6):
+        for index in range(1, 11):
             value = nested_openai.get(f"key_{index}")
             if value:
                 openai_keys.append(str(value))
