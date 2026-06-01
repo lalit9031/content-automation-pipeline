@@ -719,6 +719,9 @@ def render_frontdoor(settings: Settings) -> None:
         st.session_state["voice_preview_path"] = ""
 
     st.session_state.setdefault("voice_preset_choice", "english_explainer")
+    st.session_state.setdefault("voice_preset_choice_under", "english_explainer")
+    st.session_state.setdefault("prev_voice_library_language_filter", "all")
+    st.session_state.setdefault("prev_voice_gender_filter", "all")
     st.session_state.setdefault("voice_provider_choice", "edge")
     st.session_state.setdefault("voice_name_choice", settings.indian_tts_voice)
     st.session_state.setdefault(
@@ -832,6 +835,7 @@ def render_frontdoor(settings: Settings) -> None:
                 with btn_cols[1]:
                     if st.button("✅ Select", key=f"modal_select_{preset.key}", use_container_width=True):
                         st.session_state["voice_preset_choice"] = preset.key
+                        st.session_state["voice_preset_choice_under"] = preset.key
                         st.session_state["voice_name_choice"] = preset.voice
                         st.session_state["voice_preview_text"] = preset.sample_text
                         
@@ -1159,6 +1163,19 @@ def render_frontdoor(settings: Settings) -> None:
                 st.rerun()
 
     elif st.session_state["active_page"] == "Audio":
+        # 1. Instantly pull latest edited narration from widget state if it exists
+        active_scene_idx = st.session_state.get("scene_index", 0)
+        if active_scene_idx >= len(scenes_data):
+            active_scene_idx = 0
+            st.session_state["scene_index"] = 0
+
+        editor_key = f"dialogue_editor_{active_scene_idx}"
+        if editor_key in st.session_state:
+            scenes_data[active_scene_idx]["narration"] = st.session_state[editor_key]
+        
+        # 2. Sync voice_preview_text to ensure phonetic pronunciation card and previews match active text
+        st.session_state["voice_preview_text"] = scenes_data[active_scene_idx]["narration"]
+
         # Columns layout: Left sub-nav (1.5), Center canvas (5.5), Right panel (3.5)
         left_col, center_col, right_col = st.columns([1.5, 5, 3.5])
 
@@ -1181,6 +1198,15 @@ def render_frontdoor(settings: Settings) -> None:
             library_language = st.session_state.get("voice_library_language_filter", "all")
             library_gender = st.session_state.get("voice_gender_filter", "all")
 
+            # Detect filter changes to enforce selectbox synchronization
+            prev_library_language = st.session_state.get("prev_voice_library_language_filter", "all")
+            prev_library_gender = st.session_state.get("prev_voice_gender_filter", "all")
+            filters_changed = (library_language != prev_library_language or library_gender != prev_library_gender)
+
+            if filters_changed:
+                st.session_state["prev_voice_library_language_filter"] = library_language
+                st.session_state["prev_voice_gender_filter"] = library_gender
+
             # Apply dependent cascaded filtering to voice presets
             filtered_presets = filter_voice_preview_presets(
                 presets,
@@ -1192,16 +1218,17 @@ def render_frontdoor(settings: Settings) -> None:
 
             filtered_preset_keys = [p.key for p in filtered_presets]
 
-            # Auto-align active preset choice if it falls out of the filtered scope
+            # Auto-align active preset choice if it falls out of the filtered scope or if filters changed
             active_preset_key = st.session_state["voice_preset_choice"]
-            if active_preset_key not in filtered_preset_keys:
-                active_preset_key = filtered_preset_keys[0]
+            if active_preset_key not in filtered_preset_keys or filters_changed:
+                if active_preset_key not in filtered_preset_keys:
+                    active_preset_key = filtered_preset_keys[0]
                 st.session_state["voice_preset_choice"] = active_preset_key
                 st.session_state["voice_name_choice"] = preset_map[active_preset_key].voice
                 st.session_state["voice_preview_text"] = preset_map[active_preset_key].sample_text
+                st.session_state["voice_preset_choice_under"] = active_preset_key  # Synchronize selectbox state!
                 
                 # Sync script editor text area & DB
-                active_scene_idx = st.session_state["scene_index"]
                 st.session_state[f"dialogue_editor_{active_scene_idx}"] = preset_map[active_preset_key].sample_text
                 scenes_data[active_scene_idx]["narration"] = preset_map[active_preset_key].sample_text
                 try:
@@ -1272,6 +1299,7 @@ def render_frontdoor(settings: Settings) -> None:
                     )
                     if selected_preset_key != active_preset_key:
                         st.session_state["voice_preset_choice"] = selected_preset_key
+                        st.session_state["voice_preset_choice_under"] = selected_preset_key
                         st.session_state["voice_name_choice"] = preset_map[selected_preset_key].voice
                         st.session_state["voice_preview_text"] = preset_map[selected_preset_key].sample_text
                         
@@ -1323,6 +1351,7 @@ def render_frontdoor(settings: Settings) -> None:
                         # Synchronize the script editor text area and active scene narration in memory & DB!
                         st.session_state[f"dialogue_editor_{active_scene_idx}"] = active_preset.sample_text
                         scenes_data[active_scene_idx]["narration"] = active_preset.sample_text
+                        st.session_state["voice_preview_text"] = active_preset.sample_text
                         try:
                             with open(json_path, "w", encoding="utf-8") as f:
                                 json.dump(scenes_data, f, indent=2, ensure_ascii=False)
@@ -1357,6 +1386,7 @@ def render_frontdoor(settings: Settings) -> None:
                         # Reset script editor text area and active scene narration in memory & DB!
                         st.session_state[f"dialogue_editor_{active_scene_idx}"] = active_preset.sample_text
                         scenes_data[active_scene_idx]["narration"] = active_preset.sample_text
+                        st.session_state["voice_preview_text"] = active_preset.sample_text
                         try:
                             with open(json_path, "w", encoding="utf-8") as f:
                                 json.dump(scenes_data, f, indent=2, ensure_ascii=False)
