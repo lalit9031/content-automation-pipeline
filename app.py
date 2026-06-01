@@ -194,13 +194,18 @@ def load_studio_state(output_dir: Path) -> dict[str, str]:
         "image_provider",
         "image_topic",
         "image_subject",
-        "image_prompt",
         "music_mood",
         "music_duration_seconds",
     ):
         value = payload.get(key)
         if isinstance(value, str) and value:
             state[key] = value
+
+    # Support both old and new key name for back-compat
+    img_pr = payload.get("image_prompt") or payload.get("image_studio_prompt")
+    if isinstance(img_pr, str) and img_pr:
+        state["image_studio_prompt"] = img_pr
+
     return state
 
 
@@ -678,12 +683,15 @@ def render_frontdoor(settings: Settings) -> None:
             "image_subject",
             "a team reviewing a glowing workflow board",
         )
-        st.session_state["image_prompt"] = saved_studio_state.get(
-            "image_prompt",
-            build_cinematic_image_prompt(
-                st.session_state["image_topic"],
-                st.session_state["image_subject"],
-            ),
+        st.session_state["image_studio_prompt"] = saved_studio_state.get(
+            "image_studio_prompt",
+            saved_studio_state.get(
+                "image_prompt",
+                build_cinematic_image_prompt(
+                    st.session_state["image_topic"],
+                    st.session_state["image_subject"],
+                ),
+            )
         )
         st.session_state["music_mood"] = saved_studio_state.get("music_mood", "cinematic")
         st.session_state["music_duration_seconds"] = int(saved_studio_state.get("music_duration_seconds", "8"))
@@ -731,7 +739,7 @@ def render_frontdoor(settings: Settings) -> None:
     st.session_state.setdefault("image_topic", "Agile project management")
     st.session_state.setdefault("image_subject", "a team reviewing a glowing workflow board")
     st.session_state.setdefault(
-        "image_prompt",
+        "image_studio_prompt",
         build_cinematic_image_prompt(
             st.session_state["image_topic"],
             st.session_state["image_subject"],
@@ -1603,14 +1611,14 @@ def render_frontdoor(settings: Settings) -> None:
             with param_cols[2]:
                 st.text_input("Scene Subject", key="image_subject")
 
-            prompt_input = st.text_area("Engine-Injected Style Prompt", value=st.session_state.get("image_prompt", ""), height=120)
-            st.session_state["image_prompt"] = prompt_input
+            prompt_input = st.text_area("Engine-Injected Style Prompt", value=st.session_state.get("image_studio_prompt", ""), height=120)
+            st.session_state["image_studio_prompt"] = prompt_input
 
             # Action Buttons under prompt text area
             act_cols = st.columns(2)
             with act_cols[0]:
                 if st.button("🧙‍♂️ Build Cinematic style-pack Prompt", use_container_width=True, key="btn_build_prompt"):
-                    st.session_state["image_prompt"] = build_cinematic_image_prompt(
+                    st.session_state["image_studio_prompt"] = build_cinematic_image_prompt(
                         st.session_state["image_topic"],
                         st.session_state["image_subject"]
                     )
@@ -1626,7 +1634,7 @@ def render_frontdoor(settings: Settings) -> None:
                                 f"{_slugify(st.session_state['image_topic'])}_{_slugify(st.session_state['image_subject'])}_{st.session_state['image_provider_choice']}{provider.extension}"
                             )
                             preview_path.parent.mkdir(parents=True, exist_ok=True)
-                            preview_path.write_bytes(provider.create(st.session_state["image_prompt"], variant))
+                            preview_path.write_bytes(provider.create(st.session_state["image_studio_prompt"], variant))
                             st.session_state["image_preview_path"] = str(preview_path)
                             st.success(f"Image successfully rendered!")
                             st.rerun()
@@ -1642,7 +1650,7 @@ def render_frontdoor(settings: Settings) -> None:
             st.json(image_style_pack.as_dict())
 
             st.markdown("#### Prompt Safety audit")
-            safety_state, safety_msg = image_prompt_safety_status(st.session_state["image_prompt"])
+            safety_state, safety_msg = image_prompt_safety_status(st.session_state["image_studio_prompt"])
             st.markdown(f"""
             <div class="metric-box">
                 <div class="metric-label">Safety State</div>
@@ -1875,7 +1883,7 @@ def render_frontdoor(settings: Settings) -> None:
             "image_provider": str(st.session_state["image_provider_choice"]),
             "image_topic": str(st.session_state["image_topic"]),
             "image_subject": str(st.session_state["image_subject"]),
-            "image_prompt": str(st.session_state["image_prompt"]),
+            "image_prompt": str(st.session_state["image_studio_prompt"]),
             "music_mood": str(st.session_state["music_mood"]),
             "music_duration_seconds": str(st.session_state["music_duration_seconds"]),
             "reference_audio_root": str(st.session_state["reference_audio_root"]),
