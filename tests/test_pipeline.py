@@ -239,6 +239,7 @@ class PipelineTest(unittest.TestCase):
         fake_streamlit.slider = lambda *args, **kwargs: None
         fake_streamlit.text_input = lambda *args, **kwargs: None
         fake_streamlit.checkbox = lambda *args, **kwargs: None
+        fake_streamlit.iframe = lambda *args, **kwargs: None
 
         fake_components_v1 = types.ModuleType("streamlit.components.v1")
         fake_components_v1.html = lambda *args, **kwargs: None
@@ -308,6 +309,7 @@ class PipelineTest(unittest.TestCase):
         fake_streamlit.slider = lambda *args, **kwargs: None
         fake_streamlit.text_input = lambda *args, **kwargs: None
         fake_streamlit.checkbox = lambda *args, **kwargs: None
+        fake_streamlit.iframe = lambda *args, **kwargs: None
 
         fake_components_v1 = types.ModuleType("streamlit.components.v1")
         fake_components_v1.html = lambda *args, **kwargs: None
@@ -474,7 +476,7 @@ class PipelineTest(unittest.TestCase):
             except ModuleNotFoundError:
                 self.skipTest("Streamlit is not installed in the test environment")
 
-            with patch.object(streamlit_app.components, "html") as mock_html, patch.object(
+            with patch.object(streamlit_app.st, "iframe") as mock_iframe, patch.object(
                 streamlit_app.st, "error"
             ) as mock_error, patch.object(streamlit_app.st, "warning") as mock_warning, patch.object(
                 streamlit_app.st, "image"
@@ -482,7 +484,7 @@ class PipelineTest(unittest.TestCase):
                 streamlit_app.render_image_preview(preview_path)
 
             self.assertTrue(preview_path.exists())
-            mock_html.assert_called()
+            mock_iframe.assert_called()
             mock_error.assert_not_called()
             mock_warning.assert_not_called()
             mock_image.assert_not_called()

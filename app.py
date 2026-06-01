@@ -16,7 +16,6 @@ if SRC_DIR.exists():
     sys.path.insert(0, str(SRC_DIR))
 
 import streamlit as st
-import streamlit.components.v1 as components
 
 from content_pipeline.bots.audio import audio_status, render_audio_status_html
 from content_pipeline.bots.audio import curate_reference_audio_bank
@@ -234,7 +233,7 @@ def _svg_preview_text(path: Path) -> str | None:
 def render_image_preview(path: Path) -> None:
     svg_text = _svg_preview_text(path) if path.exists() else None
     if path.suffix.lower() == ".svg" or svg_text is not None:
-        components.html(svg_text or path.read_text(encoding="utf-8"), height=720, scrolling=False)
+        st.iframe(svg_text or path.read_text(encoding="utf-8"), height=720)
         return
 
     if not path.exists():
@@ -1393,7 +1392,7 @@ def render_frontdoor(settings: Settings) -> None:
             st.caption(image_request_note)
             st.caption("Tip: keep the prompt vivid, specific, and free of text, logos, and watermarks.")
             st.text_area("Current image prompt", value=image_prompt, height=170, disabled=True)
-            components.html(copy_prompt_button(image_prompt, button_id="copy-full-image-prompt"), height=52)
+            st.iframe(copy_prompt_button(image_prompt, button_id="copy-full-image-prompt"), height=52)
             if image_preview_path:
                 preview_path = image_preview_path
                 if preview_path.exists():
@@ -1753,7 +1752,7 @@ def overlay_lower_third_text(image_path: Path, output_path: Path, text: str):
         dashboard_path = ui_settings.output_dir / "daily" / inspect_date / "daily_dashboard.html"
         if dashboard_path.exists():
             dashboard_html = dashboard_path.read_text(encoding="utf-8")
-            components.html(dashboard_html, height=1150, scrolling=True)
+            st.iframe(dashboard_html, height=1150)
         else:
             st.info("Run the pipeline or pick a day that already has a daily dashboard.")
             st.caption(str(dashboard_path))
@@ -1766,7 +1765,7 @@ def overlay_lower_third_text(image_path: Path, output_path: Path, text: str):
         audio_json = ui_settings.output_dir / "daily" / inspect_date / "audio_status.json"
         voice_json = ui_settings.output_dir / "daily" / inspect_date / "voice_status.json"
         if audio_path.exists():
-            components.html(audio_path.read_text(encoding="utf-8"), height=520, scrolling=True)
+            st.iframe(audio_path.read_text(encoding="utf-8"), height=520)
         else:
             st.info("No audio front door found yet for this day.")
 
