@@ -1281,6 +1281,54 @@ def render_frontdoor(settings: Settings) -> None:
                         key="voice_rate_tweak_slider"
                     )
 
+                # Centered dynamic controls below the sliders
+                st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
+                apply_cols = st.columns([1.5, 1.5, 7])
+                with apply_cols[0]:
+                    if st.button("✅ Apply", key="btn_apply_prosody", use_container_width=True):
+                        with st.spinner("Applying adjustments..."):
+                            try:
+                                preview_root = ui_output_dir / ".runtime" / "voice_previews"
+                                preview_root.mkdir(parents=True, exist_ok=True)
+                                preview_file = preview_root / f"scene_{st.session_state['scene_index'] + 1}_preview.mp3"
+
+                                generate_voice_preview(
+                                    text=scenes_data[st.session_state["scene_index"]]["narration"],
+                                    output_path=preview_file,
+                                    provider="edge",
+                                    voice=active_preset.voice,
+                                    rate=st.session_state.get("voice_rate_tweak_slider", active_preset.rate),
+                                    pitch=st.session_state.get("voice_pitch_tweak_slider", active_preset.pitch)
+                                )
+                                st.session_state["voice_preview_path"] = str(preview_file)
+                                st.success("Speech pacing & pitch adjustments applied!")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Vocal synthesis error: {e}")
+                with apply_cols[1]:
+                    if st.button("🔄 Reset", key="btn_reset_prosody", use_container_width=True):
+                        st.session_state["voice_pitch_tweak_slider"] = active_preset.pitch or "+0Hz"
+                        st.session_state["voice_rate_tweak_slider"] = active_preset.rate or "+0%"
+                        with st.spinner("Resetting to defaults..."):
+                            try:
+                                preview_root = ui_output_dir / ".runtime" / "voice_previews"
+                                preview_root.mkdir(parents=True, exist_ok=True)
+                                preview_file = preview_root / f"scene_{st.session_state['scene_index'] + 1}_preview.mp3"
+
+                                generate_voice_preview(
+                                    text=scenes_data[st.session_state["scene_index"]]["narration"],
+                                    output_path=preview_file,
+                                    provider="edge",
+                                    voice=active_preset.voice,
+                                    rate=active_preset.rate or "+0%",
+                                    pitch=active_preset.pitch or "+0Hz"
+                                )
+                                st.session_state["voice_preview_path"] = str(preview_file)
+                                st.success("Prosody adjustments reset to preset defaults!")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Error resetting preview: {e}")
+
                 # Dynamic normalized preview string
                 st.markdown("##### 📜 Dialogue Phonetic Pronunciation")
                 normalized_preview = normalize_voice_text(st.session_state["voice_preview_text"])
