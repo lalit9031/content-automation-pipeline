@@ -292,6 +292,7 @@ class ImagenProvider:
             vertexai=True,
             project=settings.gcp_project_id,
             location=settings.gcp_location,
+            http_options={"timeout": 120.0},
         )
         self.model = settings.imagen_model
         if self.model == "imagen-3.0-generate-002":
@@ -336,7 +337,7 @@ class GeminiImageProvider:
             except ImportError as exc:
                 raise RuntimeError("Install live dependencies with: pip install -e '.[live]'") from exc
             self.generate_images_config = GenerateImagesConfig
-            clients = [genai.Client(api_key=key) for key in (settings.gemini_api_keys or (settings.gemini_api_key,))]
+            clients = [genai.Client(api_key=key, http_options={"timeout": 120.0}) for key in (settings.gemini_api_keys or (settings.gemini_api_key,))]
         else:
             self.generate_images_config = None
         self.settings = settings
@@ -831,6 +832,7 @@ class OpenAIImageProvider:
                     model=self.model,
                     prompt=prompt,
                     size=_openai_size_for(variant),
+                    timeout=90,
                 )
                 image_base64 = getattr(result.data[0], "b64_json", None)
                 if image_base64:
@@ -840,7 +842,7 @@ class OpenAIImageProvider:
                     if not image_url:
                         raise RuntimeError("OpenAI image generation did not return an image asset.")
                     import requests
-                    response = requests.get(image_url, timeout=30)
+                    response = requests.get(image_url, timeout=90)
                     response.raise_for_status()
                     image_bytes = response.content
 
@@ -896,12 +898,12 @@ class PollinationsImageProvider:
             f"&nologo=true&model=flux&enhance=true&seed=999&private=true"
         )
         
-        max_retries = 3
-        delay = 4
+        max_retries = 5
+        delay = 5
         for attempt in range(1, max_retries + 1):
             try:
                 time.sleep(delay)
-                response = requests.get(url, timeout=45)
+                response = requests.get(url, timeout=120)
                 response.raise_for_status()
                 image_bytes = response.content
                 
