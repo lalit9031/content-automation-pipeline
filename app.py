@@ -1603,7 +1603,8 @@ def render_frontdoor(settings: Settings) -> None:
             with param_cols[2]:
                 st.text_input("Scene Subject", key="image_subject")
 
-            prompt_input = st.text_area("Engine-Injected Style Prompt", key="image_prompt", height=120)
+            prompt_input = st.text_area("Engine-Injected Style Prompt", value=st.session_state.get("image_prompt", ""), height=120)
+            st.session_state["image_prompt"] = prompt_input
 
             # Action Buttons under prompt text area
             act_cols = st.columns(2)
