@@ -106,12 +106,6 @@ def _apply_streamlit_secrets() -> None:
         if value and not os.environ.get(key):
             os.environ[key] = value
 
-    # Support direct top-level GEMINI_API_KEY and GOOGLE_API_KEY secrets mapping
-    if "GEMINI_API_KEY" in secrets and not os.environ.get("GEMINI_API_KEY"):
-        os.environ["GEMINI_API_KEY"] = str(secrets["GEMINI_API_KEY"])
-    if "GOOGLE_API_KEY" in secrets and not os.environ.get("GOOGLE_API_KEY"):
-        os.environ["GOOGLE_API_KEY"] = str(secrets["GOOGLE_API_KEY"])
-
     gemini_keys = []
     nested_gemini = secrets.get("gemini_keys", {})
     if isinstance(nested_gemini, Mapping):
@@ -123,6 +117,12 @@ def _apply_streamlit_secrets() -> None:
         env_key = "GEMINI_API_KEY" if index == 1 else f"GEMINI_API_KEY_{index}"
         if not os.environ.get(env_key):
             os.environ[env_key] = value
+
+    # Fall back to direct top-level GEMINI_API_KEY and GOOGLE_API_KEY secrets mapping only if still missing
+    if "GEMINI_API_KEY" in secrets and not os.environ.get("GEMINI_API_KEY"):
+        os.environ["GEMINI_API_KEY"] = str(secrets["GEMINI_API_KEY"])
+    if "GOOGLE_API_KEY" in secrets and not os.environ.get("GOOGLE_API_KEY"):
+        os.environ["GOOGLE_API_KEY"] = str(secrets["GOOGLE_API_KEY"])
 
     openai_keys = []
     nested_openai = secrets.get("openai_keys", {})
