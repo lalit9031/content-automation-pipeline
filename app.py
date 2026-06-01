@@ -834,6 +834,8 @@ def render_frontdoor(settings: Settings) -> None:
                         st.session_state["voice_preset_choice"] = preset.key
                         st.session_state["voice_name_choice"] = preset.voice
                         st.session_state["voice_preview_text"] = preset.sample_text
+                        st.session_state["voice_gender_filter"] = preset.gender
+                        st.session_state["voice_library_language_filter"] = preset.language
                         st.session_state.pop("modal_playing_preset", None)
                         st.rerun()
 
@@ -1161,10 +1163,29 @@ def render_frontdoor(settings: Settings) -> None:
             # Resolving preset map
             presets = voice_preview_presets()
             preset_map = {preset.key: preset for preset in presets}
+            
+            # Extract filters first for dynamic cascade
+            library_language = st.session_state.get("voice_library_language_filter", "all")
+            library_gender = st.session_state.get("voice_gender_filter", "all")
+
+            # Apply dependent cascaded filtering to voice presets
+            filtered_presets = filter_voice_preview_presets(
+                presets,
+                language=library_language,
+                gender=library_gender
+            )
+            if not filtered_presets:
+                filtered_presets = presets
+
+            filtered_preset_keys = [p.key for p in filtered_presets]
+
+            # Auto-align active preset choice if it falls out of the filtered scope
             active_preset_key = st.session_state["voice_preset_choice"]
-            if active_preset_key not in preset_map:
-                active_preset_key = presets[0].key
+            if active_preset_key not in filtered_preset_keys:
+                active_preset_key = filtered_preset_keys[0]
                 st.session_state["voice_preset_choice"] = active_preset_key
+                st.session_state["voice_name_choice"] = preset_map[active_preset_key].voice
+                st.session_state["voice_preview_text"] = preset_map[active_preset_key].sample_text
 
             active_preset = preset_map[active_preset_key]
 
@@ -1189,27 +1210,23 @@ def render_frontdoor(settings: Settings) -> None:
                 else:
                     st.info("No audio preview generated yet. Tweak parameters below and click 'Play Preview' on the right panel!")
 
-                # Voice parameters underneath preview box
+                # Voice parameters underneath preview box (Cascaded: Gender -> Language -> Preset)
                 st.markdown("#### 🛠️ Vocal Parameter Tweaks")
                 param_cols = st.columns(3)
 
                 with param_cols[0]:
-                    # Dynamic preset selectbox
-                    selected_preset_key = st.selectbox(
-                        "Narration Preset",
-                        options=[p.key for p in presets],
-                        index=[p.key for p in presets].index(active_preset_key),
-                        format_func=lambda k: preset_map[k].label,
-                        key="voice_preset_choice_under"
+                    # 1st Filter: Gender selection (Cascades down)
+                    gender_options = voice_gender_options()
+                    gender_map = {value: label for value, label in gender_options}
+                    st.selectbox(
+                        "Vocal Gender",
+                        options=[value for value, _ in gender_options],
+                        format_func=lambda value: gender_map.get(value, value),
+                        key="voice_gender_filter"
                     )
-                    if selected_preset_key != active_preset_key:
-                        st.session_state["voice_preset_choice"] = selected_preset_key
-                        st.session_state["voice_name_choice"] = preset_map[selected_preset_key].voice
-                        st.session_state["voice_preview_text"] = preset_map[selected_preset_key].sample_text
-                        st.rerun()
 
                 with param_cols[1]:
-                    # Language Filter
+                    # 2nd Filter: Language selection (Cascades down)
                     language_options = voice_preview_language_options()
                     language_map = {value: label for value, label in language_options}
                     st.selectbox(
@@ -1220,15 +1237,19 @@ def render_frontdoor(settings: Settings) -> None:
                     )
 
                 with param_cols[2]:
-                    # Gender Filter
-                    gender_options = voice_gender_options()
-                    gender_map = {value: label for value, label in gender_options}
-                    st.selectbox(
-                        "Vocal Gender",
-                        options=[value for value, _ in gender_options],
-                        format_func=lambda value: gender_map.get(value, value),
-                        key="voice_gender_filter"
+                    # 3rd Filter: Preset selection (Dynamically reduced based on Gender and Language)
+                    selected_preset_key = st.selectbox(
+                        "Narration Preset",
+                        options=filtered_preset_keys,
+                        index=filtered_preset_keys.index(active_preset_key),
+                        format_func=lambda k: preset_map[k].label,
+                        key="voice_preset_choice_under"
                     )
+                    if selected_preset_key != active_preset_key:
+                        st.session_state["voice_preset_choice"] = selected_preset_key
+                        st.session_state["voice_name_choice"] = preset_map[selected_preset_key].voice
+                        st.session_state["voice_preview_text"] = preset_map[selected_preset_key].sample_text
+                        st.rerun()
 
                 st.markdown("##### SSML Prosody Adjustments")
                 tweak_cols = st.columns(2)
