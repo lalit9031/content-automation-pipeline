@@ -719,7 +719,6 @@ def render_frontdoor(settings: Settings) -> None:
         st.session_state["voice_preview_path"] = ""
 
     st.session_state.setdefault("voice_preset_choice", "english_explainer")
-    st.session_state.setdefault("voice_preset_choice_under", "english_explainer")
     st.session_state.setdefault("prev_voice_library_language_filter", "all")
     st.session_state.setdefault("prev_voice_gender_filter", "all")
     st.session_state.setdefault("voice_provider_choice", "edge")
@@ -835,7 +834,6 @@ def render_frontdoor(settings: Settings) -> None:
                 with btn_cols[1]:
                     if st.button("✅ Select", key=f"modal_select_{preset.key}", use_container_width=True):
                         st.session_state["voice_preset_choice"] = preset.key
-                        st.session_state["voice_preset_choice_under"] = preset.key
                         st.session_state["voice_name_choice"] = preset.voice
                         st.session_state["voice_preview_text"] = preset.sample_text
                         
@@ -1226,7 +1224,6 @@ def render_frontdoor(settings: Settings) -> None:
                 st.session_state["voice_preset_choice"] = active_preset_key
                 st.session_state["voice_name_choice"] = preset_map[active_preset_key].voice
                 st.session_state["voice_preview_text"] = preset_map[active_preset_key].sample_text
-                st.session_state["voice_preset_choice_under"] = active_preset_key  # Synchronize selectbox state!
                 
                 # Sync script editor text area & DB
                 st.session_state[f"dialogue_editor_{active_scene_idx}"] = preset_map[active_preset_key].sample_text
@@ -1295,11 +1292,9 @@ def render_frontdoor(settings: Settings) -> None:
                         options=filtered_preset_keys,
                         index=filtered_preset_keys.index(active_preset_key),
                         format_func=lambda k: preset_map[k].label,
-                        key="voice_preset_choice_under"
                     )
                     if selected_preset_key != active_preset_key:
                         st.session_state["voice_preset_choice"] = selected_preset_key
-                        st.session_state["voice_preset_choice_under"] = selected_preset_key
                         st.session_state["voice_name_choice"] = preset_map[selected_preset_key].voice
                         st.session_state["voice_preview_text"] = preset_map[selected_preset_key].sample_text
                         
