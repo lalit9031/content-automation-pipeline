@@ -1594,6 +1594,21 @@ def render_frontdoor(settings: Settings) -> None:
             if image_preview_path and os.path.exists(image_preview_path):
                 render_image_preview(Path(image_preview_path))
                 st.caption(f"Loaded generated canvas path: `{Path(image_preview_path).name}`")
+                
+                # Check for mock fallback by examining file content
+                try:
+                    preview_file_path = Path(image_preview_path)
+                    content_bytes = preview_file_path.read_bytes()
+                    is_fallback_svg = content_bytes.strip().startswith(b"<svg") or b"<svg" in content_bytes[:200]
+                except Exception:
+                    is_fallback_svg = False
+
+                if is_fallback_svg and st.session_state.get("image_provider_choice") != "mock":
+                    st.warning(
+                        "⚠️ **API Quota/Configuration Fallback:** The synthesis fell back to the mock template layout. "
+                        "Please verify that your Gemini API Key (`GEMINI_API_KEY`) is correctly set up in your Streamlit Secrets / environment, "
+                        "or check the Streamlit logs for rate-limit / quota errors."
+                    )
             else:
                 st.info("No visual canvas synthesized yet. Tweak subject descriptions under the screen and generate!")
 
