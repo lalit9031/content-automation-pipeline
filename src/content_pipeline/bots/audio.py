@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from content_pipeline.config import Settings
+from content_pipeline.bots.gemini_tts import generate_gemini_voiceover
 
 
 HINDI_PRONUNCIATION_TEXT = (
@@ -357,6 +358,78 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
         ),
         rate="+5%",
         pitch="+0Hz",
+    ),
+    VoicePreviewPreset(
+        key="gemini_rasalgethi",
+        label="Gemini Captain (Rasalgethi - High-Energy Sci-Fi)",
+        description="A smooth, premium authoritative commercial voice from Gemini 2.5 TTS.",
+        provider="gemini",
+        voice="Rasalgethi",
+        language="en-US",
+        gender="male",
+        sample_text=(
+            "[Sound: Loud, frantic alarm buzzing] Everyone, report to stations! The ship is shaking! [Excited] We’re entering the Nebula of Floating Fun!"
+        ),
+    ),
+    VoicePreviewPreset(
+        key="gemini_puck",
+        label="Gemini Pilot (Puck - Youthful & Energetic)",
+        description="A bright, energetic, and highly expressive youthful voice from Gemini 2.5 TTS.",
+        provider="gemini",
+        voice="Puck",
+        language="en-US",
+        gender="male",
+        sample_text=(
+            "[Sound: Whoosh of air] Whoa! [Surprised] Captain! My controls are going wild! Everything is starting to float—my snacks, my tablet, even my seat!"
+        ),
+    ),
+    VoicePreviewPreset(
+        key="gemini_charon",
+        label="Gemini Tech Specialist (Charon - Quick & Smart)",
+        description="A quick, tech-sounding deep voice from Gemini 2.5 TTS, ideal for narration or tech dialogue.",
+        provider="gemini",
+        voice="Charon",
+        language="en-US",
+        gender="male",
+        sample_text=(
+            "[Sound: Electronic beeping and sparking] I’m on it! I'm recalibrating the gravity drive now! [Determined] Hold on tight, team, we’re going to steady this ship!"
+        ),
+    ),
+    VoicePreviewPreset(
+        key="gemini_kore",
+        label="Gemini Kore (Warm Storytelling Voice)",
+        description="A warm, clear, and reassuring female storytelling voice from Gemini 2.5 TTS.",
+        provider="gemini",
+        voice="Kore",
+        language="en-US",
+        gender="female",
+        sample_text=(
+            "Once upon a time, deep within the heart of a cosmic nebula, a crew of brave children discovered a mystery that would change space travel forever."
+        ),
+    ),
+    VoicePreviewPreset(
+        key="gemini_fenrir",
+        label="Gemini Fenrir (Bold Corporate Tone)",
+        description="A bold, authoritative, and direct masculine voice from Gemini 2.5 TTS.",
+        provider="gemini",
+        voice="Fenrir",
+        language="en-US",
+        gender="male",
+        sample_text=(
+            "System update complete. Atmospheric pressure is stable, but gravity coordinates require a manual override."
+        ),
+    ),
+    VoicePreviewPreset(
+        key="gemini_aoede",
+        label="Gemini Aoede (Gentle Conversational Voice)",
+        description="A gentle, conversational, and highly friendly female voice from Gemini 2.5 TTS.",
+        provider="gemini",
+        voice="Aoede",
+        language="en-US",
+        gender="female",
+        sample_text=(
+            "Don't worry, everyone. Keep your safety harnesses secured. The gravity drive will be back online in just a moment."
+        ),
     ),
 )
 
@@ -747,6 +820,28 @@ def generate_indian_voiceover(
         if pitch is None:
             pitch = "+0Hz"
 
+    is_gemini = False
+    if selected_preset is not None and getattr(selected_preset, "provider", "") == "gemini":
+        is_gemini = True
+    else:
+        from content_pipeline.config import Settings
+        try:
+            settings = Settings.from_environment()
+            if voice in ("Rasalgethi", "Puck", "Charon", "Kore", "Fenrir", "Aoede") or settings.voice_provider == "gemini":
+                is_gemini = True
+        except Exception:
+            if voice in ("Rasalgethi", "Puck", "Charon", "Kore", "Fenrir", "Aoede"):
+                is_gemini = True
+
+    if is_gemini:
+        from content_pipeline.bots.gemini_tts import generate_gemini_voiceover
+        from content_pipeline.config import Settings
+        settings = Settings.from_environment()
+        voice_to_use = voice
+        if selected_preset is not None and getattr(selected_preset, "provider", "") == "gemini":
+            voice_to_use = selected_preset.voice
+        return generate_gemini_voiceover(text=text, output_path=output_path, voice_name=voice_to_use, settings=settings)
+
     _run_async(_write_edge_voice_sample(output_path, voice=voice, text=text, rate=rate, pitch=pitch))
     return output_path
 
@@ -763,8 +858,8 @@ def generate_voice_preview(
 ) -> Path:
     provider = (provider or "edge").strip().lower()
     _ = openai_api_key
-    if provider != "edge":
-        raise ValueError("Voice preview generation currently supports provider='edge' only.")
+    if provider not in ("edge", "gemini"):
+        raise ValueError("Voice preview generation supports provider='edge' or 'gemini'.")
     return generate_indian_voiceover(text, output_path, voice=voice, rate=rate, pitch=pitch)
 
 

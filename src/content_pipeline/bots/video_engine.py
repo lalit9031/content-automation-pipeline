@@ -195,10 +195,21 @@ def generate_auto_2_5d_clips(
         clean_text = clip.on_screen_text.replace("'", "").replace(":", "")
         text_filter = ""
         if clean_text:
-            text_filter = (
-                f",drawtext=text='{clean_text}':fontcolor=white:fontsize=42:font='Arial':"
-                "box=1:boxcolor=black@0.65:boxborderw=18:x=(w-text_w)/2:y=h-100"
-            )
+            drawtext_supported = False
+            try:
+                filters_output = subprocess.check_output([executable, "-filters"], text=True)
+                if "drawtext" in filters_output:
+                    drawtext_supported = True
+            except Exception:
+                pass
+
+            if drawtext_supported:
+                text_filter = (
+                    f",drawtext=text='{clean_text}':fontcolor=white:fontsize=42:font='Arial':"
+                    "box=1:boxcolor=black@0.65:boxborderw=18:x=(w-text_w)/2:y=h-100"
+                )
+            else:
+                print(f"  ⚠️ Warning: FFmpeg 'drawtext' filter not supported. Skipping subtitles overlay.")
             
         subprocess.run(
             [
