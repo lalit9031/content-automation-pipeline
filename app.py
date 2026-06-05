@@ -2208,12 +2208,31 @@ def overlay_lower_third_text(image_path: Path, output_path: Path, text: str):
                     if not result_path or str(result_path).strip().lower() == "none":
                         raise ValueError(f"Hugging Face space did not return a valid audio track. Details: {info}")
 
-                    st.write("🔄 Transcoding generated audio from FLAC to genuine MP3...")
+                    st.write("🔄 Transcoding generated audio from FLAC to genuine MP3 with smooth fade-out...")
                     out_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio/LittleBubbles_Generated_Song.mp3")
                     out_path.parent.mkdir(parents=True, exist_ok=True)
                     
+                    # 1. Probe the duration of the generated FLAC track
+                    duration_cmd = [
+                        "ffprobe", "-i", str(result_path),
+                        "-show_entries", "format=duration",
+                        "-v", "quiet", "-of", "csv=p=0"
+                    ]
+                    duration_res = subprocess.run(duration_cmd, capture_output=True, text=True, check=True)
+                    total_duration = float(duration_res.stdout.strip())
+                    
+                    # 2. Calculate smooth 5-second fade-out parameters
+                    fade_duration = 5.0
+                    if total_duration > 15.0:
+                        start_fade = total_duration - fade_duration
+                    else:
+                        fade_duration = min(2.0, total_duration * 0.2)
+                        start_fade = total_duration - fade_duration
+                        
+                    # 3. Transcode and apply afade filter
                     transcode_cmd = [
                         "ffmpeg", "-y", "-i", str(result_path),
+                        "-filter:a", f"afade=t=out:st={start_fade:.3f}:d={fade_duration:.3f}",
                         "-codec:a", "libmp3lame", "-qscale:a", "2",
                         str(out_path)
                     ]
