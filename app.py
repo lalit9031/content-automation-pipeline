@@ -769,6 +769,7 @@ Alphabet is fun for me!""")
     st.session_state.setdefault("kids_song_temperature", 0.8)
     st.session_state.setdefault("kids_song_genre", "Auto")
     st.session_state.setdefault("kids_song_generated_mp3", "")
+    st.session_state.setdefault("kids_song_singer_gender", "Male")
     st.session_state.setdefault("voice_preview_path", "")
     st.session_state.setdefault("sidebar_mode", "Audio")
     st.session_state.setdefault("voice_library_language_filter", "all")
@@ -1971,6 +1972,19 @@ def overlay_lower_third_text(image_path: Path, output_path: Path, text: str):
             )
             st.session_state["kids_song_genre"] = genre
 
+            # Singer Voice Gender Selection
+            gender_options = ["Male", "Female"]
+            curr_gender = st.session_state.get("kids_song_singer_gender", "Male")
+            gender_index = gender_options.index(curr_gender) if curr_gender in gender_options else 0
+            singer_gender = st.selectbox(
+                "Singer Voice Gender",
+                options=gender_options,
+                index=gender_index,
+                key="kids_song_singer_gender_input",
+                help="Choose whether the singing voice is Male or Female. The engine will automatically update the description prompt."
+            )
+            st.session_state["kids_song_singer_gender"] = singer_gender
+
         st.markdown("---")
         st.markdown("### Playback & Generation")
         
@@ -2146,6 +2160,45 @@ def overlay_lower_third_text(image_path: Path, output_path: Path, text: str):
                             else:
                                 desc = "catchy pop song, piano, acoustic guitar, soft percussion."
                             st.session_state["kids_song_description"] = desc
+
+                    # Transliterate Hindi lyrics if Devanagari characters are present
+                    has_hindi = any('\u0900' <= char <= '\u097f' for char in lyrics_to_process)
+                    if has_hindi:
+                        st.write("🇮🇳 Hindi lyrics detected. Auto-translating to English-phonetic Hinglish...")
+                        from indic_transliteration import sanscript
+                        from indic_transliteration.sanscript import transliterate
+                        itrans = transliterate(lyrics_to_process, sanscript.DEVANAGARI, sanscript.ITRANS)
+                        lyrics_to_process = itrans.replace(".n", "n").replace(".N", "n").replace(".", "").lower()
+                        
+                        # Auto-update description for Indian Hindi pronunciation
+                        if "hindi" not in desc.lower():
+                            desc = desc.strip()
+                            if desc and not desc.endswith("."):
+                                desc += "."
+                            desc += " clear Hindi pronunciation, Indian kids music tone."
+                        
+                        st.session_state["kids_song_lyrics"] = lyrics_to_process
+                        st.session_state["kids_song_lyrics_input"] = lyrics_to_process
+
+                    # Update singer voice gender selection
+                    singer_gender = st.session_state.get("kids_song_singer_gender", "Male").lower()
+                    if singer_gender == "female":
+                        desc = re.sub(r"\bmale\b", "female", desc, flags=re.IGNORECASE)
+                        if "female" not in desc.lower():
+                            desc = desc.strip()
+                            if desc and not desc.endswith("."):
+                                desc += "."
+                            desc += " friendly female singing voice."
+                    else: # Male
+                        desc = re.sub(r"\bfemale\b", "male", desc, flags=re.IGNORECASE)
+                        if "male" not in desc.lower():
+                            desc = desc.strip()
+                            if desc and not desc.endswith("."):
+                                desc += "."
+                            desc += " friendly male singing voice."
+
+                    st.session_state["kids_song_description"] = desc
+                    st.session_state["kids_song_description_input"] = desc
 
                     # 2. Split lines, skip empty lines, and sanitize tags
                     sanitized_lines = []
