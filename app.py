@@ -1858,6 +1858,13 @@ def overlay_lower_third_text(image_path: Path, output_path: Path, text: str):
                                 if combined_style and not combined_style.endswith("."):
                                     combined_style += "."
                                 combined_style += " clear Hindi pronunciation, Indian kids music tone."
+                            
+                            st.session_state["kids_song_singer_gender"] = "Female"
+                            st.session_state.pop("kids_song_singer_gender_input", None)
+                            ref_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio/बार्नबी गिलहरी की व्यर्थ खोज.mp3")
+                            if ref_path.exists():
+                                st.session_state["kids_song_ref_audio_choice"] = "बार्नबी गिलहरी की व्यर्थ खोज.mp3"
+                                st.session_state.pop("kids_song_ref_audio_choice_input", None)
                         
                         st.session_state["kids_song_lyrics"] = lyrics_content
                         st.session_state.pop("kids_song_lyrics_input", None)
@@ -1888,6 +1895,13 @@ def overlay_lower_third_text(image_path: Path, output_path: Path, text: str):
                                     "melodic Indian acoustic folk pop, warm friendly singing voice, clear Hindi pronunciation, "
                                     "acoustic guitar, soft tabla, clean percussion, peaceful balanced mix."
                                 )
+                            
+                            st.session_state["kids_song_singer_gender"] = "Female"
+                            st.session_state.pop("kids_song_singer_gender_input", None)
+                            ref_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio/बार्नबी गिलहरी की व्यर्थ खोज.mp3")
+                            if ref_path.exists():
+                                st.session_state["kids_song_ref_audio_choice"] = "बार्नबी गिलहरी की व्यर्थ खोज.mp3"
+                                st.session_state.pop("kids_song_ref_audio_choice_input", None)
                         else:
                             if is_kids:
                                 inferred_style = (
@@ -2098,9 +2112,13 @@ def overlay_lower_third_text(image_path: Path, output_path: Path, text: str):
                             cropped_ref_path = temp_dir / "kids_song_ref_cropped.mp3"
                             
                             st.write(f"ℹ️ Cropping style reference '{selected_ref}' to 15 seconds...")
+                            start_time = "0"
+                            if ref_full_path.name == "बार्नबी गिलहरी की व्यर्थ खोज.mp3":
+                                start_time = "4.5"
+                                
                             cmd = [
                                 "ffmpeg", "-y", "-i", str(ref_full_path),
-                                "-ss", "0", "-t", "15",
+                                "-ss", start_time, "-t", "15",
                                 "-codec:a", "libmp3lame", "-b:a", "128k",
                                 str(cropped_ref_path)
                             ]
