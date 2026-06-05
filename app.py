@@ -1846,29 +1846,65 @@ def overlay_lower_third_text(image_path: Path, output_path: Path, text: str):
                             
                         combined_style = ". ".join(style_parts)
                         
+                        has_hindi = any('\u0900' <= char <= '\u097f' for char in lyrics_content)
+                        if has_hindi:
+                            from indic_transliteration import sanscript
+                            from indic_transliteration.sanscript import transliterate
+                            itrans = transliterate(lyrics_content, sanscript.DEVANAGARI, sanscript.ITRANS)
+                            lyrics_content = itrans.replace(".n", "n").replace(".N", "n").replace(".", "").lower()
+                            
+                            if "hindi" not in combined_style.lower():
+                                combined_style = combined_style.strip()
+                                if combined_style and not combined_style.endswith("."):
+                                    combined_style += "."
+                                combined_style += " clear Hindi pronunciation, Indian kids music tone."
+                        
                         st.session_state["kids_song_lyrics"] = lyrics_content
+                        st.session_state.pop("kids_song_lyrics_input", None)
                         st.session_state["kids_song_description"] = combined_style
+                        st.session_state.pop("kids_song_description_input", None)
                         st.success("🎉 Successfully parsed and autofilled settings from prompt!")
                         st.rerun()
                     else:
                         # Infer from song structure
                         lower_text = lyrics.lower()
                         is_kids = any(k in lower_text for k in ["abc", "alphabet", "kid", "child", "baby", "nursery", "rhyme", "toddler", "toy"])
+                        has_hindi = any('\u0900' <= char <= '\u097f' for char in lyrics)
                         
-                        if is_kids:
-                            inferred_style = (
-                                "cheerful nursery rhyme, magical kids show music, happy bouncy melody, 92 BPM, "
-                                "warm friendly lead voice, clear pronunciation, ukulele, soft piano, glockenspiel, "
-                                "gentle bells, light percussion, clean mix."
-                            )
+                        if has_hindi:
+                            # Transliterate the lyrics to Hinglish for display
+                            from indic_transliteration import sanscript
+                            from indic_transliteration.sanscript import transliterate
+                            itrans = transliterate(lyrics, sanscript.DEVANAGARI, sanscript.ITRANS)
+                            lyrics = itrans.replace(".n", "n").replace(".N", "n").replace(".", "").lower()
+                            
+                            if is_kids:
+                                inferred_style = (
+                                    "cheerful Indian Hindi nursery rhyme, playful animated kids voice, happy bouncy melody, 95 BPM, "
+                                    "clear Hindi pronunciation, hand claps, glockenspiel, soft harmonium, playful acoustic beats, clean mix."
+                                )
+                            else:
+                                inferred_style = (
+                                    "melodic Indian acoustic folk pop, warm friendly singing voice, clear Hindi pronunciation, "
+                                    "acoustic guitar, soft tabla, clean percussion, peaceful balanced mix."
+                                )
                         else:
-                            inferred_style = (
-                                "catchy melodic pop song, warm vocals, piano, acoustic guitar, soft percussion, "
-                                "balanced audio mix."
-                            )
+                            if is_kids:
+                                inferred_style = (
+                                    "cheerful nursery rhyme, magical kids show music, happy bouncy melody, 92 BPM, "
+                                    "warm friendly lead voice, clear pronunciation, ukulele, soft piano, glockenspiel, "
+                                    "gentle bells, light percussion, clean mix."
+                                )
+                            else:
+                                inferred_style = (
+                                    "catchy melodic pop song, warm vocals, piano, acoustic guitar, soft percussion, "
+                                    "balanced audio mix."
+                                )
                         
                         st.session_state["kids_song_lyrics"] = lyrics
+                        st.session_state.pop("kids_song_lyrics_input", None)
                         st.session_state["kids_song_description"] = inferred_style
+                        st.session_state.pop("kids_song_description_input", None)
                         st.info("ℹ️ Plain prompt detected. Style inferred from song content.")
                         st.rerun()
                 else:
