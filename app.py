@@ -2005,7 +2005,7 @@ def overlay_lower_third_text(image_path: Path, output_path: Path, text: str):
             )
             st.session_state["kids_song_temperature"] = temp
             
-            genre_options = ["Auto", "Kids", "Pop", "Classical", "Electronic", "Rock", "Country"]
+            genre_options = ['Auto', 'Pop', 'Latin', 'Rock', 'Electronic', 'Metal', 'Country', 'R&B/Soul', 'Ballad', 'Jazz', 'World', 'Hip-Hop', 'Funk', 'Soundtrack']
             curr_genre = st.session_state.get("kids_song_genre", "Auto")
             genre_index = genre_options.index(curr_genre) if curr_genre in genre_options else 0
             genre = st.selectbox(
