@@ -2178,7 +2178,7 @@ def overlay_lower_third_text(image_path: Path, output_path: Path, text: str):
                             desc += " clear Hindi pronunciation, Indian kids music tone."
                         
                         st.session_state["kids_song_lyrics"] = lyrics_to_process
-                        st.session_state["kids_song_lyrics_input"] = lyrics_to_process
+                        st.session_state.pop("kids_song_lyrics_input", None)
 
                     # Update singer voice gender selection
                     singer_gender = st.session_state.get("kids_song_singer_gender", "Male").lower()
@@ -2198,7 +2198,7 @@ def overlay_lower_third_text(image_path: Path, output_path: Path, text: str):
                             desc += " friendly male singing voice."
 
                     st.session_state["kids_song_description"] = desc
-                    st.session_state["kids_song_description_input"] = desc
+                    st.session_state.pop("kids_song_description_input", None)
 
                     # 2. Split lines, skip empty lines, and sanitize tags
                     sanitized_lines = []
