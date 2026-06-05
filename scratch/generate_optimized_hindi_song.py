@@ -79,6 +79,7 @@ def indic_to_phonetic_english(devanagari_text: str) -> str:
             continue
             
         w = word
+        # 1. Map conjuncts
         w = w.replace("j~n", "gy")
         w = w.replace("kShetra", "kshetra")
         w = w.replace("x", "ksh")
@@ -86,30 +87,45 @@ def indic_to_phonetic_english(devanagari_text: str) -> str:
         w = w.replace(".d", "d")
         w = w.replace(".D", "d")
         
+        # 2. Map nasalizations (anusvara)
+        w = w.replace("oM", "ohn")
+        w = w.replace("eM", "mayn")
+        w = w.replace("aiM", "ayn")
+        w = w.replace("iM", "in")
+        w = w.replace("uM", "oon")
+        w = w.replace("aM", "an")
+        w = w.replace("M", "n")
+        
+        # 3. Map vowels
         w = w.replace("RRi", "ri")
         w = w.replace("RR", "ri")
         w = w.replace("R", "ri")
         
+        # 4. Map 'e' and 'o' to sound-alike English phonics first
+        w = w.replace("e", "ay")
+        w = w.replace("o", "oh")
+        
+        # Map case-sensitive ITRANS long vowels
         w = w.replace("A", "aa")
         w = w.replace("I", "ee")
         w = w.replace("U", "oo")
         
+        # Map sh/Sh/s
         w = w.replace("Sh", "sh")
         w = w.replace("S", "sh")
         
-        w = w.replace("oM", "on")
-        w = w.replace("eM", "mein")
-        w = w.replace("aiM", "ain")
-        w = w.replace("iM", "in")
-        w = w.replace("uM", "un")
-        w = w.replace("aM", "an")
-        w = w.replace("M", "n")
-        
+        # 5. Map short 'a' (schwa) to 'u' or 'uh'
+        # If 'a' is at the end of the word (length > 2) and not 'aa', delete it (schwa deletion)
         if w.endswith("a") and not w.endswith("aa") and len(w) > 2:
             w = w[:-1]
             
-        w = re.sub(r'(?<=[aeiou])([bcdfghjklmnpqrstvwxyz]+)a([bcdfghjklmnpqrstvwxyz]+[aeiou])', r'\1\2', w)
+        # Replace remaining short 'a's with 'u'
+        w = re.sub(r'(?<![aeiouy])a(?![aeiouy])', 'u', w)
+        
+        # 6. Simplify double consonants for better flow (e.g. च्च -> च)
         w = w.replace("chch", "ch")
+        
+        # Force all lowercase
         w = w.lower()
         
         converted_words.append(leading_punc + w + trailing_punc)

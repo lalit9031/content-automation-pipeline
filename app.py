@@ -657,76 +657,9 @@ def render_preview_panel(overview: dict[str, object], day_root: Path) -> None:
 def render_frontdoor(settings: Settings) -> None:
     latest_day = latest_daily_day(settings.output_dir)
     default_day = date.fromisoformat(latest_day) if latest_day else date.today()
-
-    st.sidebar.header("Studio Controls")
-    output_dir_input = st.sidebar.text_input("Output directory", value=str(settings.output_dir))
-    ui_output_dir = resolve_output_dir(output_dir_input)
+    ui_output_dir = resolve_output_dir(st.session_state.get("global_output_dir", str(settings.output_dir)))
     saved_studio_state = load_studio_state(ui_output_dir)
-    default_sidebar_mode = st.session_state.get("sidebar_mode", "Audio")
-    if default_sidebar_mode not in {"Audio", "Image", "All"}:
-        default_sidebar_mode = "Audio"
-    sidebar_mode = st.sidebar.radio(
-        "Sidebar mode",
-        options=("Audio", "Image", "All"),
-        index=("Audio", "Image", "All").index(
-            "Image" if default_sidebar_mode == "Video" else default_sidebar_mode
-        ),
-        horizontal=True,
-        key="sidebar_mode",
-    )
-    if st.session_state.get("_studio_output_dir") != str(ui_output_dir):
-        st.session_state["_studio_output_dir"] = str(ui_output_dir)
-        st.session_state["voice_preset_choice"] = saved_studio_state.get("voice_preset_choice", "english_explainer")
-        st.session_state["voice_provider_choice"] = "edge"
-        st.session_state["voice_name_choice"] = saved_studio_state.get("voice_name", settings.indian_tts_voice)
-        st.session_state["voice_preview_text"] = saved_studio_state.get(
-            "voice_preview_text",
-            "AI for PM teams using Jira and Scrum. The A.I. flow should sound clear and calm.",
-        )
-        st.session_state["image_provider_choice"] = saved_studio_state.get("image_provider", settings.image_provider)
-        st.session_state["image_topic"] = saved_studio_state.get("image_topic", "Agile project management")
-        st.session_state["image_subject"] = saved_studio_state.get(
-            "image_subject",
-            "a team reviewing a glowing workflow board",
-        )
-        st.session_state["image_prompt"] = saved_studio_state.get(
-            "image_prompt",
-            build_cinematic_image_prompt(
-                st.session_state["image_topic"],
-                st.session_state["image_subject"],
-            ),
-        )
-        st.session_state["music_mood"] = saved_studio_state.get("music_mood", "cinematic")
-        st.session_state["music_duration_seconds"] = int(saved_studio_state.get("music_duration_seconds", "8"))
-        st.session_state["reference_audio_root"] = saved_studio_state.get(
-            "reference_audio_root",
-            str(
-                settings.reference_audio_dir
-                if settings.reference_audio_dir is not None
-                else ui_output_dir / "reference_audio" / "indian_languages_audio_dataset"
-            ),
-        )
-        st.session_state["reference_audio_language_filter"] = saved_studio_state.get(
-            "reference_audio_language_filter",
-            "all",
-        )
-        st.session_state["reference_audio_preview_path"] = saved_studio_state.get(
-            "reference_audio_preview_path",
-            "",
-        )
-        st.session_state["reference_audio_selected_clip"] = saved_studio_state.get(
-            "reference_audio_selected_clip",
-            "",
-        )
-        st.session_state["reference_audio_bank_size"] = int(
-            saved_studio_state.get("reference_audio_bank_size", "24")
-        )
-        st.session_state["reference_audio_default_language"] = saved_studio_state.get(
-            "reference_audio_default_language",
-            "hindi",
-        )
-        st.session_state["image_preview_path"] = ""
-        st.session_state["music_preview_path"] = ""
+    
     st.session_state.setdefault("voice_preset_choice", "english_explainer")
     st.session_state.setdefault("voice_provider_choice", "edge")
     st.session_state.setdefault("voice_name_choice", settings.indian_tts_voice)
@@ -748,30 +681,6 @@ def render_frontdoor(settings: Settings) -> None:
     st.session_state.setdefault("music_duration_seconds", 8)
     st.session_state.setdefault("image_preview_path", "")
     st.session_state.setdefault("music_preview_path", "")
-    st.session_state.setdefault("kids_song_lyrics", """[verse]
-A for Ant, B for Butterfly,
-C for Cat, D for Dog nearby,
-E for Elephant, F for Fish,
-G for Grapes on a little dish,
-H for Horse, I for Ice cream,
-J for Jelly in a dream,
-K for Kite, L for Lion,
-M for Monkey always trying.
-
-[chorus]
-A B C, sing with me,
-Learning letters happily,
-A B C, one two three,
-Alphabet is fun for me!""")
-    st.session_state.setdefault("kids_song_description", "cheerful nursery rhyme, magical kids show music, soft cinematic feel, bright and colorful, 92 BPM, warm friendly male voice, clear Indian-English pronunciation, gentle children's choir in the chorus, ukulele, piano, bells, claps, soft drums, glockenspiel. Melody should be catchy, simple, and soft.")
-    st.session_state.setdefault("kids_song_ref_audio_choice", "Educational Kids' Alphabet Song.mp3")
-    st.session_state.setdefault("kids_song_cfg_coef", 1.8)
-    st.session_state.setdefault("kids_song_temperature", 0.8)
-    st.session_state.setdefault("kids_song_genre", "Auto")
-    st.session_state.setdefault("kids_song_generated_mp3", "")
-    st.session_state.setdefault("kids_song_singer_gender", "Male")
-    st.session_state.setdefault("voice_preview_path", "")
-    st.session_state.setdefault("sidebar_mode", "Audio")
     st.session_state.setdefault("voice_library_language_filter", "all")
     st.session_state.setdefault("voice_gender_filter", "all")
     st.session_state.setdefault("reference_audio_root", "")
@@ -781,245 +690,62 @@ Alphabet is fun for me!""")
     st.session_state.setdefault("reference_audio_preview_path", "")
     st.session_state.setdefault("reference_audio_bank_size", 24)
     apply_pending_voice_preset()
-    show_audio_controls = sidebar_mode in {"Audio", "All"}
-    show_image_controls = sidebar_mode in {"Image", "All"}
-    if show_image_controls:
-        st.sidebar.subheader("Image Studio")
-        image_provider_options = ("mock", "free-ai", "gemini", "openai")
-        current_image_provider = st.session_state.get("image_provider_choice", settings.image_provider)
-        if current_image_provider not in image_provider_options:
-            image_provider_options = (current_image_provider, *image_provider_options)
-        st.sidebar.selectbox(
-            "Image provider",
-            options=image_provider_options,
-            key="image_provider_choice",
-        )
-        if st.session_state["image_provider_choice"] == "gemini":
-            st.sidebar.info(
-                "💡 **Note on Gemini:** Dedicated image generation (`Imagen 3`/`4`) is only supported on Google AI Studio keys that have **billing enabled** (paid plan). "
-                "If your key is on the free tier, please select the **`free-ai`** (Pollinations) provider to generate real Pixar 3D illustrations for free."
-            )
-        st.sidebar.text_input("Image topic", key="image_topic")
-        st.sidebar.text_input("Image subject", key="image_subject")
-        if st.sidebar.button("Build image prompt", use_container_width=True):
-            st.session_state["image_prompt"] = build_cinematic_image_prompt(
-                st.session_state["image_topic"],
-                st.session_state["image_subject"],
-            )
-            st.rerun()
-        st.sidebar.text_area(
-            "Image prompt",
-            key="image_prompt",
-            height=180,
-            help="Edit the prompt here before generating the image preview.",
-        )
-        if st.sidebar.button("Generate 1 image preview", use_container_width=True):
-            try:
-                image_settings = replace(settings, output_dir=ui_output_dir)
-                provider = image_provider(replace(image_settings, image_provider=st.session_state["image_provider_choice"]))
-                variant = ImageVariant("16:9", 2560, 1440, "image_preview")
-                preview_path = ui_output_dir / ".runtime" / "image_previews" / (
-                    f"{_slugify(st.session_state['image_topic'])}_{_slugify(st.session_state['image_subject'])}_{st.session_state['image_provider_choice']}{provider.extension}"
-                )
-                preview_path.parent.mkdir(parents=True, exist_ok=True)
-                preview_path.write_bytes(provider.create(st.session_state["image_prompt"], variant))
-                st.session_state["image_preview_path"] = str(preview_path)
-                if st.session_state["image_provider_choice"] != "mock" and _svg_preview_text(preview_path) is not None:
-                    st.sidebar.warning(
-                        "⚠️ **Fallback to Mock:** The selected provider failed to generate the image (likely due to API billing/limit constraints) and silently fell back to the Mock provider. "
-                        "Please check your API keys or switch to the **`free-ai`** (Pollinations) provider to generate real Pixar illustrations for free."
-                    )
-                else:
-                    st.sidebar.success(f"Image preview written to {preview_path}")
-            except Exception as exc:
-                st.sidebar.error(str(exc))
-        if st.session_state.get("image_preview_path"):
-            st.sidebar.caption("Preview ready in the Studio tab.")
-    if show_audio_controls:
-        st.sidebar.subheader("Voice Studio")
+    
+    # Compute all lookup maps and presets offline (replacing st.sidebar selectbox references)
     gender_options = voice_gender_options()
     gender_map = {value: label for value, label in gender_options}
+    
     default_voice_gender = st.session_state.get("voice_gender_filter", "all")
     if default_voice_gender not in gender_map:
         default_voice_gender = "all"
         st.session_state["voice_gender_filter"] = default_voice_gender
-    if show_audio_controls:
-        st.sidebar.selectbox(
-            "Voice gender",
-            options=[value for value, _ in gender_options],
-            index=[value for value, _ in gender_options].index(default_voice_gender),
-            format_func=lambda value: gender_map.get(value, value),
-            key="voice_gender_filter",
-        )
-        preset_options = filter_voice_preview_presets(
-            voice_preview_presets(),
-            gender=st.session_state["voice_gender_filter"],
-        )
-        if not preset_options:
-            preset_options = voice_preview_presets()
-        preset_map = {preset.key: preset for preset in preset_options}
-        preset_default = st.session_state.get("voice_preset_choice", preset_options[0].key)
-        if preset_default not in preset_map:
-            preset_default = preset_options[0].key
-            st.session_state["voice_preset_choice"] = preset_default
-            apply_voice_preset_by_key(preset_default)
-        st.sidebar.selectbox(
-            "Voice preset",
-            options=[preset.key for preset in preset_options],
-            index=[preset.key for preset in preset_options].index(preset_default),
-            format_func=lambda value: f"{preset_map[value].label} - {preset_map[value].description}",
-            key="voice_preset_choice",
-            on_change=apply_selected_voice_preset,
-        )
-        st.sidebar.selectbox(
-            "Voice provider",
-            options=("edge",),
-            index=0,
-            key="voice_provider_choice",
-        )
-        voice_provider_choice = st.session_state["voice_provider_choice"]
-        voice_options = available_voice_options("edge", st.session_state["voice_gender_filter"])
-        if not voice_options:
-            voice_options = available_voice_options("edge")
         
-        # Inject selected preset voice if it is a native child/custom model not in the default list
-        preset_choice = st.session_state.get("voice_preset_choice")
-        if preset_choice:
-            preset_lookup = {p.key: p for p in voice_preview_presets()}
-            active_p = preset_lookup.get(preset_choice)
-            if active_p and active_p.voice not in [v for v, _ in voice_options]:
-                voice_options.append((active_p.voice, f"{active_p.voice} - Native Preset Voice"))
-                
-        voice_option_values = [voice for voice, _ in voice_options]
-        default_voice = st.session_state["voice_name_choice"] or settings.indian_tts_voice
-        if default_voice not in voice_option_values:
-            default_voice = voice_option_values[0]
-        if st.session_state["voice_name_choice"] not in voice_option_values:
-            st.session_state["voice_name_choice"] = default_voice
-        voice_name_choice = st.sidebar.selectbox(
-            "Voice name",
-            options=voice_option_values,
-            index=voice_option_values.index(st.session_state["voice_name_choice"]),
-            format_func=lambda value: next(label for voice, label in voice_options if voice == value),
-            key="voice_name_choice",
-        )
-        voice_preview_text = st.sidebar.text_area(
-            "Voiceover script preview",
-            value=st.session_state["voice_preview_text"],
-            height=140,
-            key="voice_preview_text",
-        )
-        current_voice_preset = preset_map[st.session_state["voice_preset_choice"]]
-        st.sidebar.caption(
-            f"Preset: {current_voice_preset.label} · Script language: {current_voice_preset.language} · Voice type: {current_voice_preset.gender}"
-        )
-        language_options = voice_preview_language_options()
-        language_map = {value: label for value, label in language_options}
-        default_language_filter = st.session_state.get("voice_library_language_filter", "all")
-        if default_language_filter not in language_map:
-            default_language_filter = "all"
-            st.session_state["voice_library_language_filter"] = default_language_filter
-        st.sidebar.selectbox(
-            "Voice library language",
-            options=[value for value, _ in language_options],
-            index=[value for value, _ in language_options].index(default_language_filter),
-            format_func=lambda value: language_map.get(value, value),
-            key="voice_library_language_filter",
-        )
-        st.sidebar.caption(
-            f"Voice gender filter: {gender_map.get(st.session_state['voice_gender_filter'], st.session_state['voice_gender_filter'])}"
-        )
-        apply_voice_preset = st.sidebar.button("Apply voice preset", use_container_width=True)
-        if apply_voice_preset:
-            queue_voice_preset_by_key(st.session_state["voice_preset_choice"])
-            st.rerun()
-        st.sidebar.subheader("Music Studio")
-        music_mood_options = ("cinematic", "focus", "warm", "uplift", "ambient")
-        music_mood_default = st.session_state["music_mood"]
-        if music_mood_default not in music_mood_options:
-            music_mood_default = "cinematic"
-            st.session_state["music_mood"] = music_mood_default
-        st.sidebar.selectbox(
-            "Music mood",
-            options=music_mood_options,
-            index=music_mood_options.index(music_mood_default),
-            key="music_mood",
-        )
-        st.sidebar.slider("Music preview length (seconds)", 4, 15, key="music_duration_seconds")
-        st.sidebar.subheader("Reference Audio")
-        default_reference_audio_root = (
-            str(settings.reference_audio_dir)
-            if settings.reference_audio_dir is not None
-            else str(ui_output_dir / "reference_audio" / "indian_languages_audio_dataset")
-        )
-        if not st.session_state["reference_audio_root"]:
-            st.session_state["reference_audio_root"] = default_reference_audio_root
-        st.sidebar.text_input(
-            "Reference dataset folder",
-            key="reference_audio_root",
-            help="Point this to the downloaded Kaggle dataset folder with language subfolders of MP3 clips.",
-        )
-        st.sidebar.text_input(
-            "Reference bank language",
-            key="reference_audio_default_language",
-            help="Use this when the folder is flat, such as a single Hindi audio bank with numeric filenames.",
-        )
-        st.sidebar.slider("Reference bank size", 20, 30, key="reference_audio_bank_size")
-        reference_audio_options = reference_audio_language_options()
-        reference_audio_language_map = {value: label for value, label in reference_audio_options}
-        if st.session_state["reference_audio_language_filter"] not in reference_audio_language_map:
-            st.session_state["reference_audio_language_filter"] = "all"
-        st.sidebar.selectbox(
-            "Reference language",
-            options=[value for value, _ in reference_audio_options],
-            index=[value for value, _ in reference_audio_options].index(
-                st.session_state["reference_audio_language_filter"]
-            ),
-            format_func=lambda value: reference_audio_language_map.get(value, value),
-            key="reference_audio_language_filter",
-        )
-    else:
-        voice_provider_choice = "edge"
-        voice_option_values = available_voice_options("edge")
-        voice_name_choice = st.session_state["voice_name_choice"]
-        current_voice_preset = next(
-            (preset for preset in voice_preview_presets() if preset.key == st.session_state["voice_preset_choice"]),
-            voice_preview_presets()[0],
-        )
-        voice_preview_text = st.session_state["voice_preview_text"]
-        language_map = {value: label for value, label in voice_preview_language_options()}
-        reference_audio_language_map = {value: label for value, label in reference_audio_language_options()}
-        reference_samples = []
-    if st.sidebar.button("Load latest day", use_container_width=True, disabled=not latest_day):
-        st.session_state["run_day"] = default_day
-        st.session_state["inspect_day"] = default_day
-        st.rerun()
-    recent_days = recent_daily_days(settings.output_dir)
-    selected_day = latest_day or default_day.isoformat()
-    if recent_days:
-        selected_day = st.sidebar.selectbox(
-            "Recent days",
-            options=recent_days,
-            index=0,
-        )
-        if st.sidebar.button("Load selected day", use_container_width=True):
-            selected = date.fromisoformat(selected_day)
-            st.session_state["run_day"] = selected
-            st.session_state["inspect_day"] = selected
-            st.rerun()
-    else:
-        st.sidebar.caption("No recent runs yet.")
-    run_day = st.sidebar.date_input(
-        "Run day",
-        value=st.session_state.get("run_day", default_day),
-        key="run_day",
+    preset_options = filter_voice_preview_presets(
+        voice_preview_presets(),
+        gender=st.session_state["voice_gender_filter"],
     )
-    inspect_day = st.sidebar.date_input(
-        "Inspect day",
-        value=st.session_state.get("inspect_day", default_day),
-        key="inspect_day",
-    )
-    show_json = st.sidebar.checkbox("Show raw JSON", value=False)
+    if not preset_options:
+        preset_options = voice_preview_presets()
+    preset_map = {preset.key: preset for preset in preset_options}
+    preset_default = st.session_state.get("voice_preset_choice", preset_options[0].key)
+    if preset_default not in preset_map:
+        preset_default = preset_options[0].key
+        st.session_state["voice_preset_choice"] = preset_default
+        apply_voice_preset_by_key(preset_default)
+        
+    voice_provider_choice = st.session_state.get("voice_provider_choice", "edge")
+    voice_options = available_voice_options("edge", st.session_state["voice_gender_filter"])
+    if not voice_options:
+        voice_options = available_voice_options("edge")
+        
+    preset_choice = st.session_state.get("voice_preset_choice")
+    if preset_choice:
+        preset_lookup = {p.key: p for p in voice_preview_presets()}
+        active_p = preset_lookup.get(preset_choice)
+        if active_p and active_p.voice not in [v for v, _ in voice_options]:
+            voice_options.append((active_p.voice, f"{active_p.voice} - Native Preset Voice"))
+            
+    voice_option_values = [voice for voice, _ in voice_options]
+    default_voice = st.session_state.get("voice_name_choice") or settings.indian_tts_voice
+    if default_voice not in voice_option_values:
+        default_voice = voice_option_values[0]
+    if st.session_state["voice_name_choice"] not in voice_option_values:
+        st.session_state["voice_name_choice"] = default_voice
+        
+    voice_name_choice = st.session_state["voice_name_choice"]
+    voice_preview_text = st.session_state.get("voice_preview_text", "")
+    current_voice_preset = preset_map[st.session_state["voice_preset_choice"]]
+    
+    language_options = voice_preview_language_options()
+    language_map = {value: label for value, label in language_options}
+    
+    reference_audio_options = reference_audio_language_options()
+    reference_audio_language_map = {value: label for value, label in reference_audio_options}
+    
+    # Dates & JSON view
+    run_day = st.session_state.get("run_day", default_day)
+    inspect_day = st.session_state.get("inspect_day", default_day)
+    show_json = st.session_state.get("show_json", False)
 
     ui_settings = replace(settings, output_dir=ui_output_dir)
     ui_settings = replace(
@@ -1164,19 +890,6 @@ Alphabet is fun for me!""")
         unsafe_allow_html=True,
     )
 
-    st.markdown(
-        f"""
-        <section class="hero">
-          <h1>Content Pipeline Studio</h1>
-          <p>
-            A control center for your daily pipeline, unified audio status, blocker memory,
-            and image style tooling. Run the daily build, jump straight into the newest run,
-            and inspect the artifacts without hunting through folders.
-          </p>
-        </section>
-        """,
-        unsafe_allow_html=True,
-    )
 
     latest_dir = ui_settings.output_dir / "daily" / latest_day if latest_day else None
     latest_dashboard = latest_dir / "daily_dashboard.html" if latest_dir else None
@@ -1195,279 +908,482 @@ Alphabet is fun for me!""")
     selected_day_dir = ui_settings.output_dir / "daily" / inspect_date
     selected_overview = day_overview(selected_day_dir)
 
-    st.markdown(
-        f"""
-        <div class="status-strip">
-          {status_pill("Prompt provider", settings.prompt_provider)}
-          {status_pill("Image provider", settings.image_provider)}
-          {status_pill("Voice provider", voice_provider_choice)}
-          {status_pill("Voice preset", voice_name_choice)}
-          {status_pill("Selected day", inspect_date)}
-          {status_pill("Latest day", latest_day or "none yet")}
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    action_cols = st.columns(3)
-    with action_cols[0]:
-        st.markdown(
-            """
-            <div class="action-card">
-              <h3>Run the pipeline</h3>
-              <p>Generate today’s daily artifacts with the same flow used by the CLI.</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        run_clicked = st.button("Run pipeline", type="primary", use_container_width=True)
-    with action_cols[1]:
-        st.markdown(
-            """
-            <div class="action-card">
-              <h3>Latest dashboard</h3>
-              <p>Open the newest dashboard if a run already exists in the output folder.</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        if latest_dashboard and latest_dashboard.exists():
-            st.markdown(
-                f'<div class="action-link"><a href="{latest_dashboard.as_uri()}" target="_blank">Open latest dashboard</a></div>',
-                unsafe_allow_html=True,
-            )
-        else:
-            st.caption("No dashboard yet.")
-    with action_cols[2]:
-        st.markdown(
-            """
-            <div class="action-card">
-              <h3>Audio front door</h3>
-              <p>Jump straight into voice, science audio, and PM audio status.</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        if latest_audio and latest_audio.exists():
-            st.markdown(
-                f'<div class="action-link"><a href="{latest_audio.as_uri()}" target="_blank">Open audio front door</a></div>',
-                unsafe_allow_html=True,
-            )
-        else:
-            st.caption("No audio front door yet.")
-
-    link_cols = st.columns(3)
-    with link_cols[0]:
-        render_link_card(
-            "Selected dashboard",
-            "Open the dashboard for the day you are currently inspecting.",
-            "Open dashboard",
-            selected_overview["dashboard_path"].as_uri() if selected_overview["dashboard_exists"] else None,
-        )
-    with link_cols[1]:
-        render_link_card(
-            "Selected audio",
-            "Open the audio front door for the currently selected day.",
-            "Open audio",
-            selected_overview["audio_path"].as_uri() if selected_overview["audio_exists"] else None,
-        )
-    with link_cols[2]:
-        render_link_card(
-            "Selected voice",
-            "Open the voice bundle for the currently selected day.",
-            "Open voice",
-            selected_overview["voice_path"].as_uri() if selected_overview["voice_exists"] else None,
-        )
-
-    render_health_banner(selected_overview)
-    render_preview_panel(selected_overview, selected_day_dir)
-
-    overview_cols = st.columns(4)
-    with overview_cols[0]:
-        render_overview_card(
-            "Selected day",
-            inspect_date,
-            "The day currently shown in the dashboard and artifact panels.",
-        )
-    with overview_cols[1]:
-        render_overview_card(
-            "Artifacts",
-            str(selected_overview["file_count"]),
-            "Total files in the selected daily folder.",
-        )
-    with overview_cols[2]:
-        render_overview_card(
-            "Dashboard",
-            "ready" if selected_overview["dashboard_exists"] else "missing",
-            "The daily dashboard HTML for the selected run.",
-        )
-    with overview_cols[3]:
-        render_overview_card(
-            "Audio bundle",
-            "ready" if selected_overview["audio_exists"] else "missing",
-            "The unified audio status front door for the selected run.",
-        )
-
-    if run_clicked:
-        with st.spinner(f"Generating the daily run for {run_date}..."):
-            try:
-                result = run_linkedin_mvp(run_date, ui_settings)
-            except Exception as exc:
-                st.session_state["last_run_error"] = str(exc)
+    with st.expander("⚙️ Studio Settings & Date Controls", expanded=False):
+        # 1. Output directory
+        output_dir_input = st.text_input("Output directory", value=str(st.session_state.get("global_output_dir", str(settings.output_dir))), key="global_output_dir_input")
+        if output_dir_input != st.session_state.get("global_output_dir"):
+            st.session_state["global_output_dir"] = output_dir_input
+            st.rerun()
+            
+        # 2. Date controls
+        settings_cols = st.columns(2)
+        with settings_cols[0]:
+            run_day = st.date_input("Run day", value=st.session_state.get("run_day", default_day), key="run_day")
+        with settings_cols[1]:
+            inspect_day = st.date_input("Inspect day", value=st.session_state.get("inspect_day", default_day), key="inspect_day")
+            
+        # 3. Load latest / selected day
+        btn_cols = st.columns(3)
+        with btn_cols[0]:
+            if st.button("Load latest day", use_container_width=True, disabled=not latest_day):
+                st.session_state["run_day"] = default_day
+                st.session_state["inspect_day"] = default_day
+                st.rerun()
+        with btn_cols[1]:
+            recent_days = recent_daily_days(settings.output_dir)
+            if recent_days:
+                selected_day_opt = st.selectbox("Recent days", options=recent_days, label_visibility="collapsed")
+                if st.button("Load selected day", use_container_width=True):
+                    selected = date.fromisoformat(selected_day_opt)
+                    st.session_state["run_day"] = selected
+                    st.session_state["inspect_day"] = selected
+                    st.rerun()
             else:
-                st.session_state["last_run_result"] = result
-                st.session_state["last_run_day"] = run_date
-                st.success(f"Pipeline complete for {run_date}")
+                st.caption("No recent runs yet.")
+                
+        with btn_cols[2]:
+            show_json = st.checkbox("Show raw JSON", value=st.session_state.get("show_json", False), key="show_json")
 
-    col_a, col_b, col_c, col_d = st.columns(4)
-    with col_a:
-        st.markdown(
-            f"""
-            <div class="metric-box">
-              <div class="metric-label">Output dir</div>
-              <div class="metric-value">{ui_settings.output_dir}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    with col_b:
-        st.markdown(
-            f"""
-            <div class="metric-box">
-              <div class="metric-label">Run date</div>
-              <div class="metric-value">{run_date}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    with col_c:
-        st.markdown(
-            f"""
-            <div class="metric-box">
-              <div class="metric-label">Inspect day</div>
-              <div class="metric-value">{inspect_date}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    with col_d:
-        st.markdown(
-            f"""
-            <div class="metric-box">
-              <div class="metric-label">Latest day</div>
-              <div class="metric-value">{latest_day or "none yet"}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    tab_studio, tab_video, tab_kids_song, tab_run, tab_dashboard, tab_audio, tab_files = st.tabs(
-        ["Studio", "Video Studio 🎬", "Kids Rhymes & Rhythm Studio 🎵", "Run", "Dashboard", "Audio", "Files"]
+    tab_music, tab_video, tab_image, tab_kids_song, tab_speech, tab_run_pipeline, tab_dashboard, tab_files = st.tabs(
+        ["Music Studio 🎵", "Video Studio 🎬", "Image Studio 🎨", "Kids Studio 👶", "Speech Studio 🎙️", "Run Pipeline ⚙️", "Dashboard 📊", "Files 📁"]
     )
 
-    with tab_studio:
-        image_request_note = "Single image only. Each click sends one request and returns one preview."
-        if show_image_controls:
-            st.subheader("Image studio")
-            image_style_pack = build_image_style_pack(
-                st.session_state["image_topic"],
-                subject=st.session_state["image_subject"],
-            )
-            image_provider_choice = st.session_state["image_provider_choice"]
-            image_backend_state, image_backend_message = image_backend_status(settings, image_provider_choice)
-            image_prompt = st.session_state["image_prompt"]
-            image_prompt_state, image_prompt_message = image_prompt_safety_status(image_prompt)
-            image_preview_path = (
-                Path(st.session_state["image_preview_path"])
-                if st.session_state.get("image_preview_path")
-                else None
-            )
-            image_preview_state, image_preview_message = image_preview_status(image_preview_path)
-            image_preview_source_state, image_preview_source_message = image_preview_source_status(image_preview_path)
-            st.markdown(
-                f"""
-                <div class="metric-box">
-                  <div class="metric-label">Active backend</div>
-                  <div class="metric-value">{escape(image_backend_state)}</div>
-                  <div style="margin-top:6px;color:#94a3b8;font-size:13px;line-height:1.4;">{escape(image_backend_message)}<br>Project: {escape(settings.gcp_project_id or 'not set')}<br>Model: {escape(settings.imagen_model)}<br>Fallback: {escape(settings.image_fallback_provider)}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-            st.markdown(
-                f"""
-                <div class="metric-box">
-                  <div class="metric-label">Image preview status</div>
-                  <div class="metric-value">{escape(image_preview_state)}</div>
-                  <div style="margin-top:6px;color:#94a3b8;font-size:13px;line-height:1.4;">{escape(image_preview_message)}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-            st.markdown(
-                f"""
-                <div class="metric-box">
-                  <div class="metric-label">Prompt safety</div>
-                  <div class="metric-value">{escape(image_prompt_state)}</div>
-                  <div style="margin-top:6px;color:#94a3b8;font-size:13px;line-height:1.4;">{escape(image_prompt_message)}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-            st.markdown(
-                f"""
-                <div class="metric-box">
-                  <div class="metric-label">Preview source</div>
-                  <div class="metric-value">{escape(image_preview_source_state)}</div>
-                  <div style="margin-top:6px;color:#94a3b8;font-size:13px;line-height:1.4;">{escape(image_preview_source_message)}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-            st.caption(image_request_note)
-            st.caption("Tip: keep the prompt vivid, specific, and free of text, logos, and watermarks.")
-            st.text_area("Current image prompt", value=image_prompt, height=170, disabled=True)
-            st.iframe(copy_prompt_button(image_prompt, button_id="copy-full-image-prompt"), height=52)
-            if image_preview_path:
-                preview_path = image_preview_path
-                if preview_path.exists():
-                    render_image_preview(preview_path)
-            with st.expander("Image prompt pack", expanded=False):
-                st.json(image_style_pack.as_dict())
-                st.code(image_prompt, language="text")
-
-
+    with tab_music:
         st.markdown("### Music studio")
-        music_mood = st.session_state["music_mood"]
-        music_duration = int(st.session_state["music_duration_seconds"])
-        music_action_cols = st.columns([1, 1])
-        with music_action_cols[0]:
-            if st.button("Generate music preview", use_container_width=True):
-                try:
-                    preview_path = ui_settings.output_dir / ".runtime" / "music_previews" / (
-                        f"{_slugify(music_mood)}_{music_duration}s.wav"
-                    )
-                    generate_music_preview(preview_path, music_mood, duration_seconds=music_duration)
-                    st.session_state["music_preview_path"] = str(preview_path)
-                    st.success(f"Music preview written to {preview_path}")
-                except Exception as exc:
-                    st.error(str(exc))
-        with music_action_cols[1]:
+        st.markdown("<p style='font-size: 14.5px; color: #94a3b8; margin-top: -10px; margin-bottom: 24px;'>Compose premium, high-fidelity songs in any genre featuring warm singing voices powered by Tencent Lyria 3 Pro.</p>", unsafe_allow_html=True)
+        
+        # One-Click Creator
+        with st.expander("⚡ One-Click Song Creator", expanded=True):
+            st.markdown("<small style='color: #94a3b8;'>Type a simple idea (e.g., 'create an emotional song in english') and generate a complete song in one click.</small>", unsafe_allow_html=True)
+            one_click_prompt = st.text_input("Song Idea", placeholder="e.g., create an emotional song in english", key="music_studio_one_click_song_idea")
+            one_click_gender = st.selectbox("Singer Voice Gender Selection", ["Female", "Male"], key="music_studio_one_click_singer_gender")
+            
+            if st.button("🚀 Create & Generate Song", type="primary", use_container_width=True, key="music_studio_btn_one_click"):
+                if not one_click_prompt.strip():
+                    st.warning("Please enter a song idea first.")
+                else:
+                    lyrics_exp, desc_exp = expand_general_prompt_to_lyrics_and_style(one_click_prompt, one_click_gender)
+                    st.session_state["music_studio_lyrics"] = lyrics_exp
+                    st.session_state["music_studio_description"] = desc_exp
+                    st.session_state["music_studio_singer_gender"] = one_click_gender
+                    st.session_state["music_studio_trigger_generation_now"] = True
+                    st.rerun()
+
+        left_col, right_col = st.columns([1.1, 0.9])
+
+        with left_col:
+            st.markdown("#### Lyrics Composer")
+            music_lyrics_val = st.session_state.get("music_studio_lyrics", "")
+            lyrics = st.text_area(
+                "Enter lyrics here (use [verse] and [chorus] tags, avoid [intro]/[outro] tags)",
+                value=music_lyrics_val,
+                height=350,
+                key="music_studio_lyrics_input"
+            )
+            st.session_state["music_studio_lyrics"] = lyrics
+
+            col1, col2 = st.columns([1, 1])
+            with col1:
+                parse_clicked = st.button("✨ Parse & Autofill settings", use_container_width=True, key="music_studio_btn_parse", help="Extracts lyrics, tempo, instruments, vocals, and mood from your prompt to autofill the settings panel.")
+            with col2:
+                if st.button("🗑️ Clear Lyrics", use_container_width=True, key="music_studio_btn_clear"):
+                    st.session_state["music_studio_lyrics"] = ""
+                    st.rerun()
+
+            if parse_clicked:
+                if lyrics.strip():
+                    sections = parse_prompt_into_sections(lyrics)
+                    if sections:
+                        lyrics_content = sections.get("lyrics", "")
+                        if not lyrics_content:
+                            lyrics_content = lyrics
+                            
+                        style_parts = []
+                        if "style" in sections:
+                            style_parts.append(sections["style"])
+                        if "tempo" in sections:
+                            style_parts.append(f"Tempo: {sections['tempo']}")
+                        if "vocals" in sections:
+                            style_parts.append(f"Vocals: {sections['vocals']}")
+                        if "mood" in sections:
+                            style_parts.append(f"Mood: {sections['mood']}")
+                        if "instruments" in sections:
+                            style_parts.append(f"Instruments: {sections['instruments']}")
+                        if "production" in sections:
+                            style_parts.append(f"Production: {sections['production']}")
+                            
+                        combined_style = ". ".join(style_parts)
+                        
+                        st.session_state["music_studio_lyrics"] = lyrics_content
+                        st.session_state.pop("music_studio_lyrics_input", None)
+                        st.session_state["music_studio_description"] = combined_style
+                        st.session_state.pop("music_studio_description_input", None)
+                        st.success("🎉 Successfully parsed and autofilled settings from prompt!")
+                        st.rerun()
+                    else:
+                        inferred_style = (
+                            "catchy melodic pop song, warm vocals, piano, acoustic guitar, soft percussion, balanced audio mix."
+                        )
+                        st.session_state["music_studio_lyrics"] = lyrics
+                        st.session_state.pop("music_studio_lyrics_input", None)
+                        st.session_state["music_studio_description"] = inferred_style
+                        st.session_state.pop("music_studio_description_input", None)
+                        st.info("ℹ️ Plain prompt detected. Style inferred from song content.")
+                        st.rerun()
+                else:
+                    st.warning("⚠️ Please paste a prompt in the lyrics box first.")
+
             st.markdown(
-                f"""
-                <div class="metric-box">
-                  <div class="metric-label">Selected mood</div>
-                  <div class="metric-value">{escape(music_mood)}</div>
-                  <div style="margin-top:6px;color:#94a3b8;font-size:13px;line-height:1.4;">Preview length: {music_duration} seconds</div>
+                """
+                <div style="display: flex; gap: 16px; margin-top: 20px;">
+                  <div style="flex: 1; padding: 16px; border-radius: 12px; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(56, 189, 248, 0.25);">
+                    <div style="font-size: 12px; color: #38bdf8; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 6px;">
+                      <span>💡</span> Pro tip: Structure
+                    </div>
+                    <div style="font-size: 13px; color: #e2e8f0; margin-top: 6px; line-height: 1.4;">
+                      Use standard tags like [verse] and [chorus] to structure sections. Keep lyrics to 2-3 verses.
+                    </div>
+                  </div>
+                  <div style="flex: 1; padding: 16px; border-radius: 12px; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(168, 85, 247, 0.25);">
+                    <div style="font-size: 12px; color: #a855f7; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 6px;">
+                      <span>🎵</span> Pro tip: Details
+                    </div>
+                    <div style="font-size: 13px; color: #e2e8f0; margin-top: 6px; line-height: 1.4;">
+                      Specify clear instruments (e.g. acoustic guitar, grand piano, synth drums) to shape the sound.
+                    </div>
+                  </div>
                 </div>
                 """,
-                unsafe_allow_html=True,
+                unsafe_allow_html=True
             )
-        if st.session_state["music_preview_path"]:
-            music_preview_path = Path(st.session_state["music_preview_path"])
-            if music_preview_path.exists():
-                st.audio(str(music_preview_path))
-                st.caption(str(music_preview_path))
+
+        with right_col:
+            st.markdown("#### Run settings")
+            
+            st.selectbox(
+                "Model",
+                options=["Lyria 3 Pro Preview (tencent/SongGeneration)"],
+                index=0,
+                disabled=True,
+                key="music_studio_model_select",
+                help="Lyria 3 Pro is optimized for high-fidelity composition and vocal generation."
+            )
+            
+            music_desc_val = st.session_state.get("music_studio_description", "")
+            desc = st.text_area(
+                "Style Description",
+                value=music_desc_val,
+                height=120,
+                key="music_studio_description_input",
+                help="Describe instruments, tempo (BPM), vocal qualities, and style of the song."
+            )
+            st.session_state["music_studio_description"] = desc
+
+            ref_dir = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio")
+            ref_files = []
+            if ref_dir.exists():
+                ref_files = sorted([f.name for f in ref_dir.glob("*.mp3")])
+            
+            options = ["None (Text-only)"] + ref_files
+            default_index = 0
+            default_val = st.session_state.get("music_studio_ref_audio_choice", "None (Text-only)")
+            if default_val in options:
+                default_index = options.index(default_val)
+            
+            selected_ref = st.selectbox(
+                "Style Reference Audio",
+                options=options,
+                index=default_index,
+                key="music_studio_ref_audio_choice_input",
+                help="Select an existing track to guide the style, melody, and voice of the song."
+            )
+            st.session_state["music_studio_ref_audio_choice"] = selected_ref
+
+            cfg = st.slider(
+                "CFG Scale",
+                min_value=1.0,
+                max_value=5.0,
+                value=float(st.session_state.get("music_studio_cfg_coef", 1.8)),
+                step=0.1,
+                key="music_studio_cfg_coef_input",
+                help="Classifier-Free Guidance. Higher values enforce the style description more strongly."
+            )
+            st.session_state["music_studio_cfg_coef"] = cfg
+            
+            temp = st.slider(
+                "Temperature",
+                min_value=0.0,
+                max_value=1.0,
+                value=float(st.session_state.get("music_studio_temperature", 0.8)),
+                step=0.05,
+                key="music_studio_temperature_input",
+                help="Controls diversity. Higher values produce more random/creative melodies."
+            )
+            st.session_state["music_studio_temperature"] = temp
+            
+            genre_options = ['Auto', 'Pop', 'Latin', 'Rock', 'Electronic', 'Metal', 'Country', 'R&B/Soul', 'Ballad', 'Jazz', 'World', 'Hip-Hop', 'Funk', 'Soundtrack']
+            curr_genre = st.session_state.get("music_studio_genre", "Pop")
+            genre_index = genre_options.index(curr_genre) if curr_genre in genre_options else 1
+            genre = st.selectbox(
+                "Genre",
+                options=genre_options,
+                index=genre_index,
+                key="music_studio_genre_input"
+            )
+            st.session_state["music_studio_genre"] = genre
+
+            gender_options = ["Male", "Female"]
+            curr_gender = st.session_state.get("music_studio_singer_gender", "Male")
+            gender_index = gender_options.index(curr_gender) if curr_gender in gender_options else 0
+            singer_gender = st.selectbox(
+                "Singer Voice Gender",
+                options=gender_options,
+                index=gender_index,
+                key="music_studio_singer_gender_input",
+                help="Choose whether the singing voice is Male or Female. The engine will automatically update the description prompt."
+            )
+            st.session_state["music_studio_singer_gender"] = singer_gender
+
+        st.markdown("---")
+        st.markdown("### Playback & Generation")
+        
+        generated_file_path = st.session_state.get("music_studio_generated_mp3", "")
+        default_out = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio/Music_Studio_Generated_Song.mp3")
+        if not generated_file_path and default_out.exists():
+            generated_file_path = str(default_out)
+            st.session_state["music_studio_generated_mp3"] = generated_file_path
+
+        bottom_cols = st.columns([1.2, 1.8, 1.0])
+        
+        with bottom_cols[0]:
+            if generated_file_path and Path(generated_file_path).exists():
+                st.markdown(
+                    f"""
+                    <div style="padding: 10px; border-radius: 8px; background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(56, 189, 248, 0.15);">
+                      <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase;">Active Track</div>
+                      <div style="font-size: 14px; font-weight: 800; color: #f8fafc; margin-top: 2px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
+                        Music_Studio_Generated_Song.mp3
+                      </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+            else:
+                st.markdown(
+                    """
+                    <div style="padding: 10px; border-radius: 8px; background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(244, 63, 94, 0.15);">
+                      <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase;">Active Track</div>
+                      <div style="font-size: 14px; font-weight: 800; color: #f43f5e; margin-top: 2px;">
+                        No track generated yet
+                      </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+                
+        with bottom_cols[1]:
+            if generated_file_path and Path(generated_file_path).exists():
+                st.audio(generated_file_path)
+            else:
+                st.write("")
+                
+        with bottom_cols[2]:
+            btn_cols = st.columns(2)
+            with btn_cols[0]:
+                if generated_file_path and Path(generated_file_path).exists():
+                    with open(generated_file_path, "rb") as f:
+                        btn_data = f.read()
+                    st.download_button(
+                        label="Download",
+                        data=btn_data,
+                        file_name="Music_Studio_Generated_Song.mp3",
+                        mime="audio/mp3",
+                        use_container_width=True,
+                        key="music_studio_btn_download"
+                    )
+                else:
+                    st.button("Download", disabled=True, use_container_width=True, key="music_studio_btn_download_disabled")
+            with btn_cols[1]:
+                generate_clicked = st.button("Generate", type="primary", use_container_width=True, key="music_studio_btn_generate")
+
+        if generate_clicked or st.session_state.get("music_studio_trigger_generation_now"):
+            if st.session_state.get("music_studio_trigger_generation_now"):
+                st.session_state["music_studio_trigger_generation_now"] = False
+            with st.spinner("Connecting to tencent/SongGeneration space and generating audio... (This may take 1-3 minutes)"):
+                try:
+                    import subprocess
+                    import shutil
+                    from gradio_client import Client, handle_file
+
+                    prompt_audio_param = None
+                    if selected_ref != "None (Text-only)":
+                        ref_full_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio") / selected_ref
+                        if ref_full_path.exists():
+                            temp_dir = Path("/Users/lalitprasadsingh/VS_code/content-automation-pipeline/output/.runtime")
+                            temp_dir.mkdir(parents=True, exist_ok=True)
+                            cropped_ref_path = temp_dir / "music_studio_ref_cropped.mp3"
+                            
+                            st.write(f"ℹ️ Cropping style reference '{selected_ref}' to 15 seconds...")
+                            start_time = "0"
+                            if ref_full_path.name == "बार्नबी गिलहरी की व्यर्थ खोज.mp3":
+                                start_time = "4.5"
+                                
+                            cmd = [
+                                "ffmpeg", "-y", "-i", str(ref_full_path),
+                                "-ss", start_time, "-t", "15",
+                                "-codec:a", "libmp3lame", "-b:a", "128k",
+                                str(cropped_ref_path)
+                            ]
+                            subprocess.run(cmd, check=True)
+                            prompt_audio_param = handle_file(str(cropped_ref_path))
+                        else:
+                            st.warning(f"Reference audio '{selected_ref}' not found. Falling back to text-only generation.")
+
+                    st.write("📝 Checking and sanitizing prompt structure...")
+                    lyrics_to_process = lyrics.strip()
+                    import re
+                    
+                    supported_tags = ["verse", "chorus", "bridge", "intro", "outro", "inst", "silence"]
+                    has_leading_tag = False
+                    if lyrics_to_process.startswith("["):
+                        first_line = lyrics_to_process.splitlines()[0].strip()
+                        if first_line.endswith("]"):
+                            tag_content = first_line[1:-1].lower()
+                            if any(t in tag_content for t in supported_tags):
+                                has_leading_tag = True
+                                
+                    if not has_leading_tag:
+                        st.write("✨ Auto-parsing raw prompt to extract lyrics and style details...")
+                        sections = parse_prompt_into_sections(lyrics)
+                        if sections:
+                            lyrics_to_process = sections.get("lyrics", "").strip()
+                            if not lyrics_to_process:
+                                lyrics_to_process = lyrics.strip()
+                                
+                            style_parts = []
+                            if "style" in sections:
+                                style_parts.append(sections["style"])
+                            if "tempo" in sections:
+                                style_parts.append(f"Tempo: {sections['tempo']}")
+                            if "vocals" in sections:
+                                style_parts.append(f"Vocals: {sections['vocals']}")
+                            if "mood" in sections:
+                                style_parts.append(f"Mood: {sections['mood']}")
+                            if "instruments" in sections:
+                                style_parts.append(f"Instruments: {sections['instruments']}")
+                            if "production" in sections:
+                                style_parts.append(f"Production: {sections['production']}")
+                                
+                            desc = ". ".join(style_parts)
+                            st.session_state["music_studio_description"] = desc
+                            st.session_state["music_studio_lyrics"] = lyrics_to_process
+                        else:
+                            desc = "catchy pop song, piano, acoustic guitar, soft percussion."
+                            st.session_state["music_studio_description"] = desc
+
+                    singer_gender = st.session_state.get("music_studio_singer_gender", "Male").lower()
+                    if singer_gender == "female":
+                        desc = re.sub(r"\bmale\b", "female", desc, flags=re.IGNORECASE)
+                        if "female" not in desc.lower():
+                            desc = desc.strip()
+                            if desc and not desc.endswith("."):
+                                desc += "."
+                            desc += " friendly female singing voice."
+                    else:
+                        desc = re.sub(r"\bfemale\b", "male", desc, flags=re.IGNORECASE)
+                        if "male" not in desc.lower():
+                            desc = desc.strip()
+                            if desc and not desc.endswith("."):
+                                desc += "."
+                            desc += " friendly male singing voice."
+
+                    st.session_state["music_studio_description"] = desc
+                    st.session_state.pop("music_studio_description_input", None)
+
+                    sanitized_lines = []
+                    lines = [line.strip() for line in lyrics_to_process.splitlines()]
+                    filtered_lines = [line for line in lines if line]
+                    
+                    if filtered_lines:
+                        first_line = filtered_lines[0]
+                        if not (first_line.startswith("[") and first_line.endswith("]")):
+                            sanitized_lines.append("[verse]")
+                        
+                        for line in filtered_lines:
+                            line_safe = line.replace(";", ",")
+                            if line_safe.startswith("[") and line_safe.endswith("]"):
+                                tag_content = line_safe[1:-1].lower()
+                                if "chorus" in tag_content:
+                                    sanitized_lines.append("[chorus]")
+                                elif "bridge" in tag_content:
+                                    sanitized_lines.append("[bridge]")
+                                elif "intro" in tag_content:
+                                    sanitized_lines.append("[verse]")
+                                elif "outro" in tag_content:
+                                    sanitized_lines.append("[verse]")
+                                elif "inst" in tag_content:
+                                    sanitized_lines.append("[verse]")
+                                elif "silence" in tag_content:
+                                    sanitized_lines.append("[silence]")
+                                else:
+                                    sanitized_lines.append("[verse]")
+                            else:
+                                sanitized_lines.append(line_safe)
+                                
+                    sanitized_lyrics = "\n".join(sanitized_lines).strip()
+                    if not sanitized_lyrics.startswith("["):
+                        sanitized_lyrics = "[verse]\n" + sanitized_lyrics
+
+                    st.write("🎵 Dispatching song generation request to Hugging Face...")
+                    client = Client("tencent/SongGeneration", httpx_kwargs={"timeout": 600.0})
+                    
+                    result_path, info = client.predict(
+                        lyric=sanitized_lyrics,
+                        description=desc,
+                        prompt_audio=prompt_audio_param,
+                        genre=genre,
+                        cfg_coef=cfg,
+                        temperature=temp,
+                        api_name="/generate_song"
+                    )
+                    
+                    if not result_path or str(result_path).strip().lower() == "none":
+                        raise ValueError(f"Hugging Face space did not return a valid audio track. Details: {info}")
+
+                    st.write("🔄 Transcoding generated audio from FLAC to genuine MP3 with smooth fade-out...")
+                    out_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio/Music_Studio_Generated_Song.mp3")
+                    out_path.parent.mkdir(parents=True, exist_ok=True)
+                    
+                    duration_cmd = [
+                        "ffprobe", "-i", str(result_path),
+                        "-show_entries", "format=duration",
+                        "-v", "quiet", "-of", "csv=p=0"
+                    ]
+                    duration_res = subprocess.run(duration_cmd, capture_output=True, text=True, check=True)
+                    total_duration = float(duration_res.stdout.strip())
+                    
+                    fade_duration = 5.0
+                    if total_duration > 15.0:
+                        start_fade = total_duration - fade_duration
+                    else:
+                        fade_duration = min(2.0, total_duration * 0.2)
+                        start_fade = total_duration - fade_duration
+                        
+                    transcode_cmd = [
+                        "ffmpeg", "-y", "-i", str(result_path),
+                        "-filter:a", f"afade=t=out:st={start_fade:.3f}:d={fade_duration:.3f}",
+                        "-codec:a", "libmp3lame", "-qscale:a", "2",
+                        str(out_path)
+                    ]
+                    subprocess.run(transcode_cmd, check=True)
+                    
+                    st.session_state["music_studio_generated_mp3"] = str(out_path)
+                    st.success("🎉 Song generated successfully!")
+                    st.rerun()
+                    
+                except Exception as exc:
+                    st.error(f"❌ Error generating song: {exc}")
+
 
     with tab_video:
         st.markdown(
@@ -1745,6 +1661,118 @@ def overlay_lower_third_text(image_path: Path, output_path: Path, text: str):
                 st.info("Image not generated or directory not compiled yet.")
 
 
+    with tab_image:
+        st.markdown(
+            """
+            <div class="hero" style="background: linear-gradient(135deg, rgba(56,189,248,0.15), rgba(168,85,247,0.15)); border: 1px solid rgba(56,189,248,0.3); margin-bottom: 24px;">
+              <h1 style="font-size: 32px;">🎨 Premium Image Studio</h1>
+              <p style="margin-top: 6px; font-size: 14px;">Generate beautiful, custom 3D Pixar character illustrations and cover art assets for your songs and videos.</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        
+        img_left, img_right = st.columns([1.1, 0.9])
+        
+        with img_left:
+            st.markdown("### Image Prompt Builder")
+            st.text_input("Image topic", key="image_topic")
+            st.text_input("Image subject", key="image_subject")
+            
+            build_prompt_clicked = st.button("✨ Build Image Prompt", use_container_width=True)
+            if build_prompt_clicked:
+                st.session_state["image_prompt"] = build_cinematic_image_prompt(
+                    st.session_state["image_topic"],
+                    st.session_state["image_subject"],
+                )
+                st.rerun()
+                
+            st.text_area(
+                "Image Prompt",
+                key="image_prompt",
+                height=180,
+                help="Edit the prompt here before generating the image preview.",
+            )
+            
+            generate_img_clicked = st.button("🚀 Generate 1 Image Preview", type="primary", use_container_width=True)
+            if generate_img_clicked:
+                with st.spinner("Generating image preview..."):
+                    try:
+                        image_settings = replace(settings, output_dir=ui_output_dir)
+                        provider = image_provider(replace(image_settings, image_provider=st.session_state["image_provider_choice"]))
+                        variant = ImageVariant("16:9", 2560, 1440, "image_preview")
+                        preview_path = ui_output_dir / ".runtime" / "image_previews" / (
+                            f"{_slugify(st.session_state['image_topic'])}_{_slugify(st.session_state['image_subject'])}_{st.session_state['image_provider_choice']}{provider.extension}"
+                        )
+                        preview_path.parent.mkdir(parents=True, exist_ok=True)
+                        preview_path.write_bytes(provider.create(st.session_state["image_prompt"], variant))
+                        st.session_state["image_preview_path"] = str(preview_path)
+                        
+                        if st.session_state["image_provider_choice"] != "mock" and _svg_preview_text(preview_path) is not None:
+                            st.warning(
+                                "⚠️ **Fallback to Mock:** The selected provider failed to generate the image (likely due to API billing/limit constraints) and silently fell back to the Mock provider. "
+                                "Please check your API keys or switch to the **`free-ai`** (Pollinations) provider to generate real Pixar illustrations for free."
+                            )
+                        else:
+                            st.success(f"🎉 Image preview successfully generated!")
+                    except Exception as exc:
+                        st.error(str(exc))
+                        
+        with img_right:
+            st.markdown("### Settings & Previews")
+            
+            image_provider_options = ("mock", "free-ai", "gemini", "openai")
+            current_image_provider = st.session_state.get("image_provider_choice", settings.image_provider)
+            if current_image_provider not in image_provider_options:
+                image_provider_options = (current_image_provider, *image_provider_options)
+                
+            st.selectbox(
+                "Image provider",
+                options=image_provider_options,
+                key="image_provider_choice",
+            )
+            
+            if st.session_state.get("image_provider_choice") == "gemini":
+                st.info(
+                    "💡 **Note on Gemini:** Dedicated image generation (`Imagen 3`/`4`) is only supported on Google AI Studio keys that have **billing enabled** (paid plan). "
+                    "If your key is on the free tier, please select the **`free-ai`** (Pollinations) provider to generate real Pixar 3D illustrations for free."
+                )
+                
+            image_style_pack = build_image_style_pack(
+                st.session_state["image_topic"],
+                subject=st.session_state["image_subject"],
+            )
+            image_backend_state, image_backend_message = image_backend_status(settings, st.session_state["image_provider_choice"])
+            
+            image_preview_path = (
+                Path(st.session_state["image_preview_path"])
+                if st.session_state.get("image_preview_path")
+                else None
+            )
+            image_preview_state, image_preview_message = image_preview_status(image_preview_path)
+            image_preview_source_state, image_preview_source_message = image_preview_source_status(image_preview_path)
+            
+            st.markdown(
+                f"""
+                <div class="metric-box" style="margin-bottom: 12px;">
+                  <div class="metric-label">Active backend</div>
+                  <div class="metric-value">{escape(image_backend_state)}</div>
+                  <div style="margin-top:6px;color:#94a3b8;font-size:13px;line-height:1.4;">{escape(image_backend_message)}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            
+            if image_preview_path:
+                preview_path = image_preview_path
+                if preview_path.exists():
+                    render_image_preview(preview_path)
+                    
+            with st.expander("Image prompt pack details", expanded=False):
+                st.json(image_style_pack.as_dict())
+                st.code(st.session_state["image_prompt"], language="text")
+
+
     with tab_kids_song:
         st.markdown(
             """
@@ -1759,6 +1787,23 @@ def overlay_lower_third_text(image_path: Path, output_path: Path, text: str):
         left_col, right_col = st.columns([1.1, 0.9])
 
         with left_col:
+            with st.expander("⚡ One-Click Song Creator", expanded=True):
+                st.markdown("<small style='color: #94a3b8;'>Type a simple idea (e.g., 'create an emotional song in english') and generate a complete song in one click.</small>", unsafe_allow_html=True)
+                one_click_prompt = st.text_input("Song Idea", placeholder="e.g., create an emotional song in english", key="one_click_song_idea")
+                one_click_gender = st.selectbox("Singer Voice Gender Selection", ["Female", "Male"], key="one_click_singer_gender")
+                
+                if st.button("🚀 Create & Generate Song", type="primary", use_container_width=True):
+                    if not one_click_prompt.strip():
+                        st.warning("Please enter a song idea first.")
+                    else:
+                        # 1. Expand prompt
+                        lyrics_exp, desc_exp = expand_prompt_to_lyrics_and_style(one_click_prompt, one_click_gender)
+                        st.session_state["kids_song_lyrics"] = lyrics_exp
+                        st.session_state["kids_song_description"] = desc_exp
+                        st.session_state["kids_song_singer_gender"] = one_click_gender
+                        st.session_state["trigger_generation_now"] = True
+                        st.rerun()
+
             st.markdown("### Lyrics Composer")
             kids_lyrics_val = st.session_state.get("kids_song_lyrics", "")
             lyrics = st.text_area(
@@ -1802,22 +1847,7 @@ def overlay_lower_third_text(image_path: Path, output_path: Path, text: str):
                             
                         combined_style = ". ".join(style_parts)
                         
-                        has_hindi = any('\u0900' <= char <= '\u097f' for char in lyrics_content)
-                        if has_hindi:
-                            lyrics_content = indic_to_phonetic_english(lyrics_content)
-                            
-                            if "hindi" not in combined_style.lower():
-                                combined_style = combined_style.strip()
-                                if combined_style and not combined_style.endswith("."):
-                                    combined_style += "."
-                                combined_style += " clear Hindi pronunciation, bouncy kids rhythm, traditional Indian nursery rhyme beats."
-                            
-                            st.session_state["kids_song_singer_gender"] = "Female"
-                            st.session_state.pop("kids_song_singer_gender_input", None)
-                            ref_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio/बार्नबी गिलहरी की व्यर्थ खोज.mp3")
-                            if ref_path.exists():
-                                st.session_state["kids_song_ref_audio_choice"] = "बार्नबी गिलहरी की व्यर्थ खोज.mp3"
-                                st.session_state.pop("kids_song_ref_audio_choice_input", None)
+                        # No Devanagari Hindi auto-transliteration
                         
                         st.session_state["kids_song_lyrics"] = lyrics_content
                         st.session_state.pop("kids_song_lyrics_input", None)
@@ -1829,41 +1859,17 @@ def overlay_lower_third_text(image_path: Path, output_path: Path, text: str):
                         # Infer from song structure
                         lower_text = lyrics.lower()
                         is_kids = any(k in lower_text for k in ["abc", "alphabet", "kid", "child", "baby", "nursery", "rhyme", "toddler", "toy"])
-                        has_hindi = any('\u0900' <= char <= '\u097f' for char in lyrics)
-                        
-                        if has_hindi:
-                            # Transliterate the lyrics to Hinglish for display
-                            lyrics = indic_to_phonetic_english(lyrics)
-                            
-                            if is_kids:
-                                inferred_style = (
-                                    "cheerful Indian Hindi nursery rhyme, bouncy rhythmic recitation, playful animated kids voice, happy rhythm, 95 BPM, "
-                                    "clear Hindi pronunciation, hand claps, glockenspiel, soft harmonium, traditional dholak rhythm, clean mix."
-                                )
-                            else:
-                                inferred_style = (
-                                    "melodic Indian acoustic folk pop, warm friendly singing voice, clear Hindi pronunciation, "
-                                    "acoustic guitar, soft tabla, clean percussion, peaceful balanced mix."
-                                )
-                            
-                            st.session_state["kids_song_singer_gender"] = "Female"
-                            st.session_state.pop("kids_song_singer_gender_input", None)
-                            ref_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio/बार्नबी गिलहरी की व्यर्थ खोज.mp3")
-                            if ref_path.exists():
-                                st.session_state["kids_song_ref_audio_choice"] = "बार्नबी गिलहरी की व्यर्थ खोज.mp3"
-                                st.session_state.pop("kids_song_ref_audio_choice_input", None)
+                        if is_kids:
+                            inferred_style = (
+                                "cheerful nursery rhyme, magical kids show music, happy bouncy melody, 92 BPM, "
+                                "warm friendly lead voice, clear pronunciation, ukulele, soft piano, glockenspiel, "
+                                "gentle bells, light percussion, clean mix."
+                            )
                         else:
-                            if is_kids:
-                                inferred_style = (
-                                    "cheerful nursery rhyme, magical kids show music, happy bouncy melody, 92 BPM, "
-                                    "warm friendly lead voice, clear pronunciation, ukulele, soft piano, glockenspiel, "
-                                    "gentle bells, light percussion, clean mix."
-                                )
-                            else:
-                                inferred_style = (
-                                    "catchy melodic pop song, warm vocals, piano, acoustic guitar, soft percussion, "
-                                    "balanced audio mix."
-                                )
+                            inferred_style = (
+                                "catchy melodic pop song, warm vocals, piano, acoustic guitar, soft percussion, "
+                                "balanced audio mix."
+                            )
                         
                         st.session_state["kids_song_lyrics"] = lyrics
                         st.session_state.pop("kids_song_lyrics_input", None)
@@ -2046,7 +2052,9 @@ def overlay_lower_third_text(image_path: Path, output_path: Path, text: str):
             with btn_cols[1]:
                 generate_clicked = st.button("Generate", type="primary", use_container_width=True)
 
-        if generate_clicked:
+        if generate_clicked or st.session_state.get("trigger_generation_now"):
+            if st.session_state.get("trigger_generation_now"):
+                st.session_state["trigger_generation_now"] = False
             with st.spinner("Connecting to tencent/SongGeneration space and generating audio... (This may take 1-3 minutes)"):
                 try:
                     import subprocess
@@ -2127,21 +2135,7 @@ def overlay_lower_third_text(image_path: Path, output_path: Path, text: str):
                                 desc = "catchy pop song, piano, acoustic guitar, soft percussion."
                             st.session_state["kids_song_description"] = desc
 
-                    # Transliterate Hindi lyrics if Devanagari characters are present
-                    has_hindi = any('\u0900' <= char <= '\u097f' for char in lyrics_to_process)
-                    if has_hindi:
-                        st.write("🇮🇳 Hindi lyrics detected. Auto-translating to English-phonetic Hinglish...")
-                        lyrics_to_process = indic_to_phonetic_english(lyrics_to_process)
-                        
-                        # Auto-update description for Indian Hindi pronunciation
-                        if "hindi" not in desc.lower():
-                            desc = desc.strip()
-                            if desc and not desc.endswith("."):
-                                desc += "."
-                            desc += " clear Hindi pronunciation, bouncy kids rhythm, traditional Indian nursery rhyme beats."
-                        
-                        st.session_state["kids_song_lyrics"] = lyrics_to_process
-                        st.session_state.pop("kids_song_lyrics_input", None)
+                    # No Devanagari Hindi auto-transliteration
 
                     # Update singer voice gender selection
                     singer_gender = st.session_state.get("kids_song_singer_gender", "Male").lower()
@@ -2261,7 +2255,21 @@ def overlay_lower_third_text(image_path: Path, output_path: Path, text: str):
                 except Exception as exc:
                     st.error(f"❌ Error generating kids rhyme: {exc}")
 
-    with tab_run:
+    with tab_run_pipeline:
+        st.markdown(
+            f"""
+            <section class="hero">
+              <h1>Content Studio</h1>
+              <p>
+                A control center for your daily pipeline, unified audio status, blocker memory,
+                and image style tooling. Run the daily build, jump straight into the newest run,
+                and inspect the artifacts without hunting through folders.
+              </p>
+            </section>
+            """,
+            unsafe_allow_html=True,
+        )
+
         left, right = st.columns([1.2, 0.8])
         with left:
             st.subheader("Run the daily pipeline")
@@ -2269,6 +2277,65 @@ def overlay_lower_third_text(image_path: Path, output_path: Path, text: str):
             st.caption(
                 f"Latest day: {latest_day or 'none yet'} · Files in latest run: {latest_overview['file_count']}"
             )
+
+            # Action cards & run button
+            action_cols = st.columns(3)
+            with action_cols[0]:
+                st.markdown(
+                    """
+                    <div class="action-card">
+                      <h3>Run the pipeline</h3>
+                      <p>Generate today’s daily artifacts with the same flow used by the CLI.</p>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                run_clicked = st.button("Run pipeline", type="primary", use_container_width=True)
+            with action_cols[1]:
+                st.markdown(
+                    """
+                    <div class="action-card">
+                      <h3>Latest dashboard</h3>
+                      <p>Open the newest dashboard if a run already exists in the output folder.</p>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                if latest_dashboard and latest_dashboard.exists():
+                    st.markdown(
+                        f'<div class="action-link"><a href="{latest_dashboard.as_uri()}" target="_blank">Open latest dashboard</a></div>',
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.caption("No dashboard yet.")
+            with action_cols[2]:
+                st.markdown(
+                    """
+                    <div class="action-card">
+                      <h3>Audio front door</h3>
+                      <p>Jump straight into voice, science audio, and PM audio status.</p>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                if latest_audio and latest_audio.exists():
+                    st.markdown(
+                        f'<div class="action-link"><a href="{latest_audio.as_uri()}" target="_blank">Open audio front door</a></div>',
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.caption("No audio front door yet.")
+
+            if run_clicked:
+                with st.spinner(f"Generating the daily run for {run_date}..."):
+                    try:
+                        result = run_linkedin_mvp(run_date, ui_settings)
+                    except Exception as exc:
+                        st.session_state["last_run_error"] = str(exc)
+                    else:
+                        st.session_state["last_run_result"] = result
+                        st.session_state["last_run_day"] = run_date
+                        st.success(f"Pipeline complete for {run_date}")
 
             if "last_run_error" in st.session_state:
                 st.error(st.session_state["last_run_error"])
@@ -2300,6 +2367,117 @@ def overlay_lower_third_text(image_path: Path, output_path: Path, text: str):
 
     with tab_dashboard:
         st.subheader("Daily dashboard")
+
+        st.markdown(
+            f"""
+            <div class="status-strip">
+              {status_pill("Prompt provider", settings.prompt_provider)}
+              {status_pill("Image provider", settings.image_provider)}
+              {status_pill("Voice provider", voice_provider_choice)}
+              {status_pill("Voice preset", voice_name_choice)}
+              {status_pill("Selected day", inspect_date)}
+              {status_pill("Latest day", latest_day or "none yet")}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        link_cols = st.columns(3)
+        with link_cols[0]:
+            render_link_card(
+                "Selected dashboard",
+                "Open the dashboard for the day you are currently inspecting.",
+                "Open dashboard",
+                selected_overview["dashboard_path"].as_uri() if selected_overview["dashboard_exists"] else None,
+            )
+        with link_cols[1]:
+            render_link_card(
+                "Selected audio",
+                "Open the audio front door for the currently selected day.",
+                "Open audio",
+                selected_overview["audio_path"].as_uri() if selected_overview["audio_exists"] else None,
+            )
+        with link_cols[2]:
+            render_link_card(
+                "Selected voice",
+                "Open the voice bundle for the currently selected day.",
+                "Open voice",
+                selected_overview["voice_path"].as_uri() if selected_overview["voice_exists"] else None,
+            )
+
+        render_health_banner(selected_overview)
+        render_preview_panel(selected_overview, selected_day_dir)
+
+        overview_cols = st.columns(4)
+        with overview_cols[0]:
+            render_overview_card(
+                "Selected day",
+                inspect_date,
+                "The day currently shown in the dashboard and artifact panels.",
+            )
+        with overview_cols[1]:
+            render_overview_card(
+                "Artifacts",
+                str(selected_overview["file_count"]),
+                "Total files in the selected daily folder.",
+            )
+        with overview_cols[2]:
+            render_overview_card(
+                "Dashboard",
+                "ready" if selected_overview["dashboard_exists"] else "missing",
+                "The daily dashboard HTML for the selected run.",
+            )
+        with overview_cols[3]:
+            render_overview_card(
+                "Audio bundle",
+                "ready" if selected_overview["audio_exists"] else "missing",
+                "The unified audio status front door for the selected run.",
+            )
+
+        col_a, col_b, col_c, col_d = st.columns(4)
+        with col_a:
+            st.markdown(
+                f"""
+                <div class="metric-box">
+                  <div class="metric-label">Output dir</div>
+                  <div class="metric-value">{ui_settings.output_dir}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        with col_b:
+            st.markdown(
+                f"""
+                <div class="metric-box">
+                  <div class="metric-label">Run date</div>
+                  <div class="metric-value">{run_date}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        with col_c:
+            st.markdown(
+                f"""
+                <div class="metric-box">
+                  <div class="metric-label">Inspect day</div>
+                  <div class="metric-value">{inspect_date}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        with col_d:
+            st.markdown(
+                f"""
+                <div class="metric-box">
+                  <div class="metric-label">Latest day</div>
+                  <div class="metric-value">{latest_day or "none yet"}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        st.write("---")
+
         dashboard_path = ui_settings.output_dir / "daily" / inspect_date / "daily_dashboard.html"
         if dashboard_path.exists():
             dashboard_html = dashboard_path.read_text(encoding="utf-8")
@@ -2310,7 +2488,7 @@ def overlay_lower_third_text(image_path: Path, output_path: Path, text: str):
         if dashboard_path.exists():
             st.markdown(f"[Open dashboard file]({dashboard_path.as_uri()})")
 
-    with tab_audio:
+    with tab_speech:
         st.subheader("Audio front door")
         audio_path = ui_settings.output_dir / "daily" / inspect_date / "audio_status.html"
         audio_json = ui_settings.output_dir / "daily" / inspect_date / "audio_status.json"
@@ -2417,35 +2595,111 @@ def overlay_lower_third_text(image_path: Path, output_path: Path, text: str):
                     st.caption(str(sample_path))
 
         st.markdown("#### Voice studio")
-        st.caption(
-            f"Provider: {voice_provider_choice} · Voice: {voice_name_choice} · Normalized for narration preview."
+        # Voice configuration inputs inside the tab
+        v_cols = st.columns(2)
+        with v_cols[0]:
+            st.selectbox(
+                "Voice provider",
+                options=("edge",),
+                index=0,
+                key="voice_provider_choice",
+            )
+            
+            st.selectbox(
+                "Voice gender",
+                options=[value for value, _ in gender_options],
+                index=[value for value, _ in gender_options].index(st.session_state.get("voice_gender_filter", "all")),
+                format_func=lambda value: gender_map.get(value, value),
+                key="voice_gender_filter",
+            )
+            
+        with v_cols[1]:
+            st.selectbox(
+                "Voice preset",
+                options=[preset.key for preset in preset_options],
+                index=[preset.key for preset in preset_options].index(st.session_state.get("voice_preset_choice", preset_options[0].key)),
+                format_func=lambda value: f"{preset_map[value].label} - {preset_map[value].description}",
+                key="voice_preset_choice",
+                on_change=apply_selected_voice_preset,
+            )
+            
+            st.selectbox(
+                "Voice name",
+                options=voice_option_values,
+                index=voice_option_values.index(st.session_state["voice_name_choice"]),
+                format_func=lambda value: next(label for voice, label in voice_options if voice == value),
+                key="voice_name_choice",
+            )
+            
+        voice_preview_text = st.text_area(
+            "Voiceover script preview",
+            value=st.session_state.get("voice_preview_text", ""),
+            height=140,
+            key="voice_preview_text",
         )
+        
+        st.caption(
+            f"Active Preset: {current_voice_preset.label} · Script language: {current_voice_preset.language} · Voice type: {current_voice_preset.gender}"
+        )
+        
         normalized_preview = normalize_voice_text(voice_preview_text)
-        st.text_area("Normalized script", value=normalized_preview, height=140, disabled=True)
+        st.text_area("Normalized script preview (Read-only)", value=normalized_preview, height=140, disabled=True)
+        
         preview_root = ui_settings.output_dir / ".runtime" / "voice_previews"
         preview_root.mkdir(parents=True, exist_ok=True)
         preview_file = preview_root / f"{voice_provider_choice}_{voice_name_choice}.mp3"
-        if st.button("Generate voice preview", use_container_width=True):
-            try:
-                preview_output = _generate_voice_preview_with_fallback(
-                    text=voice_preview_text,
-                    preview_path=preview_file,
-                    voice=voice_name_choice,
-                    gender_hint=st.session_state["voice_gender_filter"],
-                    language_hint=current_voice_preset.language,
-                    rate=current_voice_preset.rate,
-                    pitch=current_voice_preset.pitch,
-                )
-                st.session_state["voice_preview_path"] = str(preview_output)
-            except Exception as exc:
-                st.error(str(exc))
-            else:
-                st.success(f"Preview written to {st.session_state['voice_preview_path']}")
+        
+        v_btn_cols = st.columns([1, 1])
+        with v_btn_cols[0]:
+            if st.button("Generate voice preview", use_container_width=True, key="audio_tab_btn_generate_preview"):
+                try:
+                    preview_output = _generate_voice_preview_with_fallback(
+                        text=voice_preview_text,
+                        preview_path=preview_file,
+                        voice=voice_name_choice,
+                        gender_hint=st.session_state["voice_gender_filter"],
+                        language_hint=current_voice_preset.language,
+                        rate=current_voice_preset.rate,
+                        pitch=current_voice_preset.pitch,
+                    )
+                    st.session_state["voice_preview_path"] = str(preview_output)
+                except Exception as exc:
+                    st.error(str(exc))
+                else:
+                    st.success(f"Preview written to {st.session_state['voice_preview_path']}")
+        with v_btn_cols[1]:
+            if st.button("Apply selected preset script", use_container_width=True, key="audio_tab_btn_apply_preset"):
+                queue_voice_preset_by_key(st.session_state["voice_preset_choice"])
+                st.rerun()
+                
         if st.session_state.get("voice_preview_path"):
             preview_output_path = Path(st.session_state["voice_preview_path"])
             if preview_output_path.exists():
                 st.audio(str(preview_output_path))
                 st.caption(str(preview_output_path))
+
+        with st.expander("📁 Reference Audio Library Settings", expanded=False):
+            st.text_input(
+                "Reference dataset folder",
+                key="reference_audio_root",
+                help="Point this to the downloaded Kaggle dataset folder with language subfolders of MP3 clips.",
+            )
+            st.text_input(
+                "Reference bank language",
+                key="reference_audio_default_language",
+                help="Use this when the folder is flat, such as a single Hindi audio bank with numeric filenames.",
+            )
+            st.slider("Reference bank size", 20, 30, key="reference_audio_bank_size")
+            
+            st.selectbox(
+                "Reference language filter",
+                options=[value for value, _ in reference_audio_options],
+                index=[value for value, _ in reference_audio_options].index(
+                    st.session_state["reference_audio_language_filter"]
+                ),
+                format_func=lambda value: reference_audio_language_map.get(value, value),
+                key="reference_audio_language_filter",
+            )
 
         st.markdown("#### Reference audio explorer")
         reference_audio_root = resolve_project_path(st.session_state["reference_audio_root"])
@@ -2676,88 +2930,218 @@ def parse_prompt_into_sections(prompt_text: str) -> dict[str, str]:
     return sections
 
 
-def indic_to_phonetic_english(devanagari_text: str) -> str:
+def expand_prompt_to_lyrics_and_style(prompt: str, singer_gender: str) -> tuple[str, str]:
     import re
-    from indic_transliteration import sanscript
-    from indic_transliteration.sanscript import transliterate
+    p = prompt.lower()
     
-    # 1. Transliterate to case-sensitive ITRANS
-    itrans = transliterate(devanagari_text, sanscript.DEVANAGARI, sanscript.ITRANS)
+    # 1. Match Emotional/Lullaby
+    if any(k in p for k in ["emotional", "sad", "touch", "heart", "lullaby", "soft", "peaceful"]):
+        lyrics = (
+            "[verse]\n"
+            "Golden stars are shining bright,\n"
+            "Whispering a soft goodnight.\n"
+            "Close your eyes and drift away,\n"
+            "To the land where angels play.\n\n"
+            "[chorus]\n"
+            "Sleep now, baby, warm and sweet,\n"
+            "Dream of fields where rivers meet.\n"
+            "In my arms you'll always be,\n"
+            "Safe beneath the willow tree.\n\n"
+            "[verse]\n"
+            "Morning light will soon appear,\n"
+            "Chasing every little fear.\n"
+            "But for now, the moon will keep,\n"
+            "Vigil as you fall asleep."
+        )
+        style = (
+            f"gentle lullaby, warm acoustic guitar, soft emotional piano, delicate glockenspiel, peaceful strings, 80 BPM, "
+            f"heart-touching emotional melody, warm clear friendly {singer_gender.lower()} singing voice, gentle percussion, clean mix."
+        )
+        
+    # 2. Match Happy/Bouncy
+    elif any(k in p for k in ["happy", "fun", "playful", "bouncy", "cheerful", "dance", "laugh"]):
+        lyrics = (
+            "[verse]\n"
+            "Sunny day and clear blue skies,\n"
+            "Butterflies and dragonflies.\n"
+            "Hop like a bunny, reach for the sun,\n"
+            "Come on everyone, let's have some fun!\n\n"
+            "[chorus]\n"
+            "Clap your hands and spin around,\n"
+            "Listen to the happy sound.\n"
+            "Laugh out loud and jump so high,\n"
+            "We can almost touch the sky!\n\n"
+            "[verse]\n"
+            "Little puppy wags his tail,\n"
+            "Sailing on a paper sail.\n"
+            "Sing a song and dance along,\n"
+            "This is where we all belong!"
+        )
+        style = (
+            f"cheerful kids nursery rhyme, bouncy happy melody, 105 BPM, playful animated kids show style, "
+            f"ukulele, glockenspiel, hand claps, light acoustic guitar, bright bells, friendly {singer_gender.lower()} singing voice, clean mix."
+        )
+        
+    # 3. Match Educational/ABC
+    elif any(k in p for k in ["educational", "alphabet", "abc", "number", "learn", "school"]):
+        lyrics = (
+            "[verse]\n"
+            "A B C D E F G,\n"
+            "Come and learn to read with me.\n"
+            "H I J K L M N,\n"
+            "Write the letters with your pen.\n\n"
+            "[chorus]\n"
+            "Learning letters, one by one,\n"
+            "ABC is full of fun!\n"
+            "Sing it loud and sing it clear,\n"
+            "We are learning through the year.\n\n"
+            "[verse]\n"
+            "O P Q R S T U,\n"
+            "V W X and Y and Z.\n"
+            "Now I know my ABCs,\n"
+            "Next time won't you sing with me?"
+        )
+        style = (
+            f"upbeat educational kids song, cheerful synth melody, bouncy rhythm, 100 BPM, "
+            f"clear friendly {singer_gender.lower()} vocal pronunciation, glockenspiel, hand claps, bright piano, positive happy mood, clean mix."
+        )
+        
+    # 4. Default kids song
+    else:
+        # Extract keywords or subjects if possible
+        subject = "nature and trees"
+        for word in ["lion", "monkey", "squirrel", "dragon", "star", "moon", "car", "train", "friend", "family"]:
+            if word in p:
+                subject = f"a friendly {word}"
+                break
+                
+        lyrics = (
+            f"[verse]\n"
+            f"Here we go on an adventure today,\n"
+            f"Learning and singing along the way.\n"
+            f"With {subject} we laugh and play,\n"
+            f"Happy moments every day.\n\n"
+            f"[chorus]\n"
+            f"Sing with me, one two three,\n"
+            f"Happy as can be under the tree.\n"
+            f"Dance along and clap your hands,\n"
+            f"All across the sunny lands!"
+        )
+        style = (
+            f"cheerful kids adventure song, bouncy rhythm, 98 BPM, playful friendly {singer_gender.lower()} singing voice, "
+            f"acoustic guitar, gentle percussion, glockenspiel, bells, clean mix."
+        )
+        
+    return lyrics, style
+
+
+def expand_general_prompt_to_lyrics_and_style(prompt: str, singer_gender: str) -> tuple[str, str]:
+    import re
+    p = prompt.lower()
     
-    # 2. Split into words
-    words = itrans.split()
-    converted_words = []
-    
-    for word in words:
-        # Save punctuation at boundaries
-        leading_punc = ""
-        trailing_punc = ""
+    # 1. Match Emotional/Ballad/Love
+    if any(k in p for k in ["emotional", "sad", "touch", "heart", "ballad", "acoustic", "slow", "love"]):
+        lyrics = (
+            "[verse]\n"
+            "Shadows fall across the floor,\n"
+            "I don't hear your footsteps anymore.\n"
+            "But the memories still remain,\n"
+            "Like a whisper in the autumn rain.\n\n"
+            "[chorus]\n"
+            "If only time would trace a line,\n"
+            "To place your warm hand back in mine.\n"
+            "Through every storm that comes to pass,\n"
+            "True love will hold, true love will last.\n\n"
+            "[verse]\n"
+            "Silence is a heavy sound,\n"
+            "When the world is spinning round.\n"
+            "But I'll search the starlit sky,\n"
+            "Until the shadows pass us by."
+        )
+        style = (
+            f"gentle emotional pop ballad, slow acoustic feel, warm piano, soft acoustic guitar, slow building strings, 78 BPM, "
+            f"heart-touching emotional melody, warm clear friendly {singer_gender.lower()} singing voice, expressive vocal delivery, clean mix."
+        )
         
-        # Strip leading/trailing non-alphanumeric (except structure tags)
-        while word and not word[0].isalnum() and word[0] not in ['[', ']']:
-            leading_punc += word[0]
-            word = word[1:]
-        while word and not word[-1].isalnum() and word[-1] not in ['[', ']']:
-            trailing_punc = word[-1] + trailing_punc
-            word = word[:-1]
-            
-        if not word:
-            converted_words.append(leading_punc + trailing_punc)
-            continue
-            
-        # Keep structure tags as-is
-        if word.startswith("[") and word.endswith("]"):
-            converted_words.append(leading_punc + word + trailing_punc)
-            continue
-            
-        # Consonant clusters & special letters mapping
-        w = word
-        w = w.replace("j~n", "gy")
-        w = w.replace("kShetra", "kshetra")
-        w = w.replace("x", "ksh")
-        w = w.replace(".Dh", "dh")
-        w = w.replace(".d", "d")
-        w = w.replace(".D", "d")
+    # 2. Match Upbeat Pop/Dance/Happy
+    elif any(k in p for k in ["happy", "fun", "dance", "upbeat", "energetic", "pop", "party", "cheerful"]):
+        lyrics = (
+            "[verse]\n"
+            "Woke up to the morning sun,\n"
+            "Feeling like a brand new day's begun.\n"
+            "Leave the worries far behind,\n"
+            "We've got a rhythm of a different kind.\n\n"
+            "[chorus]\n"
+            "So dance along, let the music play,\n"
+            "We're gonna shine through the dark away.\n"
+            "Hands in the air, feel the beat so strong,\n"
+            "This is the place where we belong!\n\n"
+            "[verse]\n"
+            "Step by step we feel the glow,\n"
+            "Watch the summer energy flow.\n"
+            "No looking back, we're on our way,\n"
+            "Making the most of every day."
+        )
+        style = (
+            f"catchy modern pop, upbeat dance rhythm, 120 BPM, driving synth bass, electronic drums, sparkling synthesizers, "
+            f"bright friendly {singer_gender.lower()} vocals, energetic vocal delivery, clean mix."
+        )
         
-        # Map vowels
-        w = w.replace("RRi", "ri")
-        w = w.replace("RR", "ri")
-        w = w.replace("R", "ri")
+    # 3. Match Rock/Alternative/Energetic
+    elif any(k in p for k in ["rock", "guitar", "metal", "heavy", "alternative", "band", "drums"]):
+        lyrics = (
+            "[verse]\n"
+            "Running through the neon light,\n"
+            "Breaking out into the night.\n"
+            "Hear the thunder start to rise,\n"
+            "See the fire in our eyes.\n\n"
+            "[chorus]\n"
+            "We are the voice that won't be still,\n"
+            "Climbing up the highest hill.\n"
+            "Nothing can stop this heavy sound,\n"
+            "We're turning the whole world around!\n\n"
+            "[verse]\n"
+            "Electric strings begin to cry,\n"
+            "Underneath a stormy sky.\n"
+            "We stand our ground and make a stand,\n"
+            "Loudest chord in all the land."
+        )
+        style = (
+            f"energetic alternative rock, driving electric guitars, powerful bassline, rock drum kit, 112 BPM, "
+            f"strong passionate {singer_gender.lower()} rock vocals, clean professional studio mix."
+        )
         
-        # Map case-sensitive long vowels
-        w = w.replace("A", "aa")
-        w = w.replace("I", "ee")
-        w = w.replace("U", "oo")
+    # 4. Default general song (Modern Acoustic Pop Songwriter)
+    else:
+        subject = "a journey through the night"
+        for word in ["dream", "journey", "street", "city", "ocean", "river", "road", "friend", "home", "sky"]:
+            if word in p:
+                subject = f"a journey about {word}s"
+                break
+                
+        lyrics = (
+            f"[verse]\n"
+            f"Packed my bags and took a train,\n"
+            f"Leaving behind the winter rain.\n"
+            f"Looking for a brand new sign,\n"
+            f"Tracing a path that's yours and mine.\n\n"
+            f"[chorus]\n"
+            f"This is the start of the road ahead,\n"
+            f"Following where our feet have led.\n"
+            f"With every step the sky gets bright,\n"
+            f"We are moving into the light.\n\n"
+            f"[verse]\n"
+            f"Miles go by and the mountains rise,\n"
+            f"Reflected in your searching eyes.\n"
+            f"We'll keep on going, come what may,\n"
+            f"Finding our own path today."
+        )
+        style = (
+            f"modern acoustic pop songwriter, gentle steady rhythm, 92 BPM, warm piano, soft acoustic guitar, "
+            f"bright acoustic bass, expressive friendly {singer_gender.lower()} vocal, clean mix."
+        )
         
-        # Map sh/Sh/s
-        w = w.replace("Sh", "sh")
-        w = w.replace("S", "sh")
-        
-        # Map anusvara/nasalization
-        w = w.replace("oM", "on")
-        w = w.replace("eM", "mein")
-        w = w.replace("aiM", "ain")
-        w = w.replace("iM", "in")
-        w = w.replace("uM", "un")
-        w = w.replace("aM", "an")
-        w = w.replace("M", "n")
-        
-        # Word-Final Schwa Deletion
-        if w.endswith("a") and not w.endswith("aa") and len(w) > 2:
-            w = w[:-1]
-            
-        # Middle-Syllable Schwa Deletion (lookbehind-based)
-        w = re.sub(r'(?<=[aeiou])([bcdfghjklmnpqrstvwxyz]+)a([bcdfghjklmnpqrstvwxyz]+[aeiou])', r'\1\2', w)
-        
-        # Simplify chch -> ch (च्च)
-        w = w.replace("chch", "ch")
-        
-        # Force all lowercase
-        w = w.lower()
-        
-        converted_words.append(leading_punc + w + trailing_punc)
-        
-    return " ".join(converted_words)
+    return lyrics, style
 
 
 def main() -> None:
