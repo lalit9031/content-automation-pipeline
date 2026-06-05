@@ -1132,12 +1132,12 @@ def render_frontdoor(settings: Settings) -> None:
             )
             st.session_state["music_studio_genre"] = genre
 
-            gender_options = ["Male", "Female"]
+            music_gender_options = ["Male", "Female"]
             curr_gender = st.session_state.get("music_studio_singer_gender", "Male")
-            gender_index = gender_options.index(curr_gender) if curr_gender in gender_options else 0
+            gender_index = music_gender_options.index(curr_gender) if curr_gender in music_gender_options else 0
             singer_gender = st.selectbox(
                 "Singer Voice Gender",
-                options=gender_options,
+                options=music_gender_options,
                 index=gender_index,
                 key="music_studio_singer_gender_input",
                 help="Choose whether the singing voice is Male or Female. The engine will automatically update the description prompt."
@@ -1979,12 +1979,12 @@ def overlay_lower_third_text(image_path: Path, output_path: Path, text: str):
             st.session_state["kids_song_genre"] = genre
 
             # Singer Voice Gender Selection
-            gender_options = ["Male", "Female"]
+            kids_gender_options = ["Male", "Female"]
             curr_gender = st.session_state.get("kids_song_singer_gender", "Male")
-            gender_index = gender_options.index(curr_gender) if curr_gender in gender_options else 0
+            gender_index = kids_gender_options.index(curr_gender) if curr_gender in kids_gender_options else 0
             singer_gender = st.selectbox(
                 "Singer Voice Gender",
-                options=gender_options,
+                options=kids_gender_options,
                 index=gender_index,
                 key="kids_song_singer_gender_input",
                 help="Choose whether the singing voice is Male or Female. The engine will automatically update the description prompt."
