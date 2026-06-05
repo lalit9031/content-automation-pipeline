@@ -1362,7 +1362,7 @@ Alphabet is fun for me!""")
         )
 
     tab_studio, tab_video, tab_kids_song, tab_run, tab_dashboard, tab_audio, tab_files = st.tabs(
-        ["Studio", "Video Studio 🎬", "Kids Song Studio 🎵", "Run", "Dashboard", "Audio", "Files"]
+        ["Studio", "Video Studio 🎬", "Kids Rhymes & Rhythm Studio 🎵", "Run", "Dashboard", "Audio", "Files"]
     )
 
     with tab_studio:
@@ -1749,7 +1749,7 @@ def overlay_lower_third_text(image_path: Path, output_path: Path, text: str):
         st.markdown(
             """
             <div class="hero" style="background: linear-gradient(135deg, rgba(56,189,248,0.15), rgba(168,85,247,0.15)); border: 1px solid rgba(56,189,248,0.3); margin-bottom: 24px;">
-              <h1 style="font-size: 32px;">🎵 Kids Song Studio (Lyria 3)</h1>
+              <h1 style="font-size: 32px;">🎵 Kids Rhymes & Rhythm Studio (Lyria 3)</h1>
               <p style="margin-top: 6px; font-size: 14px;">Generate cheerful, high-quality music and nursery rhymes matching your reference tracks using the Tencent SongGeneration model.</p>
             </div>
             """,
@@ -1848,16 +1848,13 @@ def overlay_lower_third_text(image_path: Path, output_path: Path, text: str):
                         
                         has_hindi = any('\u0900' <= char <= '\u097f' for char in lyrics_content)
                         if has_hindi:
-                            from indic_transliteration import sanscript
-                            from indic_transliteration.sanscript import transliterate
-                            itrans = transliterate(lyrics_content, sanscript.DEVANAGARI, sanscript.ITRANS)
-                            lyrics_content = itrans.replace(".n", "n").replace(".N", "n").replace(".", "").lower()
+                            lyrics_content = indic_to_phonetic_english(lyrics_content)
                             
                             if "hindi" not in combined_style.lower():
                                 combined_style = combined_style.strip()
                                 if combined_style and not combined_style.endswith("."):
                                     combined_style += "."
-                                combined_style += " clear Hindi pronunciation, Indian kids music tone."
+                                combined_style += " clear Hindi pronunciation, bouncy kids rhythm, traditional Indian nursery rhyme beats."
                             
                             st.session_state["kids_song_singer_gender"] = "Female"
                             st.session_state.pop("kids_song_singer_gender_input", None)
@@ -1880,15 +1877,12 @@ def overlay_lower_third_text(image_path: Path, output_path: Path, text: str):
                         
                         if has_hindi:
                             # Transliterate the lyrics to Hinglish for display
-                            from indic_transliteration import sanscript
-                            from indic_transliteration.sanscript import transliterate
-                            itrans = transliterate(lyrics, sanscript.DEVANAGARI, sanscript.ITRANS)
-                            lyrics = itrans.replace(".n", "n").replace(".N", "n").replace(".", "").lower()
+                            lyrics = indic_to_phonetic_english(lyrics)
                             
                             if is_kids:
                                 inferred_style = (
-                                    "cheerful Indian Hindi nursery rhyme, playful animated kids voice, happy bouncy melody, 95 BPM, "
-                                    "clear Hindi pronunciation, hand claps, glockenspiel, soft harmonium, playful acoustic beats, clean mix."
+                                    "cheerful Indian Hindi nursery rhyme, bouncy rhythmic recitation, playful animated kids voice, happy rhythm, 95 BPM, "
+                                    "clear Hindi pronunciation, hand claps, glockenspiel, soft harmonium, traditional dholak rhythm, clean mix."
                                 )
                             else:
                                 inferred_style = (
@@ -2219,17 +2213,14 @@ def overlay_lower_third_text(image_path: Path, output_path: Path, text: str):
                     has_hindi = any('\u0900' <= char <= '\u097f' for char in lyrics_to_process)
                     if has_hindi:
                         st.write("🇮🇳 Hindi lyrics detected. Auto-translating to English-phonetic Hinglish...")
-                        from indic_transliteration import sanscript
-                        from indic_transliteration.sanscript import transliterate
-                        itrans = transliterate(lyrics_to_process, sanscript.DEVANAGARI, sanscript.ITRANS)
-                        lyrics_to_process = itrans.replace(".n", "n").replace(".N", "n").replace(".", "").lower()
+                        lyrics_to_process = indic_to_phonetic_english(lyrics_to_process)
                         
                         # Auto-update description for Indian Hindi pronunciation
                         if "hindi" not in desc.lower():
                             desc = desc.strip()
                             if desc and not desc.endswith("."):
                                 desc += "."
-                            desc += " clear Hindi pronunciation, Indian kids music tone."
+                            desc += " clear Hindi pronunciation, bouncy kids rhythm, traditional Indian nursery rhyme beats."
                         
                         st.session_state["kids_song_lyrics"] = lyrics_to_process
                         st.session_state.pop("kids_song_lyrics_input", None)
@@ -2346,11 +2337,11 @@ def overlay_lower_third_text(image_path: Path, output_path: Path, text: str):
                     subprocess.run(transcode_cmd, check=True)
                     
                     st.session_state["kids_song_generated_mp3"] = str(out_path)
-                    st.success("🎉 Kids song generated successfully!")
+                    st.success("🎉 Kids rhyme generated successfully!")
                     st.rerun()
                     
                 except Exception as exc:
-                    st.error(f"❌ Error generating kids song: {exc}")
+                    st.error(f"❌ Error generating kids rhyme: {exc}")
 
     with tab_run:
         left, right = st.columns([1.2, 0.8])
@@ -2718,6 +2709,88 @@ def overlay_lower_third_text(image_path: Path, output_path: Path, text: str):
             "reference_audio_bank_size": str(st.session_state["reference_audio_bank_size"]),
         },
     )
+def indic_to_phonetic_english(devanagari_text: str) -> str:
+    import re
+    from indic_transliteration import sanscript
+    from indic_transliteration.sanscript import transliterate
+    
+    # 1. Transliterate to case-sensitive ITRANS
+    itrans = transliterate(devanagari_text, sanscript.DEVANAGARI, sanscript.ITRANS)
+    
+    # 2. Split into words
+    words = itrans.split()
+    converted_words = []
+    
+    for word in words:
+        # Save punctuation at boundaries
+        leading_punc = ""
+        trailing_punc = ""
+        
+        # Strip leading/trailing non-alphanumeric (except structure tags)
+        while word and not word[0].isalnum() and word[0] not in ['[', ']']:
+            leading_punc += word[0]
+            word = word[1:]
+        while word and not word[-1].isalnum() and word[-1] not in ['[', ']']:
+            trailing_punc = word[-1] + trailing_punc
+            word = word[:-1]
+            
+        if not word:
+            converted_words.append(leading_punc + trailing_punc)
+            continue
+            
+        # Keep structure tags as-is
+        if word.startswith("[") and word.endswith("]"):
+            converted_words.append(leading_punc + word + trailing_punc)
+            continue
+            
+        # Consonant clusters & special letters mapping
+        w = word
+        w = w.replace("j~n", "gy")
+        w = w.replace("kShetra", "kshetra")
+        w = w.replace("x", "ksh")
+        w = w.replace(".Dh", "dh")
+        w = w.replace(".d", "d")
+        w = w.replace(".D", "d")
+        
+        # Map vowels
+        w = w.replace("RRi", "ri")
+        w = w.replace("RR", "ri")
+        w = w.replace("R", "ri")
+        
+        # Map case-sensitive long vowels
+        w = w.replace("A", "aa")
+        w = w.replace("I", "ee")
+        w = w.replace("U", "oo")
+        
+        # Map sh/Sh/s
+        w = w.replace("Sh", "sh")
+        w = w.replace("S", "sh")
+        
+        # Map anusvara/nasalization
+        w = w.replace("oM", "on")
+        w = w.replace("eM", "mein")
+        w = w.replace("aiM", "ain")
+        w = w.replace("iM", "in")
+        w = w.replace("uM", "un")
+        w = w.replace("aM", "an")
+        w = w.replace("M", "n")
+        
+        # Word-Final Schwa Deletion
+        if w.endswith("a") and not w.endswith("aa") and len(w) > 2:
+            w = w[:-1]
+            
+        # Middle-Syllable Schwa Deletion (lookbehind-based)
+        w = re.sub(r'(?<=[aeiou])([bcdfghjklmnpqrstvwxyz]+)a([bcdfghjklmnpqrstvwxyz]+[aeiou])', r'\1\2', w)
+        
+        # Simplify chch -> ch (च्च)
+        w = w.replace("chch", "ch")
+        
+        # Force all lowercase
+        w = w.lower()
+        
+        converted_words.append(leading_punc + w + trailing_punc)
+        
+    return " ".join(converted_words)
 
 
 def main() -> None:
