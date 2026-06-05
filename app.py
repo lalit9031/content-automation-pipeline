@@ -40,6 +40,8 @@ from content_pipeline.pipeline import run_linkedin_mvp
 def _apply_streamlit_secrets() -> None:
     try:
         secrets = st.secrets
+        # Trigger parsing to catch StreamlitSecretNotFoundError if secrets file is missing
+        _ = len(secrets)
     except Exception:
         return
 
@@ -746,6 +748,27 @@ def render_frontdoor(settings: Settings) -> None:
     st.session_state.setdefault("music_duration_seconds", 8)
     st.session_state.setdefault("image_preview_path", "")
     st.session_state.setdefault("music_preview_path", "")
+    st.session_state.setdefault("kids_song_lyrics", """[verse]
+A for Ant, B for Butterfly,
+C for Cat, D for Dog nearby,
+E for Elephant, F for Fish,
+G for Grapes on a little dish,
+H for Horse, I for Ice cream,
+J for Jelly in a dream,
+K for Kite, L for Lion,
+M for Monkey always trying.
+
+[chorus]
+A B C, sing with me,
+Learning letters happily,
+A B C, one two three,
+Alphabet is fun for me!""")
+    st.session_state.setdefault("kids_song_description", "cheerful nursery rhyme, magical kids show music, soft cinematic feel, bright and colorful, 92 BPM, warm friendly male voice, clear Indian-English pronunciation, gentle children's choir in the chorus, ukulele, piano, bells, claps, soft drums, glockenspiel. Melody should be catchy, simple, and soft.")
+    st.session_state.setdefault("kids_song_ref_audio_choice", "Educational Kids' Alphabet Song.mp3")
+    st.session_state.setdefault("kids_song_cfg_coef", 1.8)
+    st.session_state.setdefault("kids_song_temperature", 0.8)
+    st.session_state.setdefault("kids_song_genre", "Auto")
+    st.session_state.setdefault("kids_song_generated_mp3", "")
     st.session_state.setdefault("voice_preview_path", "")
     st.session_state.setdefault("sidebar_mode", "Audio")
     st.session_state.setdefault("voice_library_language_filter", "all")
@@ -1337,8 +1360,8 @@ def render_frontdoor(settings: Settings) -> None:
             unsafe_allow_html=True,
         )
 
-    tab_studio, tab_video, tab_run, tab_dashboard, tab_audio, tab_files = st.tabs(
-        ["Studio", "Video Studio 🎬", "Run", "Dashboard", "Audio", "Files"]
+    tab_studio, tab_video, tab_kids_song, tab_run, tab_dashboard, tab_audio, tab_files = st.tabs(
+        ["Studio", "Video Studio 🎬", "Kids Song Studio 🎵", "Run", "Dashboard", "Audio", "Files"]
     )
 
     with tab_studio:
@@ -1720,6 +1743,488 @@ def overlay_lower_third_text(image_path: Path, output_path: Path, text: str):
             else:
                 st.info("Image not generated or directory not compiled yet.")
 
+
+    with tab_kids_song:
+        st.markdown(
+            """
+            <div class="hero" style="background: linear-gradient(135deg, rgba(56,189,248,0.15), rgba(168,85,247,0.15)); border: 1px solid rgba(56,189,248,0.3); margin-bottom: 24px;">
+              <h1 style="font-size: 32px;">🎵 Kids Song Studio (Lyria 3)</h1>
+              <p style="margin-top: 6px; font-size: 14px;">Generate cheerful, high-quality music and nursery rhymes matching your reference tracks using the Tencent SongGeneration model.</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        left_col, right_col = st.columns([1.1, 0.9])
+
+        with left_col:
+            st.markdown("### Lyrics Composer")
+            kids_lyrics_val = st.session_state.get("kids_song_lyrics", "")
+            lyrics = st.text_area(
+                "Enter lyrics here (use [verse] and [chorus] tags, avoid [intro]/[outro] tags)",
+                value=kids_lyrics_val,
+                height=350,
+                key="kids_song_lyrics_input"
+            )
+            st.session_state["kids_song_lyrics"] = lyrics
+
+            col1, col2 = st.columns([1, 1])
+            with col1:
+                parse_clicked = st.button("✨ Parse & Autofill settings", use_container_width=True, help="Extracts lyrics, tempo, instruments, vocals, and mood from your prompt to autofill the settings panel.")
+            with col2:
+                if st.button("🗑️ Clear Lyrics", use_container_width=True):
+                    st.session_state["kids_song_lyrics"] = ""
+                    st.rerun()
+
+            if parse_clicked:
+                if lyrics.strip():
+                    import re
+                    
+                    # Define synonym lists for normalization
+                    style_syns = ["style", "genre", "type", "category", "theme", "musical style", "musical_style"]
+                    tempo_syns = ["tempo", "bpm", "speed", "pacing", "beat"]
+                    vocals_syns = ["vocals", "vocal", "voice", "singer", "singing", "voiceover", "voice_preset"]
+                    mood_syns = ["mood", "feeling", "emotion", "vibe", "tone"]
+                    instruments_syns = ["instruments", "instrument", "music", "backing track", "sounds", "orchestra", "tools", "band"]
+                    lyrics_syns = ["song structure", "structure", "lyrics", "lyric", "text", "song", "verses", "verse", "chorus", "lyrics sheet", "lyrics_sheet"]
+                    production_syns = ["production", "mix", "mixing", "quality", "fidelity", "audio quality", "audio_quality"]
+
+                    all_syns = style_syns + tempo_syns + vocals_syns + mood_syns + instruments_syns + lyrics_syns + production_syns
+                    syns_regex_parts = [re.escape(syn).replace(r"\ ", r"\s+") for syn in all_syns]
+                    
+                    # Regex pattern to match "Synonym:" (case-insensitive, optional spaces, on new line or start of line)
+                    pattern = r"(?i)^\s*(" + "|".join(syns_regex_parts) + r")\s*:\s*\n?"
+                    matches = list(re.finditer(pattern, lyrics, re.MULTILINE))
+                    
+                    if matches:
+                        sections = {}
+                        for i, match in enumerate(matches):
+                            start = match.end()
+                            end = matches[i+1].start() if i + 1 < len(matches) else len(lyrics)
+                            header_raw = match.group(1).lower().strip()
+                            header_norm = re.sub(r"\s+", " ", header_raw)
+                            
+                            # Normalize matched header to standard category
+                            if header_norm in style_syns:
+                                category = "style"
+                            elif header_norm in tempo_syns:
+                                category = "tempo"
+                            elif header_norm in vocals_syns:
+                                category = "vocals"
+                            elif header_norm in mood_syns:
+                                category = "mood"
+                            elif header_norm in instruments_syns:
+                                category = "instruments"
+                            elif header_norm in lyrics_syns:
+                                category = "lyrics"
+                            elif header_norm in production_syns:
+                                category = "production"
+                            else:
+                                category = header_norm
+                                
+                            sections[category] = lyrics[start:end].strip()
+                            
+                        # Extract lyrics
+                        lyrics_content = sections.get("lyrics", "")
+                        if not lyrics_content:
+                            lyrics_content = lyrics
+                            
+                        style_parts = []
+                        if "style" in sections:
+                            style_parts.append(sections["style"])
+                        if "tempo" in sections:
+                            style_parts.append(f"Tempo: {sections['tempo']}")
+                        if "vocals" in sections:
+                            style_parts.append(f"Vocals: {sections['vocals']}")
+                        if "mood" in sections:
+                            style_parts.append(f"Mood: {sections['mood']}")
+                        if "instruments" in sections:
+                            style_parts.append(f"Instruments: {sections['instruments']}")
+                        if "production" in sections:
+                            style_parts.append(f"Production: {sections['production']}")
+                            
+                        combined_style = ". ".join(style_parts)
+                        
+                        st.session_state["kids_song_lyrics"] = lyrics_content
+                        st.session_state["kids_song_description"] = combined_style
+                        st.success("🎉 Successfully parsed and autofilled settings from prompt!")
+                        st.rerun()
+                    else:
+                        # Infer from song structure
+                        lower_text = lyrics.lower()
+                        is_kids = any(k in lower_text for k in ["abc", "alphabet", "kid", "child", "baby", "nursery", "rhyme", "toddler", "toy"])
+                        
+                        if is_kids:
+                            inferred_style = (
+                                "cheerful nursery rhyme, magical kids show music, happy bouncy melody, 92 BPM, "
+                                "warm friendly lead voice, clear pronunciation, ukulele, soft piano, glockenspiel, "
+                                "gentle bells, light percussion, clean mix."
+                            )
+                        else:
+                            inferred_style = (
+                                "catchy melodic pop song, warm vocals, piano, acoustic guitar, soft percussion, "
+                                "balanced audio mix."
+                            )
+                        
+                        st.session_state["kids_song_lyrics"] = lyrics
+                        st.session_state["kids_song_description"] = inferred_style
+                        st.info("ℹ️ Plain prompt detected. Style inferred from song content.")
+                        st.rerun()
+                else:
+                    st.warning("⚠️ Please paste a prompt in the lyrics box first.")
+
+            st.markdown(
+                """
+                <div style="display: flex; gap: 16px; margin-top: 20px;">
+                  <div style="flex: 1; padding: 16px; border-radius: 12px; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(56, 189, 248, 0.25);">
+                    <div style="font-size: 12px; color: #38bdf8; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 6px;">
+                      <span>💡</span> Pro tip: Structure
+                    </div>
+                    <div style="font-size: 13px; color: #e2e8f0; margin-top: 6px; line-height: 1.4;">
+                      Start with a quiet piano intro, build into a loud verse, then explode into the chorus.
+                    </div>
+                  </div>
+                  <div style="flex: 1; padding: 16px; border-radius: 12px; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(168, 85, 247, 0.25);">
+                    <div style="font-size: 12px; color: #a855f7; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 6px;">
+                      <span>🎵</span> Pro tip: Details
+                    </div>
+                    <div style="font-size: 13px; color: #e2e8f0; margin-top: 6px; line-height: 1.4;">
+                      Mix genres for unique sounds, like a cheerful ukulele with bells and a gentle kids' choir.
+                    </div>
+                  </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        with right_col:
+            st.markdown("### Run settings")
+            
+            st.selectbox(
+                "Model",
+                options=["Lyria 3 Pro Preview (tencent/SongGeneration)"],
+                index=0,
+                disabled=True,
+                help="Lyria 3 Pro is optimized for high-fidelity composition and vocal generation."
+            )
+            
+            kids_desc_val = st.session_state.get("kids_song_description", "")
+            desc = st.text_area(
+                "Style Description",
+                value=kids_desc_val,
+                height=120,
+                key="kids_song_description_input",
+                help="Describe instruments, tempo (BPM), vocal qualities, and style of the song."
+            )
+            st.session_state["kids_song_description"] = desc
+
+            ref_dir = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio")
+            ref_files = []
+            if ref_dir.exists():
+                ref_files = sorted([f.name for f in ref_dir.glob("*.mp3")])
+            
+            options = ["None (Text-only)"] + ref_files
+            default_index = 0
+            default_val = st.session_state.get("kids_song_ref_audio_choice", "None (Text-only)")
+            if default_val in options:
+                default_index = options.index(default_val)
+            
+            selected_ref = st.selectbox(
+                "Style Reference Audio",
+                options=options,
+                index=default_index,
+                key="kids_song_ref_audio_choice_input",
+                help="Select an existing track to guide the style, melody, and voice of the song."
+            )
+            st.session_state["kids_song_ref_audio_choice"] = selected_ref
+
+            cfg = st.slider(
+                "CFG Scale",
+                min_value=1.0,
+                max_value=5.0,
+                value=float(st.session_state.get("kids_song_cfg_coef", 1.8)),
+                step=0.1,
+                key="kids_song_cfg_coef_input",
+                help="Classifier-Free Guidance. Higher values enforce the style description more strongly."
+            )
+            st.session_state["kids_song_cfg_coef"] = cfg
+            
+            temp = st.slider(
+                "Temperature",
+                min_value=0.0,
+                max_value=1.0,
+                value=float(st.session_state.get("kids_song_temperature", 0.8)),
+                step=0.05,
+                key="kids_song_temperature_input",
+                help="Controls diversity. Higher values produce more random/creative melodies."
+            )
+            st.session_state["kids_song_temperature"] = temp
+            
+            genre_options = ["Auto", "Kids", "Pop", "Classical", "Electronic", "Rock", "Country"]
+            curr_genre = st.session_state.get("kids_song_genre", "Auto")
+            genre_index = genre_options.index(curr_genre) if curr_genre in genre_options else 0
+            genre = st.selectbox(
+                "Genre",
+                options=genre_options,
+                index=genre_index,
+                key="kids_song_genre_input"
+            )
+            st.session_state["kids_song_genre"] = genre
+
+        st.markdown("---")
+        st.markdown("### Playback & Generation")
+        
+        generated_file_path = st.session_state.get("kids_song_generated_mp3", "")
+        default_out = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio/LittleBubbles_Generated_Song.mp3")
+        if not generated_file_path and default_out.exists():
+            generated_file_path = str(default_out)
+            st.session_state["kids_song_generated_mp3"] = generated_file_path
+
+        bottom_cols = st.columns([1.2, 1.8, 1.0])
+        
+        with bottom_cols[0]:
+            if generated_file_path and Path(generated_file_path).exists():
+                st.markdown(
+                    f"""
+                    <div style="padding: 10px; border-radius: 8px; background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(56, 189, 248, 0.15);">
+                      <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase;">Active Track</div>
+                      <div style="font-size: 14px; font-weight: 800; color: #f8fafc; margin-top: 2px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
+                        LittleBubbles_Generated_Song.mp3
+                      </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+            else:
+                st.markdown(
+                    """
+                    <div style="padding: 10px; border-radius: 8px; background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(244, 63, 94, 0.15);">
+                      <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase;">Active Track</div>
+                      <div style="font-size: 14px; font-weight: 800; color: #f43f5e; margin-top: 2px;">
+                        No track generated yet
+                      </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+                
+        with bottom_cols[1]:
+            if generated_file_path and Path(generated_file_path).exists():
+                st.audio(generated_file_path)
+            else:
+                st.write("")
+                
+        with bottom_cols[2]:
+            btn_cols = st.columns(2)
+            with btn_cols[0]:
+                if generated_file_path and Path(generated_file_path).exists():
+                    with open(generated_file_path, "rb") as f:
+                        btn_data = f.read()
+                    st.download_button(
+                        label="Download",
+                        data=btn_data,
+                        file_name="LittleBubbles_Generated_Song.mp3",
+                        mime="audio/mp3",
+                        use_container_width=True
+                    )
+                else:
+                    st.button("Download", disabled=True, use_container_width=True)
+            with btn_cols[1]:
+                generate_clicked = st.button("Generate", type="primary", use_container_width=True)
+
+        if generate_clicked:
+            with st.spinner("Connecting to tencent/SongGeneration space and generating audio... (This may take 1-3 minutes)"):
+                try:
+                    import subprocess
+                    import shutil
+                    from gradio_client import Client, handle_file
+
+                    prompt_audio_param = None
+                    if selected_ref != "None (Text-only)":
+                        ref_full_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio") / selected_ref
+                        if ref_full_path.exists():
+                            temp_dir = Path("/Users/lalitprasadsingh/VS_code/content-automation-pipeline/output/.runtime")
+                            temp_dir.mkdir(parents=True, exist_ok=True)
+                            cropped_ref_path = temp_dir / "kids_song_ref_cropped.mp3"
+                            
+                            st.write(f"ℹ️ Cropping style reference '{selected_ref}' to 15 seconds...")
+                            cmd = [
+                                "ffmpeg", "-y", "-i", str(ref_full_path),
+                                "-ss", "0", "-t", "15",
+                                "-codec:a", "libmp3lame", "-b:a", "128k",
+                                str(cropped_ref_path)
+                            ]
+                            subprocess.run(cmd, check=True)
+                            prompt_audio_param = handle_file(str(cropped_ref_path))
+                        else:
+                            st.warning(f"Reference audio '{selected_ref}' not found. Falling back to text-only generation.")
+
+                    st.write("📝 Checking and sanitizing prompt structure...")
+                    lyrics_to_process = lyrics.strip()
+                    import re
+                    
+                    # 1. Check if the prompt needs automatic parsing first (if it doesn't start with a tag)
+                    supported_tags = ["verse", "chorus", "bridge", "intro", "outro", "inst", "silence"]
+                    has_leading_tag = False
+                    if lyrics_to_process.startswith("["):
+                        first_line = lyrics_to_process.splitlines()[0].strip()
+                        if first_line.endswith("]"):
+                            tag_content = first_line[1:-1].lower()
+                            if any(t in tag_content for t in supported_tags):
+                                has_leading_tag = True
+                                
+                    if not has_leading_tag:
+                        st.write("✨ Auto-parsing raw prompt to extract lyrics and style details...")
+                        style_syns = ["style", "genre", "type", "category", "theme", "musical style", "musical_style"]
+                        tempo_syns = ["tempo", "bpm", "speed", "pacing", "beat"]
+                        vocals_syns = ["vocals", "vocal", "voice", "singer", "singing", "voiceover", "voice_preset"]
+                        mood_syns = ["mood", "feeling", "emotion", "vibe", "tone"]
+                        instruments_syns = ["instruments", "instrument", "music", "backing track", "sounds", "orchestra", "tools", "band"]
+                        lyrics_syns = ["song structure", "structure", "lyrics", "lyric", "text", "song", "verses", "verse", "chorus", "lyrics sheet", "lyrics_sheet"]
+                        production_syns = ["production", "mix", "mixing", "quality", "fidelity", "audio quality", "audio_quality"]
+
+                        all_syns = style_syns + tempo_syns + vocals_syns + mood_syns + instruments_syns + lyrics_syns + production_syns
+                        syns_regex_parts = [re.escape(syn).replace(r"\ ", r"\s+") for syn in all_syns]
+                        pattern = r"(?i)^\s*(" + "|".join(syns_regex_parts) + r")\s*:\s*\n?"
+                        matches = list(re.finditer(pattern, lyrics, re.MULTILINE))
+                        
+                        if matches:
+                            sections = {}
+                            for i, match in enumerate(matches):
+                                start = match.end()
+                                end = matches[i+1].start() if i + 1 < len(matches) else len(lyrics)
+                                header_raw = match.group(1).lower().strip()
+                                header_norm = re.sub(r"\s+", " ", header_raw)
+                                
+                                if header_norm in style_syns:
+                                    category = "style"
+                                elif header_norm in tempo_syns:
+                                    category = "tempo"
+                                elif header_norm in vocals_syns:
+                                    category = "vocals"
+                                elif header_norm in mood_syns:
+                                    category = "mood"
+                                elif header_norm in instruments_syns:
+                                    category = "instruments"
+                                elif header_norm in lyrics_syns:
+                                    category = "lyrics"
+                                elif header_norm in production_syns:
+                                    category = "production"
+                                else:
+                                    category = header_norm
+                                    
+                                sections[category] = lyrics[start:end].strip()
+                                
+                            lyrics_to_process = sections.get("lyrics", "").strip()
+                            if not lyrics_to_process:
+                                lyrics_to_process = lyrics.strip()
+                                
+                            # Re-build style description
+                            style_parts = []
+                            if "style" in sections:
+                                style_parts.append(sections["style"])
+                            if "tempo" in sections:
+                                style_parts.append(f"Tempo: {sections['tempo']}")
+                            if "vocals" in sections:
+                                style_parts.append(f"Vocals: {sections['vocals']}")
+                            if "mood" in sections:
+                                style_parts.append(f"Mood: {sections['mood']}")
+                            if "instruments" in sections:
+                                style_parts.append(f"Instruments: {sections['instruments']}")
+                            if "production" in sections:
+                                style_parts.append(f"Production: {sections['production']}")
+                                
+                            desc = ". ".join(style_parts)
+                            st.session_state["kids_song_description"] = desc
+                            st.session_state["kids_song_lyrics"] = lyrics_to_process
+                        else:
+                            # Plain text prompt, use default/inferred style
+                            lower_text = lyrics.lower()
+                            is_kids = any(k in lower_text for k in ["abc", "alphabet", "kid", "child", "baby", "nursery", "rhyme", "toddler", "toy"])
+                            if is_kids:
+                                desc = "cheerful nursery rhyme, magical kids show music, happy bouncy melody, 92 BPM, ukulele, soft piano, glockenspiel, bells."
+                            else:
+                                desc = "catchy pop song, piano, acoustic guitar, soft percussion."
+                            st.session_state["kids_song_description"] = desc
+
+                    # 2. Split lines, skip empty lines, and sanitize tags
+                    sanitized_lines = []
+                    lines = [line.strip() for line in lyrics_to_process.splitlines()]
+                    
+                    # Skip all empty lines to prevent double-newline segment splits on the model server
+                    filtered_lines = [line for line in lines if line]
+                    
+                    if filtered_lines:
+                        first_line = filtered_lines[0]
+                        # If the very first line is not a valid bracketed tag, prepend [verse]
+                        if not (first_line.startswith("[") and first_line.endswith("]")):
+                            sanitized_lines.append("[verse]")
+                        
+                        for line in filtered_lines:
+                            # Replace semicolons with commas to avoid server-side segment parsing issues
+                            line_safe = line.replace(";", ",")
+                            
+                            if line_safe.startswith("[") and line_safe.endswith("]"):
+                                tag_content = line_safe[1:-1].lower()
+                                if "chorus" in tag_content:
+                                    sanitized_lines.append("[chorus]")
+                                elif "bridge" in tag_content:
+                                    sanitized_lines.append("[bridge]")
+                                elif "intro" in tag_content:
+                                    # Since intro with text will fail if marked as [intro-medium], map to [verse]
+                                    sanitized_lines.append("[verse]")
+                                elif "outro" in tag_content:
+                                    # Since outro with text will fail if marked as [outro-medium], map to [verse]
+                                    sanitized_lines.append("[verse]")
+                                elif "inst" in tag_content:
+                                    # Since inst with text will fail if marked as [inst-medium], map to [verse]
+                                    sanitized_lines.append("[verse]")
+                                elif "silence" in tag_content:
+                                    sanitized_lines.append("[silence]")
+                                else:
+                                    sanitized_lines.append("[verse]")
+                            else:
+                                sanitized_lines.append(line_safe)
+                                
+                    sanitized_lyrics = "\n".join(sanitized_lines).strip()
+                    
+                    # 3. Final safety check: force leading structure tag
+                    if not sanitized_lyrics.startswith("["):
+                        sanitized_lyrics = "[verse]\n" + sanitized_lyrics
+
+                    st.write("🎵 Dispatching song generation request to Hugging Face...")
+                    client = Client("tencent/SongGeneration", httpx_kwargs={"timeout": 600.0})
+                    
+                    result_path, info = client.predict(
+                        lyric=sanitized_lyrics,
+                        description=desc,
+                        prompt_audio=prompt_audio_param,
+                        genre=genre,
+                        cfg_coef=cfg,
+                        temperature=temp,
+                        api_name="/generate_song"
+                    )
+                    
+                    if not result_path or str(result_path).strip().lower() == "none":
+                        raise ValueError(f"Hugging Face space did not return a valid audio track. Details: {info}")
+
+                    st.write("🔄 Transcoding generated audio from FLAC to genuine MP3...")
+                    out_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio/LittleBubbles_Generated_Song.mp3")
+                    out_path.parent.mkdir(parents=True, exist_ok=True)
+                    
+                    transcode_cmd = [
+                        "ffmpeg", "-y", "-i", str(result_path),
+                        "-codec:a", "libmp3lame", "-qscale:a", "2",
+                        str(out_path)
+                    ]
+                    subprocess.run(transcode_cmd, check=True)
+                    
+                    st.session_state["kids_song_generated_mp3"] = str(out_path)
+                    st.success("🎉 Kids song generated successfully!")
+                    st.rerun()
+                    
+                except Exception as exc:
+                    st.error(f"❌ Error generating kids song: {exc}")
 
     with tab_run:
         left, right = st.columns([1.2, 0.8])
