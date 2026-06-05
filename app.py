@@ -1779,52 +1779,8 @@ def overlay_lower_third_text(image_path: Path, output_path: Path, text: str):
 
             if parse_clicked:
                 if lyrics.strip():
-                    import re
-                    
-                    # Define synonym lists for normalization
-                    style_syns = ["style", "genre", "type", "category", "theme", "musical style", "musical_style"]
-                    tempo_syns = ["tempo", "bpm", "speed", "pacing", "beat"]
-                    vocals_syns = ["vocals", "vocal", "voice", "singer", "singing", "voiceover", "voice_preset"]
-                    mood_syns = ["mood", "feeling", "emotion", "vibe", "tone"]
-                    instruments_syns = ["instruments", "instrument", "music", "backing track", "sounds", "orchestra", "tools", "band"]
-                    lyrics_syns = ["song structure", "structure", "lyrics", "lyric", "text", "song", "verses", "verse", "chorus", "lyrics sheet", "lyrics_sheet"]
-                    production_syns = ["production", "mix", "mixing", "quality", "fidelity", "audio quality", "audio_quality"]
-
-                    all_syns = style_syns + tempo_syns + vocals_syns + mood_syns + instruments_syns + lyrics_syns + production_syns
-                    syns_regex_parts = [re.escape(syn).replace(r"\ ", r"\s+") for syn in all_syns]
-                    
-                    # Regex pattern to match "Synonym:" (case-insensitive, optional spaces, on new line or start of line)
-                    pattern = r"(?i)^\s*(" + "|".join(syns_regex_parts) + r")\s*:\s*\n?"
-                    matches = list(re.finditer(pattern, lyrics, re.MULTILINE))
-                    
-                    if matches:
-                        sections = {}
-                        for i, match in enumerate(matches):
-                            start = match.end()
-                            end = matches[i+1].start() if i + 1 < len(matches) else len(lyrics)
-                            header_raw = match.group(1).lower().strip()
-                            header_norm = re.sub(r"\s+", " ", header_raw)
-                            
-                            # Normalize matched header to standard category
-                            if header_norm in style_syns:
-                                category = "style"
-                            elif header_norm in tempo_syns:
-                                category = "tempo"
-                            elif header_norm in vocals_syns:
-                                category = "vocals"
-                            elif header_norm in mood_syns:
-                                category = "mood"
-                            elif header_norm in instruments_syns:
-                                category = "instruments"
-                            elif header_norm in lyrics_syns:
-                                category = "lyrics"
-                            elif header_norm in production_syns:
-                                category = "production"
-                            else:
-                                category = header_norm
-                                
-                            sections[category] = lyrics[start:end].strip()
-                            
+                    sections = parse_prompt_into_sections(lyrics)
+                    if sections:
                         # Extract lyrics
                         lyrics_content = sections.get("lyrics", "")
                         if not lyrics_content:
@@ -2137,46 +2093,8 @@ def overlay_lower_third_text(image_path: Path, output_path: Path, text: str):
                                 
                     if not has_leading_tag:
                         st.write("✨ Auto-parsing raw prompt to extract lyrics and style details...")
-                        style_syns = ["style", "genre", "type", "category", "theme", "musical style", "musical_style"]
-                        tempo_syns = ["tempo", "bpm", "speed", "pacing", "beat"]
-                        vocals_syns = ["vocals", "vocal", "voice", "singer", "singing", "voiceover", "voice_preset"]
-                        mood_syns = ["mood", "feeling", "emotion", "vibe", "tone"]
-                        instruments_syns = ["instruments", "instrument", "music", "backing track", "sounds", "orchestra", "tools", "band"]
-                        lyrics_syns = ["song structure", "structure", "lyrics", "lyric", "text", "song", "verses", "verse", "chorus", "lyrics sheet", "lyrics_sheet"]
-                        production_syns = ["production", "mix", "mixing", "quality", "fidelity", "audio quality", "audio_quality"]
-
-                        all_syns = style_syns + tempo_syns + vocals_syns + mood_syns + instruments_syns + lyrics_syns + production_syns
-                        syns_regex_parts = [re.escape(syn).replace(r"\ ", r"\s+") for syn in all_syns]
-                        pattern = r"(?i)^\s*(" + "|".join(syns_regex_parts) + r")\s*:\s*\n?"
-                        matches = list(re.finditer(pattern, lyrics, re.MULTILINE))
-                        
-                        if matches:
-                            sections = {}
-                            for i, match in enumerate(matches):
-                                start = match.end()
-                                end = matches[i+1].start() if i + 1 < len(matches) else len(lyrics)
-                                header_raw = match.group(1).lower().strip()
-                                header_norm = re.sub(r"\s+", " ", header_raw)
-                                
-                                if header_norm in style_syns:
-                                    category = "style"
-                                elif header_norm in tempo_syns:
-                                    category = "tempo"
-                                elif header_norm in vocals_syns:
-                                    category = "vocals"
-                                elif header_norm in mood_syns:
-                                    category = "mood"
-                                elif header_norm in instruments_syns:
-                                    category = "instruments"
-                                elif header_norm in lyrics_syns:
-                                    category = "lyrics"
-                                elif header_norm in production_syns:
-                                    category = "production"
-                                else:
-                                    category = header_norm
-                                    
-                                sections[category] = lyrics[start:end].strip()
-                                
+                        sections = parse_prompt_into_sections(lyrics)
+                        if sections:
                             lyrics_to_process = sections.get("lyrics", "").strip()
                             if not lyrics_to_process:
                                 lyrics_to_process = lyrics.strip()
@@ -2709,6 +2627,55 @@ def overlay_lower_third_text(image_path: Path, output_path: Path, text: str):
             "reference_audio_bank_size": str(st.session_state["reference_audio_bank_size"]),
         },
     )
+def parse_prompt_into_sections(prompt_text: str) -> dict[str, str]:
+    import re
+    base_patterns = {
+        "style": [r"style", r"genre", r"type", r"category", r"theme", r"musical\s+style", r"musical_style", r"style\s*&\s*structure", r"style\s+and\s+structure", r"rhythm\s*&\s*rhyme"],
+        "tempo": [r"tempo", r"bpm", r"speed", r"pacing", r"beat"],
+        "vocals": [r"vocals?", r"voice", r"singers?", r"singing", r"voiceovers?", r"voice_presets?", r"tones?"],
+        "mood": [r"moods?", r"feelings?", r"emotions?", r"vibes?"],
+        "instruments": [r"instruments?", r"music", r"backing\s+tracks?", r"sounds", r"orchestra", r"tools", r"bands?"],
+        "lyrics": [r"song\s+structure", r"structure", r"lyrics?", r"texts?", r"songs?", r"verses?", r"chorus", r"lyrics\s+sheets?", r"lyrics_sheets?", r"(?:the\s+)?poems?", r"rhymes?", r"rhythm/verses?"],
+        "production": [r"productions?", r"mix(?:ing)?", r"quality", r"fidelity", r"audio\s+quality", r"audio_quality"]
+    }
+    
+    # Add optional parenthetical suffix to all patterns to match trailing details (e.g. "(in Hindi)")
+    category_patterns = {}
+    for cat, pats in base_patterns.items():
+        category_patterns[cat] = [f"(?:{pat})(?:\\s*\\([^)]*\\))?" for pat in pats]
+        
+    all_patterns = []
+    for cat, pats in category_patterns.items():
+        for pat in pats:
+            all_patterns.append(f"(?:{pat})")
+            
+    pattern = r"(?i)^\s*(" + "|".join(all_patterns) + r")\s*:\s*\n?"
+    matches = list(re.finditer(pattern, prompt_text, re.MULTILINE))
+    
+    sections = {}
+    if matches:
+        for i, match in enumerate(matches):
+            start = match.end()
+            end = matches[i+1].start() if i + 1 < len(matches) else len(prompt_text)
+            header_raw = match.group(1).lower().strip()
+            
+            # Identify category
+            category = "other"
+            for cat, pats in category_patterns.items():
+                for pat in pats:
+                    if re.match(r"(?i)^" + pat + r"$", header_raw):
+                        category = cat
+                        break
+                if category != "other":
+                    break
+            
+            if category == "other":
+                category = header_raw
+            sections[category] = prompt_text[start:end].strip()
+            
+    return sections
+
+
 def indic_to_phonetic_english(devanagari_text: str) -> str:
     import re
     from indic_transliteration import sanscript
