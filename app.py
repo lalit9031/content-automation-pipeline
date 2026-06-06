@@ -774,7 +774,10 @@ def render_frontdoor(settings: Settings) -> None:
             "voice_preview_text",
             "AI for PM teams using Jira and Scrum. The A.I. flow should sound clear and calm.",
         )
-        st.session_state["image_provider_choice"] = saved_studio_state.get("image_provider", settings.image_provider)
+        img_prov = saved_studio_state.get("image_provider", settings.image_provider)
+        if img_prov == "mock":
+            img_prov = "gemini"
+        st.session_state["image_provider_choice"] = img_prov
         st.session_state["image_topic"] = saved_studio_state.get("image_topic", "Agile project management")
         st.session_state["image_subject"] = saved_studio_state.get(
             "image_subject",
@@ -832,7 +835,10 @@ def render_frontdoor(settings: Settings) -> None:
         "voice_preview_text",
         "AI for PM teams using Jira and Scrum. The A.I. flow should sound clear and calm.",
     )
-    st.session_state.setdefault("image_provider_choice", settings.image_provider)
+    img_prov = settings.image_provider
+    if img_prov == "mock":
+        img_prov = "gemini"
+    st.session_state.setdefault("image_provider_choice", img_prov)
     st.session_state.setdefault("image_topic", "Agile project management")
     st.session_state.setdefault("image_subject", "a team reviewing a glowing workflow board")
     st.session_state.setdefault(
@@ -2096,7 +2102,7 @@ def render_frontdoor(settings: Settings) -> None:
             with param_cols[0]:
                 st.selectbox(
                     "Image synthesis Provider",
-                    options=("mock", "free-ai", "gemini", "openai"),
+                    options=("gemini", "openai", "free-ai"),
                     key="image_provider_choice"
                 )
             with param_cols[1]:

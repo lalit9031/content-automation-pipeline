@@ -728,6 +728,8 @@ def image_provider(settings: Settings) -> ImageProvider:
 
 def _resolved_image_provider_name(settings: Settings) -> str:
     provider_name = (settings.image_provider or "").strip().lower()
+    if provider_name == "mock":
+        provider_name = "gemini"
     if provider_name == "gemini" and settings.gcp_project_id:
         return "imagen"
     return provider_name
