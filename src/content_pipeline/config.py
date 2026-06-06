@@ -10,7 +10,7 @@ class Settings:
     output_dir: Path
     mode: str = "mock"
     prompt_provider: str = "mock"
-    image_provider: str = "mock"
+    image_provider: str = "gemini"
     openai_api_key: str = ""
     openai_api_keys: tuple[str, ...] = ()
     openai_model: str = "gpt-5.4-mini"
@@ -26,7 +26,7 @@ class Settings:
     gemini_image_max_attempts: int = 8
     gemini_image_retry_backoff_seconds: float = 120.0
     image_request_delay_seconds: float = 0.0
-    image_fallback_provider: str = "mock"
+    image_fallback_provider: str = "pollinations"
     voice_provider: str = "edge"
     indian_tts_voice: str = "en-IN-PrabhatNeural"
     image_max_dimension: int = 4096
@@ -48,6 +48,7 @@ class Settings:
     luma_image_model: str = "photon-1"
     luma_video_model: str = "ray-2"
     reference_audio_dir: Path | None = None
+    hf_token: str = ""
     gemini_api_key: str = ""
     gemini_api_keys: tuple[str, ...] = ()
     gemini_video_model: str = "veo-3.0-fast-generate-001"
@@ -75,7 +76,7 @@ class Settings:
             output_dir=output_dir,
             mode=os.getenv("PIPELINE_MODE", "mock").strip().lower(),
             prompt_provider=os.getenv("PROMPT_PROVIDER", "mock").strip().lower(),
-            image_provider=os.getenv("IMAGE_PROVIDER", "mock").strip().lower(),
+            image_provider=os.getenv("IMAGE_PROVIDER", "gemini").strip().lower(),
             openai_api_keys=(_openai_keys := _read_key_pool("OPENAI_API_KEY", 5)),
             openai_api_key=_first_key(_openai_keys, os.getenv("OPENAI_API_KEY", "")),
             openai_model=os.getenv("OPENAI_MODEL", "gpt-5.4-mini"),
@@ -95,7 +96,7 @@ class Settings:
                 os.getenv("GEMINI_IMAGE_RETRY_BACKOFF_SECONDS", "120")
             ),
             image_request_delay_seconds=float(os.getenv("IMAGE_REQUEST_DELAY_SECONDS", "0.0")),
-            image_fallback_provider=os.getenv("IMAGE_FALLBACK_PROVIDER", "mock").strip().lower(),
+            image_fallback_provider=os.getenv("IMAGE_FALLBACK_PROVIDER", "pollinations").strip().lower(),
             voice_provider="edge",
             indian_tts_voice=os.getenv("INDIAN_TTS_VOICE", "en-IN-PrabhatNeural"),
             image_max_dimension=int(os.getenv("IMAGE_MAX_DIMENSION", "4096")),
@@ -125,7 +126,8 @@ class Settings:
                 if (ref_audio_dir := os.getenv("REFERENCE_AUDIO_DIR", "").strip())
                 else None
             ),
-            gemini_api_keys=(_gemini_keys := _read_key_pool("GEMINI_API_KEY", 5, fallback_env="GOOGLE_API_KEY")),
+            hf_token=os.getenv("HF_TOKEN", "") or os.getenv("HF_API_KEY", ""),
+            gemini_api_keys=(_gemini_keys := _read_key_pool("GEMINI_API_KEY", 10, fallback_env="GOOGLE_API_KEY")),
             gemini_api_key=_first_key(
                 _gemini_keys,
                 os.getenv("GEMINI_API_KEY", "") or os.getenv("GOOGLE_API_KEY", ""),

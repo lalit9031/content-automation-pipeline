@@ -55,8 +55,17 @@ def overlay_lower_third_text(image_path: Path, output_path: Path, text: str):
     draw = ImageDraw.Draw(img)
     w, h = img.size
     
+    # Scale font size and paddings dynamically based on actual 2K QHD image dimensions
+    is_qhd = w >= 2560 or h >= 1440
+    font_size = 72 if is_qhd else 36
+    pad_x = 48 if is_qhd else 24
+    pad_y = 28 if is_qhd else 14
+    banner_offset = 200 if is_qhd else 100
+    radius = 24 if is_qhd else 12
+    outline_w = 4 if is_qhd else 2
+    
     try:
-        font = ImageFont.truetype("Arial.ttf", 36)
+        font = ImageFont.truetype("Arial.ttf", font_size)
     except IOError:
         font = ImageFont.load_default()
         
@@ -64,23 +73,20 @@ def overlay_lower_third_text(image_path: Path, output_path: Path, text: str):
     text_w = bbox[2] - bbox[0]
     text_h = bbox[3] - bbox[1]
     
-    pad_x = 24
-    pad_y = 14
-    
     banner_w = text_w + (pad_x * 2)
     banner_h = text_h + (pad_y * 2)
     
     banner_x1 = (w - banner_w) // 2
-    banner_y1 = h - 100 - (banner_h // 2)
+    banner_y1 = h - banner_offset - (banner_h // 2)
     banner_x2 = banner_x1 + banner_w
     banner_y2 = banner_y1 + banner_h
     
     draw.rounded_rectangle(
         [banner_x1, banner_y1, banner_x2, banner_y2],
-        radius=12,
+        radius=radius,
         fill=(17, 24, 39, 180),  # Sleek dark gray #111827 with alpha 180 (70% opacity)
         outline=(56, 189, 248, 150),  # Cyan outline #38bdf8 with alpha 150
-        width=2
+        width=outline_w
     )
     
     text_x = banner_x1 + pad_x
@@ -97,26 +103,26 @@ def generate_premium_fallback_background(output_path: Path):
     Generates a sleek, high-fidelity dark-blue-to-charcoal gradient background
     with cybernetic glowing grids using Pillow. Used as a fail-safe fallback.
     """
-    img = Image.new("RGBA", (1280, 720))
+    img = Image.new("RGBA", (2560, 1440))
     draw = ImageDraw.Draw(img)
     
     # Sleek linear gradient: dark blue/indigo #030712 to charcoal #081125
-    for y in range(720):
-        r = int(3 + (y / 720) * 5)
-        g = int(7 + (y / 720) * 10)
-        b = int(18 + (y / 720) * 20)
-        draw.line([(0, y), (1280, y)], fill=(r, g, b, 255))
+    for y in range(1440):
+        r = int(3 + (y / 1440) * 5)
+        g = int(7 + (y / 1440) * 10)
+        b = int(18 + (y / 1440) * 20)
+        draw.line([(0, y), (2560, y)], fill=(r, g, b, 255))
         
     # Draw subtle cybernetic grids (opacity 0.05)
     grid_color = (56, 189, 248, 12)  # Cyan #38bdf8 with very low alpha
-    for x in range(0, 1280, 64):
-        draw.line([(x, 0), (x, 720)], fill=grid_color, width=1)
-    for y in range(0, 720, 64):
-        draw.line([(0, y), (1280, y)], fill=grid_color, width=1)
+    for x in range(0, 2560, 128):
+        draw.line([(x, 0), (x, 1440)], fill=grid_color, width=1)
+    for y in range(0, 1440, 128):
+        draw.line([(0, y), (2560, y)], fill=grid_color, width=1)
         
     # Draw an abstract glowing decorative arc or circle in background
-    draw.ellipse([800, -100, 1400, 500], fill=(56, 189, 248, 8), outline=(56, 189, 248, 16), width=2)
-    draw.ellipse([950, 50, 1250, 350], fill=(56, 189, 248, 12), outline=(56, 189, 248, 24), width=3)
+    draw.ellipse([1600, -200, 2800, 1000], fill=(56, 189, 248, 8), outline=(56, 189, 248, 16), width=4)
+    draw.ellipse([1900, 100, 2500, 700], fill=(56, 189, 248, 12), outline=(56, 189, 248, 24), width=6)
     
     final_img = img.convert("RGB")
     final_img.save(output_path, "PNG")
@@ -308,7 +314,7 @@ def main():
 
     # Image Provider
     provider = MockImageProvider()
-    variant = ImageVariant("16:9", 1280, 720, "unused")
+    variant = ImageVariant("16:9", 2560, 1440, "unused")
 
     # 1. Generate / Copy Images and Narration Audio
     list_of_compiled_files = []
@@ -400,8 +406,8 @@ def main():
                 str(captioned_still_path),
                 "-vf",
                 (
-                    f"scale=1280:720:force_original_aspect_ratio=decrease,"
-                    f"pad=1280:720:(ow-iw)/2:(oh-ih)/2,"
+                    f"scale=2560:1440:force_original_aspect_ratio=decrease,"
+                    f"pad=2560:1440:(ow-iw)/2:(oh-ih)/2,"
                     f"format=yuv420p"
                 ),
                 "-frames:v",

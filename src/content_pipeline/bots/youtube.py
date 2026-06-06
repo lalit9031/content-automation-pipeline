@@ -11,6 +11,7 @@ from content_pipeline.config import Settings
 YOUTUBE_UPLOAD_SCOPE = [
     "https://www.googleapis.com/auth/youtube.upload",
     "https://www.googleapis.com/auth/youtube.readonly",
+    "https://www.googleapis.com/auth/drive.file",
 ]
 
 
@@ -113,9 +114,18 @@ def upload_youtube_video(
     except ImportError as exc:
         raise RuntimeError("Install YouTube dependencies with: pip install -e '.[youtube]'") from exc
 
+    # Load token scopes from the file to avoid invalid_scope request mismatch
+    token_scopes = None
+    try:
+        with open(settings.youtube_token_file, "r") as f:
+            token_data = json.load(f)
+            token_scopes = token_data.get("scopes", None)
+    except Exception:
+        pass
+
     credentials = Credentials.from_authorized_user_file(
         settings.youtube_token_file,
-        YOUTUBE_UPLOAD_SCOPE,
+        token_scopes or YOUTUBE_UPLOAD_SCOPE,
     )
     youtube = build("youtube", "v3", credentials=credentials)
     request = youtube.videos().insert(
@@ -147,9 +157,18 @@ def list_my_uploaded_videos(settings: Settings, max_results: int = 50) -> list[d
     except ImportError as exc:
         raise RuntimeError("Install YouTube dependencies with: pip install -e '.[youtube]'") from exc
 
+    # Load token scopes from the file to avoid invalid_scope request mismatch
+    token_scopes = None
+    try:
+        with open(settings.youtube_token_file, "r") as f:
+            token_data = json.load(f)
+            token_scopes = token_data.get("scopes", None)
+    except Exception:
+        pass
+
     credentials = Credentials.from_authorized_user_file(
         settings.youtube_token_file,
-        YOUTUBE_UPLOAD_SCOPE,
+        token_scopes or YOUTUBE_UPLOAD_SCOPE,
     )
     youtube = build("youtube", "v3", credentials=credentials)
     channel_response = youtube.channels().list(part="contentDetails", mine=True).execute()
@@ -198,9 +217,18 @@ def get_my_video_details(settings: Settings, video_ids: list[str]) -> list[dict[
     except ImportError as exc:
         raise RuntimeError("Install YouTube dependencies with: pip install -e '.[youtube]'") from exc
 
+    # Load token scopes from the file to avoid invalid_scope request mismatch
+    token_scopes = None
+    try:
+        with open(settings.youtube_token_file, "r") as f:
+            token_data = json.load(f)
+            token_scopes = token_data.get("scopes", None)
+    except Exception:
+        pass
+
     credentials = Credentials.from_authorized_user_file(
         settings.youtube_token_file,
-        YOUTUBE_UPLOAD_SCOPE,
+        token_scopes or YOUTUBE_UPLOAD_SCOPE,
     )
     youtube = build("youtube", "v3", credentials=credentials)
     response = youtube.videos().list(

@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from content_pipeline.config import Settings
+from content_pipeline.bots.gemini_tts import generate_gemini_voiceover
 
 
 HINDI_PRONUNCIATION_TEXT = (
@@ -118,11 +119,11 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
     ),
     VoicePreviewPreset(
         key="toddler_girl",
-        label="3-4 Year Old Little Girl (Excited & Playful)",
+        label="3-4 Year Old Little Girl (Common English/Hindi)",
         description="Cute, native 3-year-old female child voice with natural toddler breathing pacing.",
         provider="edge",
         voice="en-US-AnaNeural",
-        language="en-US",
+        language="all",
         gender="female",
         sample_text=(
             "Look look! A friendly robot is here! It is holding my hand and helping me win the career race! Yay!"
@@ -132,11 +133,11 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
     ),
     VoicePreviewPreset(
         key="toddler_boy",
-        label="3-4 Year Old Little Boy (High-Energy Cartoon)",
+        label="3-4 Year Old Little Boy (Common English/Hindi)",
         description="Cute, native 4-year-old male child voice with natural toddler breathing pacing.",
         provider="edge",
         voice="en-US-AnaNeural",
-        language="en-US",
+        language="all",
         gender="male",
         sample_text=(
             "Wow! See that big shiny computer? The robot is typing so fast! Zoom zoom! We are running very fast!"
@@ -146,11 +147,11 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
     ),
     VoicePreviewPreset(
         key="story_female",
-        label="Soothing Female Storyteller (Warm & Patient Audio)",
+        label="Soothing Female Storyteller (Common English/Hindi)",
         description="Calm, maternal, soothing story narration voice for bedside or educational tellings.",
         provider="edge",
         voice="en-IN-NeerjaNeural",
-        language="en-IN",
+        language="all",
         gender="female",
         sample_text=(
             "Once upon a time, in a world moving faster than light, a young fresher stood at the edge of a massive career race. "
@@ -161,11 +162,11 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
     ),
     VoicePreviewPreset(
         key="story_male",
-        label="Deep Charismatic Male Storyteller (Calm & Authoritative)",
+        label="Deep Charismatic Male Storyteller (Common English/Hindi)",
         description="Deep, grandfatherly baritone storyteller pacing for documentaries and motivational clips.",
         provider="edge",
         voice="en-IN-PrabhatNeural",
-        language="en-IN",
+        language="all",
         gender="male",
         sample_text=(
             "Once upon a time, in a world moving faster than light, a young fresher stood at the edge of a massive career race. "
@@ -176,39 +177,26 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
     ),
     VoicePreviewPreset(
         key="english_explainer",
-        label="English explainer",
-        description="Clear English narration for tutorials and walkthroughs.",
+        label="Both (English-Hindi) explainer",
+        description="Clear English-Hindi mix narration for tutorials and walkthroughs.",
         provider="edge",
         voice="en-IN-PrabhatNeural",
         language="en-IN",
         gender="male",
         sample_text=(
-            "Let's break this workflow into simple steps. "
-            "We will explain the idea clearly, show the challenge, and then walk through the fix."
+            "Let's break this workflow into simple steps. Hum dynamic presets use karenge and then we will explain the code flow clearly."
         ),
     ),
     VoicePreviewPreset(
-        key="english_storyteller",
-        label="English storyteller",
-        description="Soft English narration with a warm storytelling flow.",
+        key="storyteller_common",
+        label="Storyteller (Common English/Hindi)",
+        description="A warm storytelling voice, common for both English and Hindi narration.",
         provider="edge",
         voice="en-IN-NeerjaNeural",
-        language="en-IN",
+        language="all",
         gender="female",
         sample_text=(
-            "Once upon a workflow, a small team learned to trust its process, refine every step, and ship with calm confidence."
-        ),
-    ),
-    VoicePreviewPreset(
-        key="hindi_story",
-        label="Hindi story",
-        description="Pure Hindi narration for stories and devotional content.",
-        provider="edge",
-        voice="hi-IN-SwaraNeural",
-        language="hi-IN",
-        gender="female",
-        sample_text=(
-            "आज हम एक सरल कहानी सुनेंगे। गोकुल की सुबह में कान्हा मुस्कुराते हैं और यशोदा मैया स्नेह से उन्हें पुकारती हैं।"
+            "Once upon a time, Ek pyaare se workflow mein, a small team learned to trust its process, refine every step, and ship with confidence."
         ),
     ),
     VoicePreviewPreset(
@@ -237,7 +225,7 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
     ),
     VoicePreviewPreset(
         key="hinglish_teacher",
-        label="Hinglish teacher",
+        label="Both (Hinglish) teacher",
         description="Friendly Hindi-English mix for learning content.",
         provider="edge",
         voice="en-IN-NeerjaNeural",
@@ -317,7 +305,7 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
     ),
     VoicePreviewPreset(
         key="hinglish_guru_male",
-        label="Hinglish tech-guru male",
+        label="Both (Hinglish) tech-guru male",
         description="Conversational Hinglish (Hindi-English blend) male voice, ideal for tutorial presentations.",
         provider="edge",
         voice="en-IN-PrabhatNeural",
@@ -331,7 +319,7 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
     ),
     VoicePreviewPreset(
         key="hinglish_pitch_male",
-        label="Hinglish high-energy pitch",
+        label="Both (Hinglish) high-energy pitch",
         description="High-impact, fast Hinglish male voice perfect for startup pitches, ads, and short-form video formats.",
         provider="edge",
         voice="en-IN-PrabhatNeural",
@@ -359,17 +347,89 @@ VOICE_PREVIEW_PRESETS: tuple[VoicePreviewPreset, ...] = (
     ),
     VoicePreviewPreset(
         key="motivation_boost",
-        label="Motivation boost",
-        description="Bright, energetic English delivery for motivational clips.",
+        label="Motivation boost (Both English/Hindi)",
+        description="Bright, energetic delivery for motivational clips, blending English and Hindi.",
         provider="edge",
         voice="en-IN-PrabhatNeural",
         language="en-IN",
         gender="male",
         sample_text=(
-            "This is your reminder to keep going. Small improvements every day lead to a powerful result."
+            "This is your reminder to keep going. Har din thoda aur hard work karo, small improvements lead to a powerful result!"
         ),
         rate="+5%",
         pitch="+0Hz",
+    ),
+    VoicePreviewPreset(
+        key="gemini_rasalgethi",
+        label="Gemini Captain (Rasalgethi - High-Energy Sci-Fi)",
+        description="A smooth, premium authoritative commercial voice from Gemini 2.5 TTS.",
+        provider="gemini",
+        voice="Rasalgethi",
+        language="en-US",
+        gender="male",
+        sample_text=(
+            "[Sound: Loud, frantic alarm buzzing] Everyone, report to stations! The ship is shaking! [Excited] We’re entering the Nebula of Floating Fun!"
+        ),
+    ),
+    VoicePreviewPreset(
+        key="gemini_puck",
+        label="Gemini Pilot (Puck - Youthful & Energetic)",
+        description="A bright, energetic, and highly expressive youthful voice from Gemini 2.5 TTS.",
+        provider="gemini",
+        voice="Puck",
+        language="en-US",
+        gender="male",
+        sample_text=(
+            "[Sound: Whoosh of air] Whoa! [Surprised] Captain! My controls are going wild! Everything is starting to float—my snacks, my tablet, even my seat!"
+        ),
+    ),
+    VoicePreviewPreset(
+        key="gemini_charon",
+        label="Gemini Tech Specialist (Charon - Quick & Smart)",
+        description="A quick, tech-sounding deep voice from Gemini 2.5 TTS, ideal for narration or tech dialogue.",
+        provider="gemini",
+        voice="Charon",
+        language="en-US",
+        gender="male",
+        sample_text=(
+            "[Sound: Electronic beeping and sparking] I’m on it! I'm recalibrating the gravity drive now! [Determined] Hold on tight, team, we’re going to steady this ship!"
+        ),
+    ),
+    VoicePreviewPreset(
+        key="gemini_kore",
+        label="Gemini Kore (Warm Storytelling Voice)",
+        description="A warm, clear, and reassuring female storytelling voice from Gemini 2.5 TTS.",
+        provider="gemini",
+        voice="Kore",
+        language="en-US",
+        gender="female",
+        sample_text=(
+            "Once upon a time, deep within the heart of a cosmic nebula, a crew of brave children discovered a mystery that would change space travel forever."
+        ),
+    ),
+    VoicePreviewPreset(
+        key="gemini_fenrir",
+        label="Gemini Fenrir (Bold Corporate Tone)",
+        description="A bold, authoritative, and direct masculine voice from Gemini 2.5 TTS.",
+        provider="gemini",
+        voice="Fenrir",
+        language="en-US",
+        gender="male",
+        sample_text=(
+            "System update complete. Atmospheric pressure is stable, but gravity coordinates require a manual override."
+        ),
+    ),
+    VoicePreviewPreset(
+        key="gemini_aoede",
+        label="Gemini Aoede (Gentle Conversational Voice)",
+        description="A gentle, conversational, and highly friendly female voice from Gemini 2.5 TTS.",
+        provider="gemini",
+        voice="Aoede",
+        language="en-US",
+        gender="female",
+        sample_text=(
+            "Don't worry, everyone. Keep your safety harnesses secured. The gravity drive will be back online in just a moment."
+        ),
     ),
 )
 
@@ -465,26 +525,41 @@ def filter_voice_preview_presets(
 ) -> tuple[VoicePreviewPreset, ...]:
     language = (language or "all").strip().lower()
     gender = (gender or "all").strip().lower()
-    filtered = [
-        preset
-        for preset in presets
-        if (language == "all" or preset.language == language)
-        and (gender == "all" or preset.gender == gender)
-    ]
+    filtered = []
+    for preset in presets:
+        preset_lang = preset.language.strip().lower()
+        preset_gender = preset.gender.strip().lower()
+        
+        # Match language
+        if language == "all" or preset_lang == "all":
+            lang_match = True
+        elif language == "en-us":  # "English" filter: matches en-us, en-in, and all
+            lang_match = preset_lang in ("en-us", "en-in")
+        elif language == "en-in":  # "Both" filter: matches en-in (Hinglish) and all
+            lang_match = preset_lang == "en-in"
+        elif language == "hi-in":  # "Hindi" filter: matches hi-in and all
+            lang_match = preset_lang == "hi-in"
+        else:
+            lang_match = (preset_lang == language)
+            
+        # Match gender
+        gender_match = (
+            gender == "all"
+            or preset_gender == "all"
+            or preset_gender == gender
+        )
+        if lang_match and gender_match:
+            filtered.append(preset)
     return tuple(filtered)
 
 
 def voice_preview_language_options() -> tuple[tuple[str, str], ...]:
-    seen: list[str] = []
-    for preset in VOICE_PREVIEW_PRESETS:
-        if preset.language not in seen:
-            seen.append(preset.language)
-    labels = {
-        "en-US": "English",
-        "en-IN": "Hinglish",
-        "hi-IN": "Hindi",
-    }
-    return tuple([("all", "All languages"), *[(language, labels.get(language, language)) for language in seen]])
+    return (
+        ("all", "All languages"),
+        ("en-US", "English"),
+        ("hi-IN", "Hindi"),
+        ("en-IN", "Both"),
+    )
 
 
 def reference_audio_language_options(languages: list[str] | None = None) -> tuple[tuple[str, str], ...]:
@@ -701,8 +776,34 @@ def generate_indian_voiceover(
                 break
                 
     if selected_preset is not None:
-        # Override the voice name to the preset's native base voice model
+        # Check if text contains Devanagari characters or if language filter is Hindi
+        is_hindi = False
+        try:
+            import streamlit as st
+            if st.session_state.get("voice_library_language_filter") == "hi-in":
+                is_hindi = True
+        except Exception:
+            pass
+        if not is_hindi:
+            is_hindi = any("\u0900" <= char <= "\u097f" for char in text)
+
+        # Override the voice name dynamically for common presets
         voice = selected_preset.voice
+        if is_hindi:
+            if selected_preset.key in ("toddler_girl", "toddler_boy"):
+                voice = "hi-IN-SwaraNeural"
+            elif selected_preset.key in ("story_female", "storyteller_common"):
+                voice = "hi-IN-SwaraNeural"
+            elif selected_preset.key == "story_male":
+                voice = "hi-IN-MadhurNeural"
+        else:
+            if selected_preset.key in ("toddler_girl", "toddler_boy"):
+                voice = "en-US-AnaNeural"
+            elif selected_preset.key in ("story_female", "storyteller_common"):
+                voice = "en-IN-NeerjaNeural"
+            elif selected_preset.key == "story_male":
+                voice = "en-IN-PrabhatNeural"
+
         if rate is None:
             rate = selected_preset.rate
         if pitch is None:
@@ -711,13 +812,35 @@ def generate_indian_voiceover(
         # Apply specialized breathing and dramatic pacing filters if applicable!
         if selected_preset.key in ("toddler_girl", "toddler_boy"):
             text = humanize_child_pacing_punctuation(text)
-        elif selected_preset.key in ("story_female", "story_male"):
+        elif selected_preset.key in ("story_female", "story_male", "storyteller_common"):
             text = inject_dramatic_story_pauses_punctuation(text)
     else:
         if rate is None:
             rate = "+0%"
         if pitch is None:
             pitch = "+0Hz"
+
+    is_gemini = False
+    if selected_preset is not None and getattr(selected_preset, "provider", "") == "gemini":
+        is_gemini = True
+    else:
+        from content_pipeline.config import Settings
+        try:
+            settings = Settings.from_environment()
+            if voice in ("Rasalgethi", "Puck", "Charon", "Kore", "Fenrir", "Aoede") or settings.voice_provider == "gemini":
+                is_gemini = True
+        except Exception:
+            if voice in ("Rasalgethi", "Puck", "Charon", "Kore", "Fenrir", "Aoede"):
+                is_gemini = True
+
+    if is_gemini:
+        from content_pipeline.bots.gemini_tts import generate_gemini_voiceover
+        from content_pipeline.config import Settings
+        settings = Settings.from_environment()
+        voice_to_use = voice
+        if selected_preset is not None and getattr(selected_preset, "provider", "") == "gemini":
+            voice_to_use = selected_preset.voice
+        return generate_gemini_voiceover(text=text, output_path=output_path, voice_name=voice_to_use, settings=settings)
 
     _run_async(_write_edge_voice_sample(output_path, voice=voice, text=text, rate=rate, pitch=pitch))
     return output_path
@@ -735,8 +858,8 @@ def generate_voice_preview(
 ) -> Path:
     provider = (provider or "edge").strip().lower()
     _ = openai_api_key
-    if provider != "edge":
-        raise ValueError("Voice preview generation currently supports provider='edge' only.")
+    if provider not in ("edge", "gemini"):
+        raise ValueError("Voice preview generation supports provider='edge' or 'gemini'.")
     return generate_indian_voiceover(text, output_path, voice=voice, rate=rate, pitch=pitch)
 
 
