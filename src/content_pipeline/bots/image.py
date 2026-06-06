@@ -49,6 +49,7 @@ class ImagenProvider:
     extension = ".png"
 
     def __init__(self, settings: Settings) -> None:
+        self.settings = settings
         if not settings.gcp_project_id:
             raise ValueError("GCP_PROJECT_ID is required for IMAGE_PROVIDER=imagen")
         try:
@@ -66,7 +67,6 @@ class ImagenProvider:
         self.model = settings.imagen_model
         if self.model == "imagen-3.0-generate-002":
             self.model = "imagen-4.0-generate-001"
-        self.fallback_provider = MockImageProvider()
 
     def create(self, prompt: str, variant: ImageVariant) -> bytes:
         try:
@@ -82,7 +82,8 @@ class ImagenProvider:
             )
             return response.generated_images[0].image.image_bytes
         except Exception:
-            return self.fallback_provider.create(prompt, variant)
+            fallback = _fallback_image_provider(self.settings)
+            return fallback.create(prompt, variant)
 
 
 class GeminiImageProvider:
@@ -652,7 +653,6 @@ class PollinationsImageProvider:
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self.fallback_provider = MockImageProvider()
 
     def create(self, prompt: str, variant: ImageVariant) -> bytes:
         import urllib.parse
@@ -681,6 +681,7 @@ class PollinationsImageProvider:
         
         max_retries = 5
         delay = 5
+        last_error = None
         for attempt in range(1, max_retries + 1):
             try:
                 time.sleep(delay)
@@ -707,9 +708,10 @@ class PollinationsImageProvider:
                     pass
                     
                 return image_bytes
-            except Exception:
+            except Exception as exc:
+                last_error = exc
                 if attempt == max_retries:
-                    return self.fallback_provider.create(prompt, variant)
+                    raise RuntimeError(f"Pollinations image generation failed: {exc}") from exc
                 delay *= 2
 
 
