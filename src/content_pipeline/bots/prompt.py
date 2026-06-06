@@ -133,14 +133,20 @@ def build_cinematic_image_prompt(
         is_outdoor_action = is_human and (is_nature or any(word in text_to_check for word in [
             "road", "street", "path", "highway", "trail", "bike", "bicycle", "riding", "ride", "running", "walking", "park", "garden", "outdoor", "outdoors", "trees", "forest"
         ]))
+        is_front_facing = any(phrase in text_to_check for phrase in ["towards us", "towards the camera", "coming towards", "facing the camera", "front view", "facing us"])
 
         if is_outdoor_action:
+            direction_detail = (
+                "The subject's face is clearly visible looking forward, facing the camera directly, front of torso and body facing the viewer, "
+                "with correct front-facing anatomy (arms and hands on the handlebars with chest and face facing us, not showing the back of the head or hair draped over the face). "
+                if is_front_facing else ""
+            )
             photorealistic_style = (
-                "Style: Professional outdoor lifestyle and action photograph, realistic natural lighting, "
-                "natural dappled sunlight filtering through the lush green leaves of realistic, organic trees, "
-                "lifelike tree bark textures and authentic organic foliage, shot on 35mm lens, f/4 aperture to keep both the "
-                "subject and the beautiful surrounding landscape in sharp focus, clean composition, masterpiece, 8k resolution, "
-                "no text, no logos."
+                f"Style: Professional outdoor lifestyle and action photograph, realistic natural lighting, "
+                f"natural dappled sunlight filtering through the lush green leaves of realistic, organic trees, "
+                f"lifelike tree bark textures and authentic organic foliage, shot on 35mm lens, f/4 aperture to keep both the "
+                f"subject and the beautiful surrounding landscape in sharp focus, {direction_detail}clean composition, masterpiece, 8k resolution, "
+                f"no text, no logos."
             )
         elif is_human:
             photorealistic_style = (
