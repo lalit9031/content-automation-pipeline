@@ -119,10 +119,31 @@ def build_cinematic_image_prompt(topic: str, subject: str = "", audience: str = 
             f"{kids_style} "
             "Design it like a premium hero image with generous negative space for overlays."
         )
+        
+    is_agile_or_it = any(word in text_to_check for word in [
+        "agile", "scrum", "jira", "sprint", "project manager", "project management", 
+        "software", "developer", "delivery", "workflow", "confluence", "trello", "asana"
+    ])
     
+    if is_agile_or_it:
+        return (
+            f"A vivid supporting illustration for {topic}{focus}, optimized for {audience}. "
+            f"{CINEMATIC_IMAGE_STYLE} "
+            "Design it like a premium hero image with generous negative space for overlays."
+        )
+        
+    general_style = (
+        "Style: Premium 3D character illustration with warm, expressive characters, friendly and approachable. "
+        "Shapes and curves are beautifully rounded, with smooth high-fidelity textures and tactile material details. "
+        f"Features the main subject in a clean, beautifully designed setting related to {topic}. "
+        "Color Palette: Harmonious tailored colors, subtle warm glow, rich professional studio environment. "
+        "Lighting: Soft volumetric studio lighting, gentle depth of field, dramatic contrast. "
+        "Absolutely no large readable text inside the image. Reserve a clean typography-safe area for text overlays. "
+        "Include clean backgrounds, sharp focus, masterpiece, 8k resolution, and absolutely no distorted details."
+    )
     return (
         f"A vivid supporting illustration for {topic}{focus}, optimized for {audience}. "
-        f"{CINEMATIC_IMAGE_STYLE} "
+        f"{general_style} "
         "Design it like a premium hero image with generous negative space for overlays."
     )
 
