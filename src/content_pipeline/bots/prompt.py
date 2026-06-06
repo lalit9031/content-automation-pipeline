@@ -155,40 +155,42 @@ def build_cinematic_image_prompt(
             photorealistic_style = (
                 f"Style: Professional outdoor lifestyle and action photograph, realistic natural lighting, "
                 f"natural dappled sunlight filtering through the lush green leaves of realistic, organic trees, "
-                f"lifelike tree bark textures and authentic organic foliage, shot on 35mm lens, f/4 aperture to keep both the "
-                f"subject and the beautiful surrounding landscape in sharp focus, {direction_detail}{vehicle_detail}clean composition, masterpiece, 8k resolution, "
+                f"lifelike tree bark textures and authentic organic foliage, shot on Sony Alpha 7 IV, 35mm lens, f/4 aperture to keep both the "
+                f"subject and the beautiful surrounding landscape in sharp focus, Kodak Portra 400 film emulation for warm skin tones and natural colors, "
+                f"micro-surface textures, {direction_detail}{vehicle_detail}clean composition, 8k resolution, "
                 f"no text, no logos."
             )
         elif is_human:
             photorealistic_style = (
                 "Style: High-fidelity close-up portrait photograph, soft dramatic Rembrandt studio lighting, "
-                "gentle depth of field with beautiful background bokeh, sharp focus on eyes, shot on 85mm portrait lens, f/1.8, "
-                "realistic skin textures and fine details, authentic facial expression, rich color grading, "
-                "masterclass portraiture, no text, no logos."
+                "gentle depth of field with beautiful background bokeh, shot on Sony Alpha 7R V with an 85mm prime portrait lens at f/1.4 aperture, "
+                "sharp focus on eyes, realistic micro-surface skin textures with visible pores, soft subsurface scattering for skin realism, "
+                "authentic facial expression, Kodak Portra 160 color science, rich color grading, masterclass portraiture, no text, no logos."
             )
         elif is_nature:
             photorealistic_style = (
-                "Style: Breathtaking landscape photograph, shot on professional 35mm camera, f/8 aperture for deep sharpness, "
+                "Style: Breathtaking landscape photograph, shot on medium format Fujifilm GFX 100S, 24mm wide-angle lens, f/11 aperture for edge-to-edge sharpness, "
                 "crisp focus, vibrant colors, golden hour morning light hitting misty valleys, nature documentary photography style, "
-                "highly detailed textures of moss, rocks, and water, clean composition, masterpiece, 8k resolution, no text, no logos."
+                "highly detailed textures of moss, rocks, water droplets, and foliage, natural light with realistic ray-traced shadows, "
+                "clean composition, 8k resolution, no text, no logos."
             )
         elif is_robot:
             photorealistic_style = (
                 "Style: High-end cinematic product shot, detailed mechanical joints, polished metal surfaces, "
                 "soft reflections and glowing LED indicators, cyberpunk retro-futuristic design, moody atmospheric lighting "
-                "with orange and cyan rim light, shot with 50mm prime lens, clean composition, metallic texture details, 8k resolution, "
-                "no text, no logos."
+                "with orange and cyan rim light, shot with 50mm macro lens at f/2.8, realistic material properties, brushed metal texture, "
+                "subtle ambient occlusion, clean composition, 8k resolution, no text, no logos."
             )
         elif is_old:
             photorealistic_style = (
                 "Style: Warm, nostalgic cinematic photograph, shot on vintage 35mm film camera, classic grain, "
-                "warm color grading (sepia and golden hues), soft focus around borders, gentle late-afternoon sunlight, "
+                "Kodak Gold 200 film emulation, warm color grading (sepia and golden hues), soft focus around borders, gentle late-afternoon sunlight, "
                 "authentic textures, nostalgic storytelling mood, classic masterpiece photography, no text, no logos."
             )
         elif is_new:
             photorealistic_style = (
                 "Style: Sleek, futuristic wide-angle photograph, clean modern lines, minimalist architecture, "
-                "glowing neon cyan and magenta lines, clean glass reflections, high-tech smart city aesthetic, crisp focus, "
+                "glowing neon cyan and magenta lines, clean glass reflections and realistic light refraction, high-tech smart city aesthetic, crisp focus, "
                 "shot on 24mm wide-angle lens, high-tech cinematic composition, 8k resolution, no text, no logos."
             )
         else:
