@@ -139,13 +139,38 @@ def _apply_streamlit_secrets() -> None:
             os.environ[env_key] = value
 
     # Write client secrets and token files dynamically from streamlit secrets if they are provided as raw JSON
-    token_json = _secret("YOUTUBE_TOKEN_JSON")
+    selected_channel = "TechWithLalit"
+    try:
+        if hasattr(st, "session_state") and st.session_state:
+            selected_channel = st.session_state.get("active_youtube_channel", "TechWithLalit")
+    except Exception:
+        pass
+
+    token_secret_key = "YOUTUBE_TOKEN_JSON"
+    drive_folder_secret_key = "GOOGLE_DRIVE_FOLDER_ID"
+    if selected_channel == "LittleBubbles TV":
+        token_secret_key = "YOUTUBE_TOKEN_JSON_LITTLEBUBBLES"
+        drive_folder_secret_key = "GOOGLE_DRIVE_FOLDER_ID_LITTLEBUBBLES"
+    elif selected_channel == "Studio_MagicTales":
+        token_secret_key = "YOUTUBE_TOKEN_JSON_MAGICTALES"
+        drive_folder_secret_key = "GOOGLE_DRIVE_FOLDER_ID_MAGICTALES"
+    elif selected_channel == "TechWithLalit":
+        token_secret_key = "YOUTUBE_TOKEN_JSON_TECHWITHLALIT"
+        drive_folder_secret_key = "GOOGLE_DRIVE_FOLDER_ID_TECHWITHLALIT"
+
+    # Fall back to default keys if channel-specific keys are not set
+    token_json = _secret(token_secret_key) or _secret("YOUTUBE_TOKEN_JSON")
+    drive_folder_val = _secret(drive_folder_secret_key) or _secret("GOOGLE_DRIVE_FOLDER_ID")
+
     if token_json:
         token_dir = PROJECT_ROOT / ".secrets"
         token_dir.mkdir(parents=True, exist_ok=True)
         token_path = token_dir / "youtube_token.json"
         token_path.write_text(token_json, encoding="utf-8")
         os.environ["YOUTUBE_TOKEN_FILE"] = str(token_path)
+
+    if drive_folder_val:
+        os.environ["GOOGLE_DRIVE_FOLDER_ID"] = drive_folder_val
 
     client_secrets_json = _secret("YOUTUBE_CLIENT_SECRETS_JSON")
     if client_secrets_json:
@@ -154,6 +179,7 @@ def _apply_streamlit_secrets() -> None:
         client_secrets_path = scripts_dir / "youtube_client_secrets.json"
         client_secrets_path.write_text(client_secrets_json, encoding="utf-8")
         os.environ["YOUTUBE_CLIENT_SECRETS_FILE"] = str(client_secrets_path)
+
 
 
 
@@ -1222,8 +1248,21 @@ def render_frontdoor(settings: Settings) -> None:
         with settings_cols[1]:
             inspect_day = st.date_input("Inspect day", value=st.session_state.get("inspect_day", default_day), key="inspect_day")
             
-        # 3. Load latest / selected day
+        # 3. YouTube Channel selector
+        st.markdown("---")
+        st.markdown("#### 📺 Active YouTube Channel")
+        channel_options = ["TechWithLalit", "Studio_MagicTales", "LittleBubbles TV"]
+        st.session_state.setdefault("active_youtube_channel", "TechWithLalit")
+        st.selectbox(
+            "Select Target YouTube Channel",
+            options=channel_options,
+            key="active_youtube_channel"
+        )
+
+        st.markdown("---")
+        # 4. Load latest / selected day
         btn_cols = st.columns(3)
+
         with btn_cols[0]:
             if st.button("Load latest day", use_container_width=True, disabled=not latest_day):
                 st.session_state["run_day"] = default_day
