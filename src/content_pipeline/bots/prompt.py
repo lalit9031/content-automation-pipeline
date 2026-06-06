@@ -101,6 +101,25 @@ def build_cinematic_image_prompt(topic: str, subject: str = "", audience: str = 
     topic = _sanitize_image_prompt_text(topic)
     subject = _sanitize_image_prompt_text(subject)
     focus = f" about {subject}" if subject else ""
+    
+    text_to_check = (topic + " " + subject).lower()
+    is_kids = any(word in text_to_check for word in ["kid", "child", "baby", "cartoon", "play", "school", "song", "rhyme", "nursery", "studying"])
+    
+    if is_kids:
+        kids_style = (
+            "Style: Premium 3D cute cartoon animation style with warm, expressive, friendly characters. "
+            "Shapes and curves are beautifully rounded, with soft playful textures. "
+            "Features happy children playing, learning, or interacting in a bright, colorful, and magical environment. "
+            "Color Palette: Saturated, happy, and vibrant colors (bright yellow, sky blue, warm pastel highlights). "
+            "Lighting: Bright cheerful volumetric lighting, gentle depth of field, sharp focus, masterpiece, 8k resolution. "
+            "Absolutely no text inside the image. Reserve a clean typography-safe area for text overlays."
+        )
+        return (
+            f"A vivid supporting illustration for {topic}{focus}, optimized for children and parents. "
+            f"{kids_style} "
+            "Design it like a premium hero image with generous negative space for overlays."
+        )
+    
     return (
         f"A vivid supporting illustration for {topic}{focus}, optimized for {audience}. "
         f"{CINEMATIC_IMAGE_STYLE} "
