@@ -238,76 +238,246 @@ def _template_roles_for(role: str) -> tuple[str, ...]:
     return ("lesson_board", "podcast_cover", "workshop_notes")
 
 
+def _detect_category(topic: str) -> str:
+    t = topic.lower()
+    if any(k in t for k in ["kids", "kid", "child", "cartoon", "nursery", "rhyme", "toddler", "toy", "alphabet", "abcd"]):
+        return "kids"
+    if any(k in t for k in ["jira", "scrum", "agile", "sprint", "velocity", "pm", "project manager", "developer", "software", "delivery", "pipeline"]):
+        return "agile"
+    return "general"
+
+
 def _image_prompt(topic: str, beat: dict[str, str], role: str, template: PMVideoTemplate) -> str:
+    category = _detect_category(topic)
     headline = _headline_for(topic, beat, role)
     hook = _hook_for(beat, role)
     concepts = _concepts_for(topic, beat)
     concept_text = "\n".join(f"- {concept}" for concept in concepts)
     
-    # Premium 3D aesthetic parameters based on our highest-quality generated reference
-    base_guardrails = (
-        "No watermarks, no logos, no cluttered real-world screenshots, no generic stock-photo look. "
-        "16:9 widescreen aspect ratio, ultra-detailed, cinematic quality. "
-        "Style: Premium 3D character illustration with warm, expressive characters, friendly and approachable. "
-        "Shapes and curves are beautifully rounded, smooth modern tech surfaces with tactile glassmorphism textures. "
-        "Color Palette: Soft pastel purple and cyan highlights, subtle orange/gold glow, deep blue-grey background studio environment. "
-        "Lighting: Soft volumetric studio lighting, gentle depth of field, subtle glowing particles, dramatic contrast. "
-        "Absolutely no large readable text inside the image. Reserve a clean typography-safe area for text overlays."
-    )
-    
-    if role == "cta":
-        return (
-            "Premium final course engagement slide, cinematic 3D character illustration. A warm, friendly robotic AI assistant companion "
-            "with glowing yellow eyes floats in a high-contrast futuristic workspace next to a large glowing thumbs-up, subscribe play icon, "
-            "and notification bell icon. Tactile glass cards with subtle orange and cyan glow. Dark blue grid studio background, "
-            "professional final course slide for AI training. "
-            f"Topic: {topic}\n"
-            f'Renderer-only headline: "NEXT STEP: ENGAGE WITH THE COURSE!"\n'
-            f'Renderer-only hook: "Ask questions, suggest topics, and stay part of the community."\n'
-            f"Use the visual language of {template.style_line}. "
-            f"{base_guardrails}"
+    if category == "kids":
+        base_guardrails = (
+            "No watermarks, no logos, no complex schematics, no real-world stock photo look. "
+            "16:9 widescreen aspect ratio, ultra-detailed, cinematic quality. "
+            "Style: High-end 3D Pixar character cartoon style, vibrant warm colors, cozy soft lighting. "
+            "Expressive and adorable characters with big eyes and warm friendly smiles. "
+            "Environment: Playful, magical, child-friendly world (cozy playroom, sunny park, colorful classroom, or fantasy woods). "
+            "Absolutely no text inside the image."
         )
-    if role == "workflow":
+        if role == "cta":
+            return (
+                "Adorable final card, 3D Pixar cartoon style. A cute little cartoon star or animal companion floats in "
+                "a bright, cozy room next to a big colorful smiling button and play icon. Magical glowing sparks and colorful toys in the background. "
+                f"Topic: {topic}\n"
+                f'Renderer-only headline: "NEXT STEP: ENGAGE WITH THE COURSE!"\n'
+                f'Renderer-only hook: "Ask questions, suggest topics, and stay part of the community."\n'
+                f"Use the visual language of {template.style_line}. "
+                f"{base_guardrails}"
+            )
+        if role == "workflow":
+            return (
+                "Magical story scene, 3D Pixar cartoon style. A happy child character or cute cartoon animal is playing or learning happily. "
+                "Colorful environment with soft lighting, rounded textures, and playful elements.\n\n"
+                f"Topic: {topic}\n"
+                f'Renderer-only headline: "{headline}"\n'
+                f'Renderer-only hook: "{hook}"\n'
+                "Show large cinematic metaphors representing these process concepts:\n"
+                f"{concept_text}\n"
+                f"Use the visual language of {template.style_line}. "
+                f"{base_guardrails}"
+            )
+        if role == "analysis":
+            return (
+                "Fun educational learning scene, 3D Pixar cartoon style. A friendly cartoon character (like a teacher or a cute wise owl) stands in "
+                "a classroom or magical forest, pointing to a big colorful drawing board with simple learning illustrations. Volumetric warm lights.\n\n"
+                f"Topic: {topic}\n"
+                f'Renderer-only headline: "{headline}"\n'
+                f'Renderer-only hook: "{hook}"\n'
+                "Show large cinematic metaphors representing these analytical insights:\n"
+                f"{concept_text}\n"
+                f"Use the visual language of {template.style_line}. "
+                f"{base_guardrails}"
+            )
         return (
-            "Premium process workflow slide, cinematic 3D character illustration. A friendly professional software manager or developer sits at "
-            "a sleek minimalist glass desk, looking with an inspired smile at a floating, semi-transparent holographic process workflow dashboard. "
-            "The dashboard displays glowing rounded flowchart nodes and clean process cards. A cute little robotic AI companion floats nearby. "
-            "Cyan and pastel purple highlights, tactile glassmorphism elements.\n\n"
+            "Magical hero scene, bold animated story cover, 3D Pixar cartoon style. A happy main character or friendly animal is exploring "
+            "a colorful, wonderful world filled with balloons, stars, and bright clouds. Beautiful depth of field, warm volumetric lighting.\n\n"
             f"Topic: {topic}\n"
             f'Renderer-only headline: "{headline}"\n'
             f'Renderer-only hook: "{hook}"\n'
-            "Show large cinematic metaphors representing these process concepts:\n"
+            "Show large cinematic metaphors representing these key concepts:\n"
             f"{concept_text}\n"
             f"Use the visual language of {template.style_line}. "
             f"{base_guardrails}"
         )
-    if role == "analysis":
+
+    elif category == "general":
+        is_cooking = any(term in f"{topic} {beat['title']} {beat['on_screen_text']}".lower() for term in ("cook", "kitchen", "chef", "food", "dish", "recipe"))
+        
+        base_guardrails = (
+            "No watermarks, no logos, no cluttered stock-photo look. "
+            "16:9 widescreen aspect ratio, ultra-detailed, cinematic quality. "
+            "Style: Warm 3D claymation illustration style, friendly characters, organic shapes and textured surfaces. "
+            "Color Palette: Rich cozy warm tones (terracotta, soft gold, warm greens and blues). "
+            "Lighting: Natural warm lighting, cozy atmosphere, soft shadows, inviting depth of field. "
+            "Absolutely no text inside the image."
+        )
+        
+        if is_cooking:
+            if role == "cta":
+                return (
+                    "Warm final scene, 3D claymation style. A friendly chef stands in a cozy, rustic kitchen next to "
+                    "a large beautifully plated dish and a golden sign saying thank you. Warm kitchen glow, soft shadows. "
+                    f"Topic: {topic}\n"
+                    f'Renderer-only headline: "NEXT STEP: ENGAGE WITH THE COURSE!"\n'
+                    f'Renderer-only hook: "Ask questions, suggest topics, and stay part of the community."\n'
+                    f"Use the visual language of {template.style_line}. "
+                    f"{base_guardrails}"
+                )
+            if role == "workflow":
+                return (
+                    "Cozy cooking process scene, 3D claymation style. A happy chef in a chef's hat is happily cooking food at "
+                    "a warm kitchen counter, slicing vegetables or stirring a pot. Soft steam rising, terracotta tiles, glowing oven light.\n\n"
+                    f"Topic: {topic}\n"
+                    f'Renderer-only headline: "{headline}"\n'
+                    f'Renderer-only hook: "{hook}"\n'
+                    "Show large cinematic metaphors representing these process concepts:\n"
+                    f"{concept_text}\n"
+                    f"Use the visual language of {template.style_line}. "
+                    f"{base_guardrails}"
+                )
+            if role == "analysis":
+                return (
+                    "Delightful recipe presentation scene, 3D claymation style. A chef or food explorer stands next to "
+                    "a wooden table filled with fresh ingredients (tomatoes, herbs, olive oil) and a hand-written recipe notebook. "
+                    "Warm sunbeams filtering through the window.\n\n"
+                    f"Topic: {topic}\n"
+                    f'Renderer-only headline: "{headline}"\n'
+                    f'Renderer-only hook: "{hook}"\n'
+                    "Show large cinematic metaphors representing these analytical insights:\n"
+                    f"{concept_text}\n"
+                    f"Use the visual language of {template.style_line}. "
+                    f"{base_guardrails}"
+                )
+            return (
+                "Main hero cover scene, 3D claymation style. A passionate chef stands proudly in a warm, welcoming kitchen, "
+                "surrounded by delicious ingredients and copper pans hanging from the ceiling. Beautiful depth of field, inviting atmosphere.\n\n"
+                f"Topic: {topic}\n"
+                f'Renderer-only headline: "{headline}"\n'
+                f'Renderer-only hook: "{hook}"\n'
+                "Show large cinematic metaphors representing these key concepts:\n"
+                f"{concept_text}\n"
+                f"Use the visual language of {template.style_line}. "
+                f"{base_guardrails}"
+            )
+        else:
+            if role == "cta":
+                return (
+                    "Warm final scene, 3D claymation style. A friendly character stands in a cozy workspace next to "
+                    "a large glowing book and a golden sign saying thank you. Soft warm studio glow. "
+                    f"Topic: {topic}\n"
+                    f'Renderer-only headline: "NEXT STEP: ENGAGE WITH THE COURSE!"\n'
+                    f'Renderer-only hook: "Ask questions, suggest topics, and stay part of the community."\n'
+                    f"Use the visual language of {template.style_line}. "
+                    f"{base_guardrails}"
+                )
+            if role == "workflow":
+                return (
+                    "Cozy workflow scene, 3D claymation style. A happy character is working or learning at a warm desk setup, "
+                    "surrounded by creative notes and books. Soft lights, welcoming room.\n\n"
+                    f"Topic: {topic}\n"
+                    f'Renderer-only headline: "{headline}"\n'
+                    f'Renderer-only hook: "{hook}"\n'
+                    "Show large cinematic metaphors representing these process concepts:\n"
+                    f"{concept_text}\n"
+                    f"Use the visual language of {template.style_line}. "
+                    f"{base_guardrails}"
+                )
+            if role == "analysis":
+                return (
+                    "Delightful presentation scene, 3D claymation style. A character stands next to a chalkboard or display, "
+                    "presenting visual notes and simple graphs in a cozy library or workshop. Soft warm lighting.\n\n"
+                    f"Topic: {topic}\n"
+                    f'Renderer-only headline: "{headline}"\n'
+                    f'Renderer-only hook: "{hook}"\n'
+                    "Show large cinematic metaphors representing these analytical insights:\n"
+                    f"{concept_text}\n"
+                    f"Use the visual language of {template.style_line}. "
+                    f"{base_guardrails}"
+                )
+            return (
+                "Main hero cover scene, 3D claymation style. A character stands in a warm, welcoming environment, "
+                "holding a book or telescope, looking inspired. Beautiful depth of field, cozy lighting.\n\n"
+                f"Topic: {topic}\n"
+                f'Renderer-only headline: "{headline}"\n'
+                f'Renderer-only hook: "{hook}"\n'
+                "Show large cinematic metaphors representing these key concepts:\n"
+                f"{concept_text}\n"
+                f"Use the visual language of {template.style_line}. "
+                f"{base_guardrails}"
+            )
+
+    else:
+        base_guardrails = (
+            "No watermarks, no logos, no cluttered real-world screenshots, no generic stock-photo look. "
+            "16:9 widescreen aspect ratio, ultra-detailed, cinematic quality. "
+            "Style: Premium 3D character illustration with warm, expressive characters, friendly and approachable. "
+            "Shapes and curves are beautifully rounded, smooth modern tech surfaces with tactile glassmorphism textures. "
+            "Color Palette: Soft pastel purple and cyan highlights, subtle orange/gold glow, deep blue-grey background studio environment. "
+            "Lighting: Soft volumetric studio lighting, gentle depth of field, subtle glowing particles, dramatic contrast. "
+            "Absolutely no large readable text inside the image. Reserve a clean typography-safe area for text overlays."
+        )
+        if role == "cta":
+            return (
+                "Premium final course engagement slide, cinematic 3D character illustration. A warm, friendly robotic AI assistant companion "
+                "with glowing yellow eyes floats in a high-contrast futuristic workspace next to a large glowing thumbs-up, subscribe play icon, "
+                "and notification bell icon. Tactile glass cards with subtle orange and cyan glow. Dark blue grid studio background, "
+                "professional final course slide for AI training. "
+                f"Topic: {topic}\n"
+                f'Renderer-only headline: "NEXT STEP: ENGAGE WITH THE COURSE!"\n'
+                f'Renderer-only hook: "Ask questions, suggest topics, and stay part of the community."\n'
+                f"Use the visual language of {template.style_line}. "
+                f"{base_guardrails}"
+            )
+        if role == "workflow":
+            return (
+                "Premium process workflow slide, cinematic 3D character illustration. A friendly professional software manager or developer sits at "
+                "a sleek minimalist glass desk, looking with an inspired smile at a floating, semi-transparent holographic process workflow dashboard. "
+                "The dashboard displays glowing rounded flowchart nodes and clean process cards. A cute little robotic AI companion floats nearby. "
+                "Cyan and pastel purple highlights, tactile glassmorphism elements.\n\n"
+                f"Topic: {topic}\n"
+                f'Renderer-only headline: "{headline}"\n'
+                f'Renderer-only hook: "{hook}"\n'
+                "Show large cinematic metaphors representing these process concepts:\n"
+                f"{concept_text}\n"
+                f"Use the visual language of {template.style_line}. "
+                f"{base_guardrails}"
+            )
+        if role == "analysis":
+            return (
+                "Premium analytical learning scene, cinematic 3D character illustration. A professional project leader standing at a glowing high-tech "
+                "shared conference table, inspecting a beautiful floating 3D analytical hologram showing rising growth arrows, glowing trend lines, "
+                "and rounded data metrics. A small friendly robot companion sits on the table, pointing at a glowing visual checklist. "
+                "Soft purple and cyan volumetric lights, glassmorphism dashboard highlights.\n\n"
+                f"Topic: {topic}\n"
+                f'Renderer-only headline: "{headline}"\n'
+                f'Renderer-only hook: "{hook}"\n'
+                "Show large cinematic metaphors representing these analytical insights:\n"
+                f"{concept_text}\n"
+                f"Use the visual language of {template.style_line}. "
+                f"{base_guardrails}"
+            )
         return (
-            "Premium analytical learning scene, cinematic 3D character illustration. A professional project leader standing at a glowing high-tech "
-            "shared conference table, inspecting a beautiful floating 3D analytical hologram showing rising growth arrows, glowing trend lines, "
-            "and rounded data metrics. A small friendly robot companion sits on the table, pointing at a glowing visual checklist. "
-            "Soft purple and cyan volumetric lights, glassmorphism dashboard highlights.\n\n"
+            "Hero scene, bold YouTube learning video cover, cinematic 3D character illustration of a software developer "
+            "sitting at a sleek minimalist desk in a futuristic workspace, looking with an inspired smile at a massive floating holographic "
+            "dashboard displaying glowing rounded UI cards, flowchart nodes, and clean tech blocks. A friendly robotic AI companion floats beside "
+            "the desk. Soft pastel purple and cyan highlights, gentle depth of field, warm volumetric lighting.\n\n"
             f"Topic: {topic}\n"
             f'Renderer-only headline: "{headline}"\n'
             f'Renderer-only hook: "{hook}"\n'
-            "Show large cinematic metaphors representing these analytical insights:\n"
+            "Show large cinematic metaphors representing these key concepts:\n"
             f"{concept_text}\n"
             f"Use the visual language of {template.style_line}. "
             f"{base_guardrails}"
         )
-    return (
-        "Hero scene, bold YouTube learning video cover, cinematic 3D character illustration of a software developer "
-        "sitting at a sleek minimalist desk in a futuristic workspace, looking with an inspired smile at a massive floating holographic "
-        "dashboard displaying glowing rounded UI cards, flowchart nodes, and clean tech blocks. A friendly robotic AI companion floats beside "
-        "the desk. Soft pastel purple and cyan highlights, gentle depth of field, warm volumetric lighting.\n\n"
-        f"Topic: {topic}\n"
-        f'Renderer-only headline: "{headline}"\n'
-        f'Renderer-only hook: "{hook}"\n'
-        "Show large cinematic metaphors representing these key concepts:\n"
-        f"{concept_text}\n"
-        f"Use the visual language of {template.style_line}. "
-        f"{base_guardrails}"
-    )
 
 
 def _headline_for(topic: str, beat: dict[str, str], role: str) -> str:
@@ -340,7 +510,35 @@ def _short_title(topic: str) -> str:
 
 
 def _concepts_for(topic: str, beat: dict[str, str]) -> tuple[str, str, str]:
+    category = _detect_category(topic)
     haystack = f"{topic} {beat['title']} {beat['on_screen_text']}".lower()
+
+    if category == "kids":
+        if any(term in haystack for term in ("alphabet", "abcd", "learn", "letter", "abc")):
+            return (
+                "Giant colorful letters A B C floating in the air",
+                "A happy children's alphabet book with pages turning",
+                "Cute animated stars shining and smiling",
+            )
+        return (
+            "Playful learning represented by colorful toy blocks",
+            "Bouncy adventure represented by a smiling sun and clouds",
+            "Joyful friendship represented by cute animals playing together",
+        )
+
+    if category == "general":
+        if any(term in haystack for term in ("cook", "kitchen", "chef", "food", "dish", "recipe")):
+            return (
+                "A steaming delicious soup pot on a warm stove",
+                "Fresh colorful vegetables and ingredients neatly chopped",
+                "A friendly chef giving a thumbs up with a wooden spoon",
+            )
+        return (
+            "Creative learning represented by an open notebook",
+            "Bright inspiration represented by a glowing lightbulb",
+            "Cozy focus represented by a warm steaming cup and soft desk setup",
+        )
+
     if any(term in haystack for term in ("cycle time", "metric", "metrics")):
         return (
             "Cycle Time represented by a futuristic precision clock",

@@ -103,7 +103,10 @@ def build_cinematic_image_prompt(topic: str, subject: str = "", audience: str = 
     focus = f" about {subject}" if subject else ""
     
     text_to_check = (topic + " " + subject).lower()
-    is_kids = any(word in text_to_check for word in ["kid", "child", "baby", "cartoon", "play", "school", "song", "rhyme", "nursery", "studying"])
+    is_kids = any(word in text_to_check for word in [
+        "kids", "kid", "child", "baby", "cartoon", "nursery", "rhyme", 
+        "toddler", "toy", "alphabet", "abcd"
+    ])
     
     if is_kids:
         kids_style = (
@@ -132,17 +135,30 @@ def build_cinematic_image_prompt(topic: str, subject: str = "", audience: str = 
             "Design it like a premium hero image with generous negative space for overlays."
         )
         
+    is_cooking = any(word in text_to_check for word in ["cook", "kitchen", "chef", "food", "dish", "recipe"])
+    if is_cooking:
+        cooking_style = (
+            "Style: Warm 3D claymation illustration style, friendly characters, organic shapes and textured surfaces. "
+            "Features a friendly chef cooking or presenting food in a cozy, rustic kitchen. "
+            "Color Palette: Rich cozy warm tones (terracotta, soft gold, warm greens and blues). "
+            "Lighting: Natural warm lighting, cozy atmosphere, soft shadows, inviting depth of field. "
+            "Absolutely no text inside the image. Reserve a clean typography-safe area for text overlays."
+        )
+        return (
+            f"A vivid supporting illustration for {topic}{focus}, optimized for food lovers and chefs. "
+            f"{cooking_style} "
+            "Design it like a premium hero image with generous negative space for overlays."
+        )
+        
     general_style = (
-        "Style: Premium 3D character illustration with warm, expressive characters, friendly and approachable. "
-        "Shapes and curves are beautifully rounded, with smooth high-fidelity textures and tactile material details. "
-        f"Features the main subject in a clean, beautifully designed setting related to {topic}. "
-        "Color Palette: Harmonious tailored colors, subtle warm glow, rich professional studio environment. "
-        "Lighting: Soft volumetric studio lighting, gentle depth of field, dramatic contrast. "
-        "Absolutely no large readable text inside the image. Reserve a clean typography-safe area for text overlays. "
-        "Include clean backgrounds, sharp focus, masterpiece, 8k resolution, and absolutely no distorted details."
+        "Style: Warm 3D claymation illustration style, friendly characters, organic shapes and textured surfaces. "
+        "Features a friendly character in a cozy, welcoming workspace or creative environment. "
+        "Color Palette: Rich cozy warm tones (terracotta, soft gold, warm greens and blues). "
+        "Lighting: Natural warm lighting, cozy atmosphere, soft shadows, inviting depth of field. "
+        "Absolutely no text inside the image. Reserve a clean typography-safe area for text overlays."
     )
     return (
-        f"A vivid supporting illustration for {topic}{focus}, optimized for {audience}. "
+        f"A vivid supporting illustration for {topic}{focus}, optimized for general audiences. "
         f"{general_style} "
         "Design it like a premium hero image with generous negative space for overlays."
     )

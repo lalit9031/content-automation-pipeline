@@ -1498,22 +1498,34 @@ def render_frontdoor(settings: Settings) -> None:
         st.markdown("### Music studio")
         st.markdown("<p style='font-size: 14.5px; color: #94a3b8; margin-top: -10px; margin-bottom: 24px;'>Compose premium, high-fidelity songs in any genre featuring warm singing voices powered by Tencent Lyria 3 Pro.</p>", unsafe_allow_html=True)
         
+        # Target Language Dropdown
+        st.session_state.setdefault("music_studio_language", "English")
+        st.selectbox(
+            "Target Song Language",
+            options=["English", "Hindi", "Hinglish"],
+            key="music_studio_language",
+            help="Choose the language for the song generation. This filters the reference audio files and guides the dynamic lyric generator."
+        )
+
         # One-Click Creator
         with st.expander("⚡ One-Click Song Creator", expanded=True):
-            st.markdown("<small style='color: #94a3b8;'>Type a simple idea (e.g., 'create an emotional song in english') and generate a complete song in one click.</small>", unsafe_allow_html=True)
-            one_click_prompt = st.text_input("Song Idea", placeholder="e.g., create an emotional song in english", key="music_studio_one_click_song_idea")
+            st.markdown("<small style='color: #94a3b8;'>Type a simple idea (e.g., 'create an emotional song') and generate a complete song in one click.</small>", unsafe_allow_html=True)
+            one_click_prompt = st.text_input("Song Idea", placeholder="e.g., create an emotional song", key="music_studio_one_click_song_idea")
             one_click_gender = st.selectbox("Singer Voice Gender Selection", ["Female", "Male"], key="music_studio_one_click_singer_gender")
             
-            if st.button("🚀 Create & Generate Song", type="primary", use_container_width=True, key="music_studio_btn_one_click"):
+            if st.button("🚀 Create & Generate Song Draft", type="primary", use_container_width=True, key="music_studio_btn_one_click"):
                 if not one_click_prompt.strip():
                     st.warning("Please enter a song idea first.")
                 else:
-                    lyrics_exp, desc_exp = expand_general_prompt_to_lyrics_and_style(one_click_prompt, one_click_gender)
-                    st.session_state["music_studio_lyrics"] = lyrics_exp
-                    st.session_state["music_studio_description"] = desc_exp
-                    st.session_state["music_studio_singer_gender"] = one_click_gender
-                    st.session_state["music_studio_trigger_generation_now"] = True
-                    st.rerun()
+                    with st.spinner("Writing lyrics and composing style..."):
+                        lyrics_exp, desc_exp = expand_general_prompt_to_lyrics_and_style_dynamic(settings, one_click_prompt, one_click_gender, st.session_state.get("music_studio_language", "English"))
+                        st.session_state["music_studio_lyrics"] = lyrics_exp
+                        st.session_state["music_studio_description"] = desc_exp
+                        # Force refresh fields
+                        st.session_state["music_studio_lyrics_input"] = lyrics_exp
+                        st.session_state["music_studio_description_input"] = desc_exp
+                        st.success("Lyrics & Style drafted successfully!")
+                        st.rerun()
 
         left_col, right_col = st.columns([1.1, 0.9])
 
@@ -1534,6 +1546,7 @@ def render_frontdoor(settings: Settings) -> None:
             with col2:
                 if st.button("🗑️ Clear Lyrics", use_container_width=True, key="music_studio_btn_clear"):
                     st.session_state["music_studio_lyrics"] = ""
+                    st.session_state.pop("music_studio_lyrics_input", None)
                     st.rerun()
 
             if parse_clicked:
@@ -1628,7 +1641,12 @@ def render_frontdoor(settings: Settings) -> None:
             ref_dir = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio")
             ref_files = []
             if ref_dir.exists():
-                ref_files = sorted([f.name for f in ref_dir.glob("*.mp3")])
+                raw_files = sorted([f.name for f in ref_dir.glob("*.mp3")])
+                lang = st.session_state.get("music_studio_language", "English")
+                if lang in ["Hindi", "Hinglish"]:
+                    ref_files = [f for f in raw_files if any(x in f.lower() for x in ["titli", "barnaby", "hindi", "squirrel"])]
+                else:
+                    ref_files = [f for f in raw_files if not any(x in f.lower() for x in ["titli", "barnaby", "squirrel"])]
             
             options = ["None (Text-only)"] + ref_files
             default_index = 0
@@ -1827,21 +1845,50 @@ def render_frontdoor(settings: Settings) -> None:
                             desc = "catchy pop song, piano, acoustic guitar, soft percussion."
                             st.session_state["music_studio_description"] = desc
 
+                    lang = st.session_state.get("music_studio_language", "English")
                     singer_gender = st.session_state.get("music_studio_singer_gender", "Male").lower()
-                    if singer_gender == "female":
-                        desc = re.sub(r"male", "female", desc, flags=re.IGNORECASE)
-                        if "female" not in desc.lower():
-                            desc = desc.strip()
-                            if desc and not desc.endswith("."):
-                                desc += "."
-                            desc += " friendly female singing voice."
+                    if lang == "Hindi":
+                        if singer_gender == "female":
+                            desc = re.sub(r" male ", " female ", desc, flags=re.IGNORECASE)
+                            if "female" not in desc.lower():
+                                desc = desc.strip()
+                                if desc and not desc.endswith("."):
+                                    desc += "."
+                                desc += " friendly native Indian female singing voice, Bollywood style female vocalist, clear Hinglish pronunciation, natural Indian accent."
+                            else:
+                                if not any(x in desc.lower() for x in ["indian", "bollywood", "hinglish"]):
+                                    desc = desc.strip()
+                                    if desc and not desc.endswith("."):
+                                        desc += "."
+                                    desc += " native Indian female singer, clear Hinglish pronunciation."
+                        else:
+                            desc = re.sub(r" female ", " male ", desc, flags=re.IGNORECASE)
+                            if "male" not in desc.lower():
+                                desc = desc.strip()
+                                if desc and not desc.endswith("."):
+                                    desc += "."
+                                desc += " friendly native Indian male singing voice, Bollywood style male vocalist, clear Hinglish pronunciation, natural Indian accent."
+                            else:
+                                if not any(x in desc.lower() for x in ["indian", "bollywood", "hinglish"]):
+                                    desc = desc.strip()
+                                    if desc and not desc.endswith("."):
+                                        desc += "."
+                                    desc += " native Indian male singer, clear Hinglish pronunciation."
                     else:
-                        desc = re.sub(r"female", "male", desc, flags=re.IGNORECASE)
-                        if "male" not in desc.lower():
-                            desc = desc.strip()
-                            if desc and not desc.endswith("."):
-                                desc += "."
-                            desc += " friendly male singing voice."
+                        if singer_gender == "female":
+                            desc = re.sub(r" male ", " female ", desc, flags=re.IGNORECASE)
+                            if "female" not in desc.lower():
+                                desc = desc.strip()
+                                if desc and not desc.endswith("."):
+                                    desc += "."
+                                desc += " friendly female singing voice."
+                        else:
+                            desc = re.sub(r" female ", " male ", desc, flags=re.IGNORECASE)
+                            if "male" not in desc.lower():
+                                desc = desc.strip()
+                                if desc and not desc.endswith("."):
+                                    desc += "."
+                                desc += " friendly male singing voice."
 
                     st.session_state["music_studio_description"] = desc
                     st.session_state.pop("music_studio_description_input", None)
@@ -2066,6 +2113,19 @@ def render_frontdoor(settings: Settings) -> None:
                     st.image(str(scene_img_file), caption=f"Pristine slide illustration", use_container_width=True)
 
     elif active_p == "Image":
+        # Dynamic prompt synchronization when topic or subject changes
+        current_topic = st.session_state.get("image_topic", "")
+        current_subject = st.session_state.get("image_subject", "")
+        if "last_image_topic" not in st.session_state:
+            st.session_state["last_image_topic"] = current_topic
+        if "last_image_subject" not in st.session_state:
+            st.session_state["last_image_subject"] = current_subject
+            
+        if current_topic != st.session_state["last_image_topic"] or current_subject != st.session_state["last_image_subject"]:
+            st.session_state["image_studio_prompt"] = build_cinematic_image_prompt(current_topic, current_subject)
+            st.session_state["last_image_topic"] = current_topic
+            st.session_state["last_image_subject"] = current_subject
+
         left_col, right_col = st.columns([6, 4])
 
         with left_col:
@@ -2080,6 +2140,21 @@ def render_frontdoor(settings: Settings) -> None:
             if image_preview_path and os.path.exists(image_preview_path):
                 render_image_preview(Path(image_preview_path))
                 st.caption(f"Loaded generated canvas path: `{Path(image_preview_path).name}`")
+                
+                # Image Download Button
+                try:
+                    preview_file_path = Path(image_preview_path)
+                    img_data = preview_file_path.read_bytes()
+                    st.download_button(
+                        label="📥 Download Generated Widescreen Canvas",
+                        data=img_data,
+                        file_name=preview_file_path.name,
+                        mime="image/png" if preview_file_path.suffix.lower() == ".png" else "image/svg+xml",
+                        use_container_width=True,
+                        key="btn_download_canvas_img"
+                    )
+                except Exception as e:
+                    st.error(f"Error reading image for download: {e}")
                 
                 try:
                     preview_file_path = Path(image_preview_path)
@@ -2185,19 +2260,28 @@ def render_frontdoor(settings: Settings) -> None:
             unsafe_allow_html=True,
         )
 
+        # Target Language Dropdown
+        st.session_state.setdefault("kids_studio_language", "English")
+        st.selectbox(
+            "Target Song Language",
+            options=["English", "Hindi", "Hinglish"],
+            key="kids_studio_language",
+            help="Choose the language for the song generation. This filters the reference audio files and guides the dynamic lyric generator."
+        )
+
         left_col, right_col = st.columns([1.1, 0.9])
 
         with left_col:
             with st.expander("⚡ One-Click Song Creator", expanded=True):
-                st.markdown("<small style='color: #94a3b8;'>Type a simple idea (e.g., 'create an emotional song in english') and generate a complete song in one click.</small>", unsafe_allow_html=True)
-                one_click_prompt = st.text_input("Song Idea", placeholder="e.g., create an emotional song in english", key="one_click_song_idea")
+                st.markdown("<small style='color: #94a3b8;'>Type a simple idea (e.g., 'create an emotional song') and generate a complete song in one click.</small>", unsafe_allow_html=True)
+                one_click_prompt = st.text_input("Song Idea", placeholder="e.g., create an emotional song", key="one_click_song_idea")
                 one_click_gender = st.selectbox("Singer Voice Gender Selection", ["Female", "Male"], key="one_click_singer_gender")
                 
                 if st.button("🚀 Create & Generate Song", type="primary", use_container_width=True):
                     if not one_click_prompt.strip():
                         st.warning("Please enter a song idea first.")
                     else:
-                        lyrics_exp, desc_exp = expand_prompt_to_lyrics_and_style(one_click_prompt, one_click_gender)
+                        lyrics_exp, desc_exp = expand_prompt_to_lyrics_and_style_dynamic(settings, one_click_prompt, one_click_gender, st.session_state.get("kids_studio_language", "English"))
                         st.session_state["kids_song_lyrics"] = lyrics_exp
                         st.session_state["kids_song_description"] = desc_exp
                         st.session_state["kids_song_singer_gender"] = one_click_gender
@@ -2324,7 +2408,12 @@ def render_frontdoor(settings: Settings) -> None:
             ref_dir = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio")
             ref_files = []
             if ref_dir.exists():
-                ref_files = sorted([f.name for f in ref_dir.glob("*.mp3")])
+                raw_files = sorted([f.name for f in ref_dir.glob("*.mp3")])
+                lang = st.session_state.get("kids_studio_language", "English")
+                if lang in ["Hindi", "Hinglish"]:
+                    ref_files = [f for f in raw_files if any(x in f.lower() for x in ["titli", "barnaby", "hindi", "squirrel"])]
+                else:
+                    ref_files = [f for f in raw_files if not any(x in f.lower() for x in ["titli", "barnaby", "squirrel"])]
             
             options = ["None (Text-only)"] + ref_files
             default_index = 0
@@ -2527,21 +2616,50 @@ def render_frontdoor(settings: Settings) -> None:
                                 desc = "catchy pop song, piano, acoustic guitar, soft percussion."
                             st.session_state["kids_song_description"] = desc
 
+                    lang = st.session_state.get("kids_studio_language", "English")
                     singer_gender = st.session_state.get("kids_song_singer_gender", "Male").lower()
-                    if singer_gender == "female":
-                        desc = re.sub(r"male", "female", desc, flags=re.IGNORECASE)
-                        if "female" not in desc.lower():
-                            desc = desc.strip()
-                            if desc and not desc.endswith("."):
-                                desc += "."
-                            desc += " friendly female singing voice."
+                    if lang == "Hindi":
+                        if singer_gender == "female":
+                            desc = re.sub(r" male ", " female ", desc, flags=re.IGNORECASE)
+                            if "female" not in desc.lower():
+                                desc = desc.strip()
+                                if desc and not desc.endswith("."):
+                                    desc += "."
+                                desc += " friendly native Indian female singing voice, Bollywood style kids singer, clear Hinglish pronunciation, natural Indian accent."
+                            else:
+                                if not any(x in desc.lower() for x in ["indian", "bollywood", "hinglish"]):
+                                    desc = desc.strip()
+                                    if desc and not desc.endswith("."):
+                                        desc += "."
+                                    desc += " native Indian female singer, clear Hinglish pronunciation."
+                        else:
+                            desc = re.sub(r" female ", " male ", desc, flags=re.IGNORECASE)
+                            if "male" not in desc.lower():
+                                desc = desc.strip()
+                                if desc and not desc.endswith("."):
+                                    desc += "."
+                                desc += " friendly native Indian male singing voice, Bollywood style kids singer, clear Hinglish pronunciation, natural Indian accent."
+                            else:
+                                if not any(x in desc.lower() for x in ["indian", "bollywood", "hinglish"]):
+                                    desc = desc.strip()
+                                    if desc and not desc.endswith("."):
+                                        desc += "."
+                                    desc += " native Indian male singer, clear Hinglish pronunciation."
                     else:
-                        desc = re.sub(r"female", "male", desc, flags=re.IGNORECASE)
-                        if "male" not in desc.lower():
-                            desc = desc.strip()
-                            if desc and not desc.endswith("."):
-                                desc += "."
-                            desc += " friendly male singing voice."
+                        if singer_gender == "female":
+                            desc = re.sub(r" male ", " female ", desc, flags=re.IGNORECASE)
+                            if "female" not in desc.lower():
+                                desc = desc.strip()
+                                if desc and not desc.endswith("."):
+                                    desc += "."
+                                desc += " friendly female singing voice."
+                        else:
+                            desc = re.sub(r" female ", " male ", desc, flags=re.IGNORECASE)
+                            if "male" not in desc.lower():
+                                desc = desc.strip()
+                                if desc and not desc.endswith("."):
+                                    desc += "."
+                                desc += " friendly male singing voice."
 
                     st.session_state["kids_song_description"] = desc
                     st.session_state.pop("kids_song_description_input", None)
@@ -3966,6 +4084,315 @@ def expand_general_prompt_to_lyrics_and_style(prompt: str, singer_gender: str) -
         style = (
             f"modern acoustic pop songwriter, gentle steady rhythm, 92 BPM, warm piano, soft acoustic guitar, "
             f"bright acoustic bass, expressive friendly {singer_gender.lower()} vocal, clean mix."
+        )
+        
+    return lyrics, style
+
+
+def expand_general_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, singer_gender: str, language: str) -> tuple[str, str]:
+    import os
+    import json
+    keys = list(settings.gemini_api_keys)
+    if not keys and settings.gemini_api_key:
+        keys = [settings.gemini_api_key]
+    if os.environ.get("GEMINI_API_KEY") and os.environ.get("GEMINI_API_KEY") not in keys:
+        keys.insert(0, os.environ.get("GEMINI_API_KEY"))
+    keys = [k for k in keys if k]
+
+    if keys:
+        system_instruction = (
+            "You are a music composer and lyricist. Expand the user's idea into complete lyrics and style description. "
+            "The output must be JSON with keys 'lyrics' and 'style'."
+        )
+        user_prompt = f"""
+        User Song Idea: "{prompt}"
+        Singer Voice Gender Selection: "{singer_gender}"
+        Target Song Language: "{language}"
+        
+        Requirements:
+        1. If the Target Song Language is 'Hindi', write the lyrics in Romanized Hindi/Hinglish (Devanagari is NOT allowed, use Roman characters like 'Hum tum' instead of 'हम tum' for clean phonetics and natural voice output). Explicitly mention 'native Indian {singer_gender.lower()} singing voice with natural Indian accent', 'Bollywood style playback singer (e.g. Arijit Singh/Atif Aslam style male, Shreya Ghoshal style female)', 'expressive emotional delivery with traditional vocal ornamentations (gamaq and murki)', 'clear Hinglish pronunciation', 'traditional Indian instruments (sitar, bansuri flute, dholak, tabla, acoustic guitar)', and 'highly polished T-Series/Saregama style commercial pop mix with grand cinematic reverb and spacious stereo delay' in the style description.
+        2. If the Target Song Language is 'English', write the lyrics in English.
+        3. Structure the lyrics with standard tags like [verse] and [chorus]. Avoid [intro] or [outro] tags. Keep it to 2-3 short verses and 1-2 choruses.
+        4. The 'style' string must be a comma-separated description of instruments, tempo (BPM), vocal qualities, and musical genre. Make it match the song idea.
+        
+        Return a raw JSON object matching this schema:
+        {{
+            "lyrics": "verse and chorus text",
+            "style": "comma-separated musical style description"
+        }}
+        """
+        for key in keys:
+            try:
+                from google import genai
+                from google.genai import types
+                client = genai.Client(api_key=key)
+                response = client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=user_prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        system_instruction=system_instruction
+                    )
+                )
+                data = json.loads(response.text)
+                if "lyrics" in data and "style" in data:
+                    return data["lyrics"], data["style"]
+            except Exception as e:
+                pass
+                
+    if language == "Hindi":
+        return expand_general_prompt_to_lyrics_and_style_hindi_local(prompt, singer_gender)
+    else:
+        return expand_general_prompt_to_lyrics_and_style(prompt, singer_gender)
+
+
+def expand_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, singer_gender: str, language: str) -> tuple[str, str]:
+    import os
+    import json
+    keys = list(settings.gemini_api_keys)
+    if not keys and settings.gemini_api_key:
+        keys = [settings.gemini_api_key]
+    if os.environ.get("GEMINI_API_KEY") and os.environ.get("GEMINI_API_KEY") not in keys:
+        keys.insert(0, os.environ.get("GEMINI_API_KEY"))
+    keys = [k for k in keys if k]
+
+    if keys:
+        system_instruction = (
+            "You are a children's song and nursery rhyme composer. Expand the kids' song idea into complete lyrics and style description. "
+            "The output must be JSON with keys 'lyrics' and 'style'."
+        )
+        user_prompt = f"""
+        User Kids Song Idea: "{prompt}"
+        Singer Voice Gender Selection: "{singer_gender}"
+        Target Song Language: "{language}"
+        
+        Requirements:
+        1. If the Target Song Language is 'Hindi', write the lyrics in Romanized Hindi/Hinglish (Devanagari is NOT allowed, use Roman characters like 'Mummy papa' instead of 'मम्मी पापा' for clean phonetics and natural voice output). Explicitly mention 'native Indian {singer_gender.lower()} singing voice', 'Bollywood style kids singer', 'natural Indian accent', 'clear Hinglish pronunciation', and use appropriate Indian instruments and child-friendly tones (e.g. glockenspiel, bells, sitar, bansuri flute, dholak, tabla, acoustic guitar) in the style description.
+        2. If the Target Song Language is 'English', write the lyrics in English.
+        3. Structure the lyrics with standard tags like [verse] and [chorus]. Avoid [intro] or [outro] tags. Keep it to 2-3 short verses and 1-2 choruses.
+        4. The 'style' string must be a comma-separated description of instruments, tempo (BPM), vocal qualities, and musical genre suitable for kids/toddlers.
+        
+        Return a raw JSON object matching this schema:
+        {{
+            "lyrics": "verse and chorus text",
+            "style": "comma-separated musical style description"
+        }}
+        """
+        for key in keys:
+            try:
+                from google import genai
+                from google.genai import types
+                client = genai.Client(api_key=key)
+                response = client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=user_prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        system_instruction=system_instruction
+                    )
+                )
+                data = json.loads(response.text)
+                if "lyrics" in data and "style" in data:
+                    return data["lyrics"], data["style"]
+            except Exception as e:
+                pass
+                
+    if language == "Hindi":
+        return expand_prompt_to_lyrics_and_style_hindi_local(prompt, singer_gender)
+    else:
+        return expand_prompt_to_lyrics_and_style(prompt, singer_gender)
+
+
+def expand_general_prompt_to_lyrics_and_style_hindi_local(prompt: str, singer_gender: str) -> tuple[str, str]:
+    import re
+    p = prompt.lower()
+    
+    if any(k in p for k in ["emotional", "sad", "touch", "heart", "ballad", "acoustic", "slow", "love"]):
+        lyrics = (
+            "[verse]\n"
+            "Dil ki raahon mein khamoshi hai basi,\n"
+            "Tum bin adhuri hai har ek khushi.\n"
+            "Yaadon ki baarish mein bheegta hoon main,\n"
+            "Aankhon mein chhupi hai wahi bekhudi.\n\n"
+            "[chorus]\n"
+            "Aa bhi jaa mere paas, kehde dil ki baat,\n"
+            "Hathoon mein ho tera haath, guzre ye raat.\n"
+            "Har lamha har ghadi, bas tera hi intezar,\n"
+            "Sacha hai mera pyaar, sacha hai mera pyaar.\n\n"
+            "[verse]\n"
+            "Sannaata hai ab to har su yahaan,\n"
+            "Bin tere soona hai mera jahaan.\n"
+            "Taaron ki roshni mein dhoondhe nazar,\n"
+            "Miloge tum kahan, miloge tum kahan."
+        )
+        style = (
+            f"gentle emotional pop ballad, slow acoustic feel, warm piano, soft acoustic guitar, slow building strings, 78 BPM, "
+            f"heart-touching emotional melody, warm clear friendly native Indian {singer_gender.lower()} singing voice, Bollywood style singer, natural Indian accent, expressive vocal delivery, clear Hinglish pronunciation, clean mix."
+        )
+        
+    elif any(k in p for k in ["happy", "fun", "dance", "upbeat", "energetic", "pop", "party", "cheerful"]):
+        lyrics = (
+            "[verse]\n"
+            "Subah ki dhoop mein hai naya rang chhaya,\n"
+            "Dil ne hamare ek naya geet gaaya.\n"
+            "Chhoro ye baatein jo beeti kal yahaan,\n"
+            "Khushiyon ki mehfil ko humne sajaaya.\n\n"
+            "[chorus]\n"
+            "Nachlo saare ab to milke mere yaar,\n"
+            "Mauj manalo aaya din dildaar.\n"
+            "Hawaon mein hai masti, dil hai bekarar,\n"
+            "Zindagi se karlo thoda sa pyaar!\n\n"
+            "[verse]\n"
+            "Ek ek kadam pe nayi dhoop khile,\n"
+            "Hum tum jahan bhi ab milte chale.\n"
+            "Piche na dekhna aage hi badhna,\n"
+            "Zindagi ka maza ab humne liya."
+        )
+        style = (
+            f"catchy modern pop, upbeat dance rhythm, 120 BPM, driving synth bass, electronic drums, sparkling synthesizers, "
+            f"bright friendly native Indian {singer_gender.lower()} vocals, Bollywood style singer, natural Indian accent, energetic vocal delivery, clear Hinglish pronunciation, clean mix."
+        )
+        
+    elif any(k in p for k in ["rock", "guitar", "metal", "heavy", "alternative", "band", "drums"]):
+        lyrics = (
+            "[verse]\n"
+            "Neon roshni mein hum bhaage chale,\n"
+            "Raaton ke andhere se aage chale.\n"
+            "Suno ye garjan badhne lagi,\n"
+            "Aankhon mein aag si jalne lagi.\n\n"
+            "[chorus]\n"
+            "Hum hain wo aawaz jo na rukegi kabhi,\n"
+            "Unche se unche parvat pe chadhenge abhi.\n"
+            "Koi na rok sake is bhaari shor ko,\n"
+            "Badal denge hum is saari dunya ko!\n\n"
+            "[verse]\n"
+            "Bijli ki taarein ab rone lagi,\n"
+            "Toofani aasman ke neeche khadi.\n"
+            "Hum apne hausle ko na haarenge kabhi,\n"
+            "Sabse bada sur chhedenge abhi."
+        )
+        style = (
+            f"energetic alternative rock, driving electric guitars, powerful bassline, rock drum kit, 112 BPM, "
+            f"strong passionate native Indian {singer_gender.lower()} rock vocals, Bollywood style rock singer, natural Indian accent, clear Hinglish pronunciation, clean professional studio mix."
+        )
+        
+    else:
+        lyrics = (
+            "[verse]\n"
+            "Apna saamaan uthake hum chal diye,\n"
+            "Thandi baarish ko piche chhor diye.\n"
+            "Naye ishaare ki dhoondh mein hain hum,\n"
+            "Apna ek naya rasta bana liye.\n\n"
+            "[chorus]\n"
+            "Ye shuruaat hai aage ke safar ki,\n"
+            "Jahan le chale hume raahein humari.\n"
+            "Har ek kadam pe hai roshni nayi,\n"
+            "Ujaale ki taraf hum badhte chale.\n\n"
+            "[verse]\n"
+            "Meelon chale aur parvat uthe,\n"
+            "Aankhon mein teri sapne saje.\n"
+            "Chalte rahenge hum chahe jo ho,\n"
+            "Apna naya raahi aaj banaye."
+        )
+        style = (
+            f"modern acoustic pop songwriter, gentle steady rhythm, 92 BPM, warm piano, soft acoustic guitar, "
+            f"bright acoustic bass, expressive friendly native Indian {singer_gender.lower()} vocal, Bollywood style singer, natural Indian accent, clear Hinglish pronunciation, clean mix."
+        )
+        
+    return lyrics, style
+
+
+def expand_prompt_to_lyrics_and_style_hindi_local(prompt: str, singer_gender: str) -> tuple[str, str]:
+    import re
+    p = prompt.lower()
+    
+    if any(k in p for k in ["emotional", "sad", "touch", "heart", "lullaby", "soft", "peaceful"]):
+        lyrics = (
+            "[verse]\n"
+            "Chanda mama door ke, taare chamke raat mein,\n"
+            "Sojo mere pyaare ab thandi hawa chal rahi.\n"
+            "Aankhein apni band karo, sapno mein kho jao,\n"
+            "Parion ki kahani mein ab beh jao.\n\n"
+            "[chorus]\n"
+            "Sojo mere laale, sojo mere pyaare,\n"
+            "Nindiya aayi re, ankhiyon mein samaayi re.\n"
+            "Godi mein meri tum sada safe rahoge,\n"
+            "Pyaare se chanda mama dhyan rakhenge.\n\n"
+            "[verse]\n"
+            "Subah ki dhoop jald hi aayegi,\n"
+            "Saare andhere ko door bhagayegi.\n"
+            "Tab tak ke liye chanda mama rahenge,\n"
+            "Tumhare upar dhyan apna rakhenge."
+        )
+        style = (
+            f"gentle lullaby, warm acoustic guitar, soft emotional piano, delicate glockenspiel, peaceful strings, 80 BPM, "
+            f"heart-touching emotional melody, warm clear friendly native Indian {singer_gender.lower()} singing voice, Bollywood style kids singer, natural Indian accent, clear Hinglish pronunciation, gentle percussion, clean mix."
+        )
+        
+    elif any(k in p for k in ["happy", "fun", "playful", "bouncy", "cheerful", "dance", "laugh"]):
+        lyrics = (
+            "[verse]\n"
+            "Pyaara din aur neela aasmaan,\n"
+            "Titliyan aur chidiya yahaan wahaan.\n"
+            "Koodo rabbit jaise, aasmaan ko chhuo,\n"
+            "Aao saare bacho, milke ab khelo!\n\n"
+            "[chorus]\n"
+            "Tali bajao aur gol gol ghoomo,\n"
+            "Khushi ki aawaz ko tum ab suno.\n"
+            "Hanso aur joodo khushi se saare,\n"
+            "Touch karlo aasmaan ko hum pyaare!\n\n"
+            "[verse]\n"
+            "Chhota sa puppy punch hilata,\n"
+            "Paper boat pe safar karata.\n"
+            "Gaana gao aur saath mein nacho,\n"
+            "Yahi hai hum sab ki jagah bacho!"
+        )
+        style = (
+            f"cheerful kids nursery rhyme, high-energy bouncy happy kids rhythm, 108 BPM, playful animated kids show style, "
+            f"ukulele, glockenspiel, hand claps, light acoustic guitar, bright bells, traditional Indian dholak beats, soft tabla, "
+            f"friendly native Indian {singer_gender.lower()} singing voice, Bollywood style kids singer, natural Indian accent, clear Hinglish pronunciation, clean mix."
+        )
+        
+    elif any(k in p for k in ["educational", "alphabet", "abc", "number", "learn", "school"]):
+        lyrics = (
+            "[verse]\n"
+            "A B C D E F G,\n"
+            "Aao mere saath seekho tum bhi.\n"
+            "H I J K L M N,\n"
+            "Pen se likho saare letters abhi.\n\n"
+            "[chorus]\n"
+            "Letters seekhenge ek ek karke,\n"
+            "ABC seekhna hai bada mazedaar!\n"
+            "Zor se gao aur saaf gao,\n"
+            "Seekhte rahenge hum poore saal.\n\n"
+            "[verse]\n"
+            "O P Q R S T U,\n"
+            "V W X and Y and Z.\n"
+            "Ab to seekh gaye hum ABC,\n"
+            "Agli baar tum bhi saath gaana ji."
+        )
+        style = (
+            f"upbeat educational kids song, high-energy bouncy kids rhythm, 105 BPM, cheerful synth melody, "
+            f"clear friendly native Indian {singer_gender.lower()} vocal pronunciation, Bollywood style kids singer, natural Indian accent, clear Hinglish pronunciation, "
+            f"traditional Indian dholak beats, glockenspiel, hand claps, bright piano, positive happy mood, clean mix."
+        )
+        
+    else:
+        lyrics = (
+            "[verse]\n"
+            "Chalo chalo hum chalte hain,\n"
+            "Naye safar pe nikalte hain.\n"
+            "Khelenge aur seekhenge hum,\n"
+            "Khushi khushi din beetenge hum.\n\n"
+            "[chorus]\n"
+            "Gao mere saath, ek do teen,\n"
+            "Zindagi hai kitni haseen.\n"
+            "Nachlo ab aur tali bajao,\n"
+            "Dunya ko tum geet sunao!"
+        )
+        style = (
+            f"cheerful kids adventure song, high-energy bouncy kids rhythm, 108 BPM, playful friendly native Indian {singer_gender.lower()} singing voice, Bollywood style kids singer, natural Indian accent, "
+            f"acoustic guitar, traditional Indian dholak beats, soft tabla percussion, glockenspiel, bells, clear Hinglish pronunciation, clean mix."
         )
         
     return lyrics, style

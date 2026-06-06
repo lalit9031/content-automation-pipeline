@@ -820,8 +820,8 @@ def _adult_clips(
             on_screen_text="Key Insight",
             visual_mode="2_5d_image",
             prompt=(
-                f"{style_2_5d} A discovery moment, warm light illuminates "
-                "the subject, thoughtful composition, 2.5D depth."
+                f"{style_2_5d} A discovery moment showing key details related to {topic}. "
+                "Warm light illuminates the subject, thoughtful composition, 2.5D depth."
             ),
             source_type="auto_2_5d",
             expected_file="scene_02.mp4",
@@ -849,8 +849,8 @@ def _adult_clips(
             on_screen_text="What's Next?",
             visual_mode="2_5d_image",
             prompt=(
-                f"{style_2_5d} Closing atmospheric scene, fading light, "
-                "contemplative mood, cinematic final frame."
+                f"{style_2_5d} Closing atmospheric scene focusing on elements of {topic}, "
+                "fading light, contemplative mood, cinematic final frame."
             ),
             source_type="auto_2_5d",
             expected_file="scene_04.mp4",
