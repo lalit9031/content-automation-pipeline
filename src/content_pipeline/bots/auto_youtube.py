@@ -238,17 +238,24 @@ def run_autonomous_creator_and_upload(
     log_callback(f"📁 Workspace initialized at: `{workspace}`")
     
     # 2. Resolve Voice and Avatar Input
-    lalit_audio_dir = Path("/Users/lalitprasadsingh/Desktop/antigravity/Lalit Audio")
+    project_root = settings.output_dir.parent
+    lalit_audio_dir = project_root / "output" / "reference_audio"
+    if not lalit_audio_dir.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/Lalit Audio").exists():
+        lalit_audio_dir = Path("/Users/lalitprasadsingh/Desktop/antigravity/Lalit Audio")
+    
     ref_voice_path = lalit_audio_dir / voice_ref_name
     if not ref_voice_path.exists():
         ref_voice_path = lalit_audio_dir / "shirt_color_voice.wav"
         if not ref_voice_path.exists():
-            # Create a silent wave or fallback to a template if missing
-            ref_voice_path = Path("/Users/lalitprasadsingh/.gemini/antigravity/scratch/content-automation-pipeline/assets/voice/storyteller.wav")
+            ref_voice_path = project_root / "assets" / "voice" / "storyteller.wav"
+            if not ref_voice_path.exists():
+                ref_voice_path = Path("/Users/lalitprasadsingh/.gemini/antigravity/scratch/content-automation-pipeline/assets/voice/storyteller.wav")
             
     log_callback(f"🎙️ Using vocal reference track: `{ref_voice_path.name}`")
     
-    brand_dir = Path("/Users/lalitprasadsingh/.gemini/antigravity/scratch/content-automation-pipeline/assets/brand")
+    brand_dir = project_root / "assets" / "brand"
+    if not brand_dir.exists():
+        brand_dir = Path("/Users/lalitprasadsingh/.gemini/antigravity/scratch/content-automation-pipeline/assets/brand")
     avatar_src_path = None
     if avatar_choice == "Upload Custom Avatar..." and custom_avatar_path and custom_avatar_path.exists():
         avatar_src_path = custom_avatar_path

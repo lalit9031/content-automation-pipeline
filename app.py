@@ -928,7 +928,9 @@ def render_frontdoor(settings: Settings) -> None:
 
 
     # Load scene data silently
-    json_path = Path("/Users/lalitprasadsingh/.gemini/antigravity/scratch/content-automation-pipeline/scratch/fresher_scenes_data.json")
+    json_path = PROJECT_ROOT / "scratch" / "fresher_scenes_data.json"
+    if not json_path.exists():
+        json_path = Path("/Users/lalitprasadsingh/.gemini/antigravity/scratch/content-automation-pipeline/scratch/fresher_scenes_data.json")
     if json_path.exists():
         try:
             with open(json_path, "r", encoding="utf-8") as f:
@@ -1642,7 +1644,11 @@ def render_frontdoor(settings: Settings) -> None:
             )
             st.session_state["music_studio_description"] = desc
 
-            ref_dir = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio")
+            ref_dir = PROJECT_ROOT / "output" / "reference_audio"
+            if not ref_dir.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio").exists():
+                ref_dir = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio")
+            else:
+                ref_dir.mkdir(parents=True, exist_ok=True)
             ref_files = []
             if ref_dir.exists():
                 raw_files = sorted([f.name for f in ref_dir.glob("*.mp3")])
@@ -1716,7 +1722,9 @@ def render_frontdoor(settings: Settings) -> None:
         st.markdown("### Playback & Generation")
         
         generated_file_path = st.session_state.get("music_studio_generated_mp3", "")
-        default_out = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio/Music_Studio_Generated_Song.mp3")
+        default_out = PROJECT_ROOT / "output" / "Music_Studio_Generated_Song.mp3"
+        if not default_out.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio/Music_Studio_Generated_Song.mp3").exists():
+            default_out = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio/Music_Studio_Generated_Song.mp3")
         if not generated_file_path and default_out.exists():
             generated_file_path = str(default_out)
             st.session_state["music_studio_generated_mp3"] = generated_file_path
@@ -1785,9 +1793,11 @@ def render_frontdoor(settings: Settings) -> None:
 
                     prompt_audio_param = None
                     if selected_ref != "None (Text-only)":
-                        ref_full_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio") / selected_ref
+                        ref_full_path = PROJECT_ROOT / "output" / "reference_audio" / selected_ref
+                        if not ref_full_path.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio").exists():
+                            ref_full_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio") / selected_ref
                         if ref_full_path.exists():
-                            temp_dir = Path("/Users/lalitprasadsingh/VS_code/content-automation-pipeline/output/.runtime")
+                            temp_dir = PROJECT_ROOT / "output" / ".runtime"
                             temp_dir.mkdir(parents=True, exist_ok=True)
                             cropped_ref_path = temp_dir / "music_studio_ref_cropped.mp3"
                             
@@ -1952,7 +1962,9 @@ def render_frontdoor(settings: Settings) -> None:
                         raise ValueError(f"Hugging Face space did not return a valid audio track. Details: {info}")
 
                     st.write("🔄 Transcoding generated audio from FLAC to genuine MP3 with smooth fade-out...")
-                    out_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio/Music_Studio_Generated_Song.mp3")
+                    out_path = PROJECT_ROOT / "output" / "Music_Studio_Generated_Song.mp3"
+                    if not out_path.parent.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio").exists():
+                        out_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio/Music_Studio_Generated_Song.mp3")
                     out_path.parent.mkdir(parents=True, exist_ok=True)
                     
                     duration_cmd = [
@@ -2000,7 +2012,9 @@ def render_frontdoor(settings: Settings) -> None:
 
         # Output directory slug setup
         video_subject_slug = _slugify(st.session_state.get("video_studio_subject", "How Freshers Can Survive in the AI World"))
-        antigravity_output_dir = Path("/Users/lalitprasadsingh/Desktop/antigravity/video_episodes") / video_subject_slug
+        antigravity_output_dir = PROJECT_ROOT / "output" / "video_episodes" / video_subject_slug
+        if not antigravity_output_dir.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/video_episodes").exists():
+            antigravity_output_dir = Path("/Users/lalitprasadsingh/Desktop/antigravity/video_episodes") / video_subject_slug
 
         with left_col:
             # Centered Video Canvas Box
@@ -2051,18 +2065,22 @@ def render_frontdoor(settings: Settings) -> None:
                         import shutil
 
                         python_executable = sys.executable
-                        script_path = "/Users/lalitprasadsingh/.gemini/antigravity/scratch/content-automation-pipeline/scratch/generate_5min_fresher_video.py"
+                        script_path = PROJECT_ROOT / "scratch" / "generate_5min_fresher_video.py"
+                        if not script_path.exists():
+                            script_path = Path("/Users/lalitprasadsingh/.gemini/antigravity/scratch/content-automation-pipeline/scratch/generate_5min_fresher_video.py")
                         selected_preset_key = st.session_state["video_studio_voice_preset"]
 
                         result = subprocess.run(
-                            [python_executable, script_path, "--preset", selected_preset_key],
+                            [python_executable, str(script_path), "--preset", selected_preset_key],
                             capture_output=True,
                             text=True,
-                            cwd="/Users/lalitprasadsingh/.gemini/antigravity/scratch/content-automation-pipeline"
+                            cwd=str(PROJECT_ROOT)
                         )
 
                         if result.returncode == 0:
-                            desktop_src = Path("/Users/lalitprasadsingh/Desktop/antigravity/video_episodes/fresher_ai_world_folder")
+                            desktop_src = PROJECT_ROOT / "output" / "video_episodes" / "fresher_ai_world_folder"
+                            if not desktop_src.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/video_episodes/fresher_ai_world_folder").exists():
+                                desktop_src = Path("/Users/lalitprasadsingh/Desktop/antigravity/video_episodes/fresher_ai_world_folder")
                             if desktop_src.exists():
                                 if antigravity_output_dir.exists():
                                     shutil.rmtree(antigravity_output_dir)
@@ -2096,7 +2114,9 @@ def render_frontdoor(settings: Settings) -> None:
 
             st.markdown("---")
             st.markdown("### 📋 Storyboard & Scene Explorer")
-            json_path = Path("/Users/lalitprasadsingh/.gemini/antigravity/scratch/content-automation-pipeline/scratch/fresher_scenes_data.json")
+            json_path = PROJECT_ROOT / "scratch" / "fresher_scenes_data.json"
+            if not json_path.exists():
+                json_path = Path("/Users/lalitprasadsingh/.gemini/antigravity/scratch/content-automation-pipeline/scratch/fresher_scenes_data.json")
             if json_path.exists():
                 selected_scene_num = st.selectbox(
                     "Inspect Scene Block",
@@ -2425,7 +2445,11 @@ def render_frontdoor(settings: Settings) -> None:
             )
             st.session_state["kids_song_description"] = desc
 
-            ref_dir = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio")
+            ref_dir = PROJECT_ROOT / "output" / "reference_audio"
+            if not ref_dir.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio").exists():
+                ref_dir = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio")
+            else:
+                ref_dir.mkdir(parents=True, exist_ok=True)
             ref_files = []
             if ref_dir.exists():
                 raw_files = sorted([f.name for f in ref_dir.glob("*.mp3")])
@@ -2499,7 +2523,9 @@ def render_frontdoor(settings: Settings) -> None:
         st.markdown("### Playback & Generation")
         
         generated_file_path = st.session_state.get("kids_song_generated_mp3", "")
-        default_out = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio/LittleBubbles_Generated_Song.mp3")
+        default_out = PROJECT_ROOT / "output" / "LittleBubbles_Generated_Song.mp3"
+        if not default_out.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio/LittleBubbles_Generated_Song.mp3").exists():
+            default_out = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio/LittleBubbles_Generated_Song.mp3")
         if not generated_file_path and default_out.exists():
             generated_file_path = str(default_out)
             st.session_state["kids_song_generated_mp3"] = generated_file_path
@@ -2567,9 +2593,11 @@ def render_frontdoor(settings: Settings) -> None:
 
                     prompt_audio_param = None
                     if selected_ref != "None (Text-only)":
-                        ref_full_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio") / selected_ref
+                        ref_full_path = PROJECT_ROOT / "output" / "reference_audio" / selected_ref
+                        if not ref_full_path.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio").exists():
+                            ref_full_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio") / selected_ref
                         if ref_full_path.exists():
-                            temp_dir = Path("/Users/lalitprasadsingh/VS_code/content-automation-pipeline/output/.runtime")
+                            temp_dir = PROJECT_ROOT / "output" / ".runtime"
                             temp_dir.mkdir(parents=True, exist_ok=True)
                             cropped_ref_path = temp_dir / "kids_song_ref_cropped.mp3"
                             
@@ -2739,7 +2767,9 @@ def render_frontdoor(settings: Settings) -> None:
                         raise ValueError(f"Hugging Face space did not return a valid audio track. Details: {info}")
 
                     st.write("🔄 Transcoding generated audio from FLAC to genuine MP3 with smooth fade-out...")
-                    out_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio/LittleBubbles_Generated_Song.mp3")
+                    out_path = PROJECT_ROOT / "output" / "LittleBubbles_Generated_Song.mp3"
+                    if not out_path.parent.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio").exists():
+                        out_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio/LittleBubbles_Generated_Song.mp3")
                     out_path.parent.mkdir(parents=True, exist_ok=True)
                     
                     duration_cmd = [
@@ -3288,7 +3318,9 @@ def render_frontdoor(settings: Settings) -> None:
         st.caption("Instantly clone your speaking voice and dub videos to English or Hindi using free serverless AI and fallback hosting.")
         
         # Target folder
-        lalit_dir = Path("/Users/lalitprasadsingh/Desktop/antigravity/Lalit")
+        lalit_dir = PROJECT_ROOT / "output" / "Lalit"
+        if not lalit_dir.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/Lalit").exists():
+            lalit_dir = Path("/Users/lalitprasadsingh/Desktop/antigravity/Lalit")
         lalit_dir.mkdir(parents=True, exist_ok=True)
         
         # Scan directory for existing video and audio files
@@ -3349,7 +3381,7 @@ def render_frontdoor(settings: Settings) -> None:
             # Save Hugging Face token to .env if provided
             hf_token_val = st.session_state.get("cloner_hf_token", "").strip()
             if hf_token_val:
-                dotenv_path = Path("/Users/lalitprasadsingh/.gemini/antigravity/scratch/content-automation-pipeline/.env")
+                dotenv_path = PROJECT_ROOT / ".env"
                 update_dotenv_file(dotenv_path, "HF_TOKEN", hf_token_val)
                 os.environ["HF_TOKEN"] = hf_token_val
                 ui_settings = replace(ui_settings, hf_token=hf_token_val)
@@ -3475,7 +3507,9 @@ def render_frontdoor(settings: Settings) -> None:
         st.header("🚀 Content Distribution Pipelines")
         st.caption("Publish your finished video assets directly to social platforms from your studio dashboard.")
         
-        lalit_dir = Path("/Users/lalitprasadsingh/Desktop/antigravity/Lalit")
+        lalit_dir = PROJECT_ROOT / "output" / "Lalit"
+        if not lalit_dir.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/Lalit").exists():
+            lalit_dir = Path("/Users/lalitprasadsingh/Desktop/antigravity/Lalit")
         mp4_files = sorted([f.name for f in lalit_dir.glob("*.mp4") if not f.name.endswith("_extracted.wav")])
         
         if not mp4_files:
@@ -3547,13 +3581,19 @@ def render_frontdoor(settings: Settings) -> None:
         st.caption("Auto-create a customized visual video from any topic with cloned-voice voiceovers, intro avatar cards, and upload to YouTube privately in a single click.")
         
         # Scanned reference audio tracks
-        lalit_audio_dir = Path("/Users/lalitprasadsingh/Desktop/antigravity/Lalit Audio")
+        lalit_audio_dir = PROJECT_ROOT / "output" / "reference_audio"
+        if not lalit_audio_dir.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/Lalit Audio").exists():
+            lalit_audio_dir = Path("/Users/lalitprasadsingh/Desktop/antigravity/Lalit Audio")
+        else:
+            lalit_audio_dir.mkdir(parents=True, exist_ok=True)
         wav_files = sorted([f.name for f in lalit_audio_dir.glob("*.wav")])
         if not wav_files:
             wav_files = ["shirt_color_voice.wav"]
             
         # Scanned avatar files
-        brand_dir = Path("/Users/lalitprasadsingh/.gemini/antigravity/scratch/content-automation-pipeline/assets/brand")
+        brand_dir = PROJECT_ROOT / "assets" / "brand"
+        if not brand_dir.exists():
+            brand_dir = Path("/Users/lalitprasadsingh/.gemini/antigravity/scratch/content-automation-pipeline/assets/brand")
         avatar_options = ["talking_avatar.gif", "tech_with_lalit_logo.png", "Upload Custom Avatar..."]
         
         # Grid layout for settings
@@ -3598,7 +3638,7 @@ def render_frontdoor(settings: Settings) -> None:
         if auto_avatar_choice == "Upload Custom Avatar...":
             uploaded_custom_avatar = st.file_uploader("Upload avatar image (PNG/JPG):", type=["png", "jpg", "jpeg"], key="auto_avatar_uploader")
             if uploaded_custom_avatar:
-                custom_avatar_temp_path = Path(f"/Users/lalitprasadsingh/Desktop/antigravity/Lalit Audio/{uploaded_custom_avatar.name}")
+                custom_avatar_temp_path = lalit_audio_dir / uploaded_custom_avatar.name
                 with open(custom_avatar_temp_path, "wb") as f:
                     f.write(uploaded_custom_avatar.getbuffer())
             
@@ -3635,7 +3675,7 @@ def render_frontdoor(settings: Settings) -> None:
                 # Save Hugging Face token to .env if provided
                 hf_token_val = st.session_state.get("auto_hf_token", "").strip()
                 if hf_token_val:
-                    dotenv_path = Path("/Users/lalitprasadsingh/.gemini/antigravity/scratch/content-automation-pipeline/.env")
+                    dotenv_path = PROJECT_ROOT / ".env"
                     update_dotenv_file(dotenv_path, "HF_TOKEN", hf_token_val)
                     os.environ["HF_TOKEN"] = hf_token_val
                     settings = replace(settings, hf_token=hf_token_val)

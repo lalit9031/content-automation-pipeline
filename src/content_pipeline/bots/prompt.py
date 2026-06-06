@@ -111,10 +111,60 @@ def build_cinematic_image_prompt(
         return f"{topic}{focus}".strip()
 
     if style_name == "Photorealistic":
-        photorealistic_style = (
-            "Style: High-end photorealistic landscape photograph, clean composition, crisp focus, natural lighting, "
-            "shot on 35mm lens, masterpiece, 8k resolution, realistic textures and details, no text, no logos."
-        )
+        text_to_check = (topic + " " + subject).lower()
+        is_nature = any(word in text_to_check for word in [
+            "nature", "mountain", "river", "forest", "valleys", "waterfall", "landscape", "scenery", "sky", "desert", "sea", "ocean", "sunset", "sunrise"
+        ])
+        is_human = any(word in text_to_check for word in [
+            "human", "person", "man", "woman", "girl", "boy", "vendor", "artist", "shepherd", "elder", "character", "face", "portrait"
+        ])
+        is_robot = any(word in text_to_check for word in [
+            "robot", "robotic", "android", "cyborg", "machine", "mechanical", "automation", "drone", "cyberpunk"
+        ])
+        is_old = any(word in text_to_check for word in [
+            "old", "vintage", "classic", "antique", "retro", "beetle car", "historical"
+        ])
+        is_new = any(word in text_to_check for word in [
+            "new", "modern", "futuristic", "smart city", "skyscraper", "hologram", "holographic", "cyber", "neon"
+        ])
+
+        if is_human:
+            photorealistic_style = (
+                "Style: High-fidelity close-up portrait photograph, soft dramatic Rembrandt studio lighting, "
+                "gentle depth of field with beautiful background bokeh, sharp focus on eyes, shot on 85mm portrait lens, f/1.8, "
+                "realistic skin textures and fine details, authentic facial expression, rich color grading, "
+                "masterclass portraiture, no text, no logos."
+            )
+        elif is_nature:
+            photorealistic_style = (
+                "Style: Breathtaking landscape photograph, shot on professional 35mm camera, f/8 aperture for deep sharpness, "
+                "crisp focus, vibrant colors, golden hour morning light hitting misty valleys, nature documentary photography style, "
+                "highly detailed textures of moss, rocks, and water, clean composition, masterpiece, 8k resolution, no text, no logos."
+            )
+        elif is_robot:
+            photorealistic_style = (
+                "Style: High-end cinematic product shot, detailed mechanical joints, polished metal surfaces, "
+                "soft reflections and glowing LED indicators, cyberpunk retro-futuristic design, moody atmospheric lighting "
+                "with orange and cyan rim light, shot with 50mm prime lens, clean composition, metallic texture details, 8k resolution, "
+                "no text, no logos."
+            )
+        elif is_old:
+            photorealistic_style = (
+                "Style: Warm, nostalgic cinematic photograph, shot on vintage 35mm film camera, classic grain, "
+                "warm color grading (sepia and golden hues), soft focus around borders, gentle late-afternoon sunlight, "
+                "authentic textures, nostalgic storytelling mood, classic masterpiece photography, no text, no logos."
+            )
+        elif is_new:
+            photorealistic_style = (
+                "Style: Sleek, futuristic wide-angle photograph, clean modern lines, minimalist architecture, "
+                "glowing neon cyan and magenta lines, clean glass reflections, high-tech smart city aesthetic, crisp focus, "
+                "shot on 24mm wide-angle lens, high-tech cinematic composition, 8k resolution, no text, no logos."
+            )
+        else:
+            photorealistic_style = (
+                "Style: High-end photorealistic landscape photograph, clean composition, crisp focus, natural lighting, "
+                "shot on 35mm lens, masterpiece, 8k resolution, realistic textures and details, no text, no logos."
+            )
         return f"A vivid photorealistic photograph of {topic}{focus}. {photorealistic_style} Design it like a premium hero image with generous negative space for overlays."
 
     if style_name == "Flat Vector":
@@ -137,6 +187,9 @@ def build_cinematic_image_prompt(
         "kids", "kid", "child", "baby", "cartoon", "nursery", "rhyme", 
         "toddler", "toy", "alphabet", "abcd"
     ])
+    is_robot = any(word in text_to_check for word in [
+        "robot", "robotic", "android", "cyborg", "machine", "mechanical", "automation", "drone", "cyberpunk"
+    ])
     
     if is_kids:
         kids_style = (
@@ -150,6 +203,19 @@ def build_cinematic_image_prompt(
         return (
             f"A vivid supporting illustration for {topic}{focus}, optimized for children and parents. "
             f"{kids_style} "
+            "Design it like a premium hero image with generous negative space for overlays."
+        )
+        
+    if is_robot:
+        robot_style = (
+            "Style: Playful and charming character illustration in a premium 3D claymation style. "
+            "Beautifully rounded shapes, soft plasticine clay textures with subtle fingerprint details, "
+            "bright cheerful volumetric studio lighting, colorful miniature diorama background, "
+            "whimsical stop-motion animation aesthetic, 3D render, masterpiece, high details, no text, no logos."
+        )
+        return (
+            f"A vivid supporting illustration of {topic}{focus} in claymation style. "
+            f"{robot_style} "
             "Design it like a premium hero image with generous negative space for overlays."
         )
         
