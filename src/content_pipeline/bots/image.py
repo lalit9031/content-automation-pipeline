@@ -655,37 +655,25 @@ class PollinationsImageProvider:
         self.settings = settings
 
     def create(self, prompt: str, variant: ImageVariant) -> bytes:
-        import urllib.parse
         import requests
         import time
-        import random
 
-        # Cap Pollinations URL dimensions to fit within free API limits (1024 max)
-        req_width = variant.width
-        req_height = variant.height
-        max_api_dim = 1024
-        if req_width > max_api_dim or req_height > max_api_dim:
-            if req_width >= req_height:
-                req_height = int(req_height * max_api_dim / req_width)
-                req_width = max_api_dim
-            else:
-                req_width = int(req_width * max_api_dim / req_height)
-                req_height = max_api_dim
+        model = "black-forest-labs/FLUX.1-schnell"
+        url = f"https://router.huggingface.co/hf-inference/models/{model}"
 
-        encoded_prompt = urllib.parse.quote(prompt)
-        url = (
-            f"https://image.pollinations.ai/prompt/{encoded_prompt}"
-            f"?width={req_width}&height={req_height}"
-            f"&nologo=true&model=flux&enhance=true&seed=999&private=true"
-        )
-        
+        headers = {}
+        if self.settings.hf_token:
+            headers["Authorization"] = f"Bearer {self.settings.hf_token}"
+
+        payload = {"inputs": prompt}
+
         max_retries = 5
         delay = 5
         last_error = None
         for attempt in range(1, max_retries + 1):
             try:
                 time.sleep(delay)
-                response = requests.get(url, timeout=120)
+                response = requests.post(url, headers=headers, json=payload, timeout=120)
                 response.raise_for_status()
                 image_bytes = response.content
                 
@@ -711,7 +699,7 @@ class PollinationsImageProvider:
             except Exception as exc:
                 last_error = exc
                 if attempt == max_retries:
-                    raise RuntimeError(f"Pollinations image generation failed: {exc}") from exc
+                    raise RuntimeError(f"Free-AI image generation failed: {exc}") from exc
                 delay *= 2
 
 
