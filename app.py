@@ -1294,6 +1294,34 @@ def render_frontdoor(settings: Settings) -> None:
         with btn_cols[2]:
             show_json = st.checkbox("Show raw JSON", value=st.session_state.get("show_json", False), key="show_json")
 
+        # 5. Quota Limits & Fallback Alert Monitor
+        st.markdown("---")
+        st.markdown("#### 📊 Daily Gemini API Quota Limits")
+        
+        from content_pipeline.bots.image import gemini_image_status
+        from content_pipeline.bots.gemini_tts import GeminiAudioLimiter
+        
+        try:
+            img_status = gemini_image_status(settings)
+            audio_limiter = GeminiAudioLimiter(settings.output_dir / ".runtime" / "gemini_audio_rate_limit.json", daily_budget=15)
+            audio_status = audio_limiter.get_current_status()
+            
+            q_cols = st.columns(2)
+            with q_cols[0]:
+                if img_status.get("daily_limit_reached"):
+                    st.error("⚠️ **Image Limit (90) Hit!** Swapped to free Flux.")
+                else:
+                    rem_img = img_status.get("daily_remaining")
+                    st.success(f"🎨 Imagen Quota: **{rem_img if rem_img is not None else 'Unlimited'}** left today.")
+            with q_cols[1]:
+                if audio_status.get("limit_reached"):
+                    st.error("⚠️ **Hindi Audio Limit (15) Hit!** Swapped to free Edge TTS.")
+                else:
+                    st.success(f"🎙️ Hindi TTS Quota: **{audio_status['remaining']}** left today.")
+        except Exception:
+            pass
+
+
     # RENDER SELECTED PAGE
     active_p = st.session_state["active_page"]
 

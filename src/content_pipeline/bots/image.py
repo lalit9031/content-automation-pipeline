@@ -732,6 +732,7 @@ def generate_images(
 ) -> list[str]:
     files: list[str] = []
     batch_provider = provider
+    budget_exhausted_fallback = False
     if isinstance(provider, GeminiImageProvider):
         plan = gemini_image_package_plan(
             provider.settings,
@@ -739,14 +740,28 @@ def generate_images(
         )
         if plan["recommended_provider"] != "gemini":
             batch_provider = provider.fallback_provider
+            budget_exhausted_fallback = True
         else:
             try:
                 provider.ensure_capacity(len(VARIANTS))
             except RuntimeError as exc:
                 if _is_budget_exhausted(exc):
                     batch_provider = provider.fallback_provider
+                    budget_exhausted_fallback = True
                 else:
                     raise
+
+    if budget_exhausted_fallback:
+        import os
+        bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+        chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
+        if bot_token and chat_id:
+            try:
+                from content_pipeline.bots.telegram import send_telegram_message
+                send_telegram_message(bot_token, chat_id, "⚠️ Daily Gemini Image budget (90 images) hit! Swapping to free Pollinations (Flux) engine.")
+            except Exception:
+                pass
+
     for index, variant in enumerate(VARIANTS):
         filename = variant.filename + batch_provider.extension
         image_bytes = batch_provider.create(package.image_prompt, variant)

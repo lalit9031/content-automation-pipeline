@@ -202,3 +202,62 @@ def generate_gemini_voiceover(
     if last_error is not None:
         raise last_error
     raise RuntimeError("Gemini Neural TTS generation failed after cycling all API key slots.")
+
+
+from datetime import date
+import json
+
+class GeminiAudioLimiter:
+    def __init__(self, state_path: Path, daily_budget: int = 15):
+        self.state_path = state_path
+        self.daily_budget = daily_budget
+
+    def _load_state(self) -> dict[str, Any]:
+        if not self.state_path.exists():
+            return {}
+        try:
+            return json.loads(self.state_path.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+
+    def _save_state(self, state: dict[str, Any]) -> None:
+        self.state_path.parent.mkdir(parents=True, exist_ok=True)
+        self.state_path.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+
+    def get_remaining_and_increment(self) -> tuple[int, bool]:
+        """Returns (remaining, limit_just_hit) and increments if under budget."""
+        today = date.today().isoformat()
+        state = self._load_state()
+        
+        current_date = state.get("usage_date", "")
+        if current_date != today:
+            state["usage_date"] = today
+            state["daily_generated"] = 0
+            
+        used = state.get("daily_generated", 0)
+        if used >= self.daily_budget:
+            return 0, False
+            
+        state["daily_generated"] = used + 1
+        self._save_state(state)
+        
+        remaining = self.daily_budget - (used + 1)
+        limit_just_hit = (remaining == 0)
+        return remaining, limit_just_hit
+        
+    def get_current_status(self) -> dict[str, Any]:
+        today = date.today().isoformat()
+        state = self._load_state()
+        current_date = state.get("usage_date", "")
+        if current_date != today:
+            used = 0
+        else:
+            used = state.get("daily_generated", 0)
+        remaining = max(0, self.daily_budget - used)
+        return {
+            "used": used,
+            "remaining": remaining,
+            "daily_budget": self.daily_budget,
+            "limit_reached": used >= self.daily_budget
+        }
+

@@ -820,30 +820,60 @@ def generate_indian_voiceover(
         if pitch is None:
             pitch = "+0Hz"
 
-    is_gemini = False
-    if selected_preset is not None and getattr(selected_preset, "provider", "") == "gemini":
-        is_gemini = True
-    else:
+    # Determine if text is Hindi or if a Hindi voice is requested
+    is_hindi = any("\u0900" <= char <= "\u097f" for char in text) or voice.startswith("hi-IN")
+    
+    if is_hindi:
+        # Hindi: Use Gemini TTS (if under budget), else fall back to Edge TTS Hindi (free)
+        from content_pipeline.bots.gemini_tts import GeminiAudioLimiter, generate_gemini_voiceover
         from content_pipeline.config import Settings
-        try:
-            settings = Settings.from_environment()
-            if voice in ("Rasalgethi", "Puck", "Charon", "Kore", "Fenrir", "Aoede") or settings.voice_provider == "gemini":
-                is_gemini = True
-        except Exception:
-            if voice in ("Rasalgethi", "Puck", "Charon", "Kore", "Fenrir", "Aoede"):
-                is_gemini = True
-
-    if is_gemini:
-        from content_pipeline.bots.gemini_tts import generate_gemini_voiceover
-        from content_pipeline.config import Settings
+        import os
+        
         settings = Settings.from_environment()
-        voice_to_use = voice
-        if selected_preset is not None and getattr(selected_preset, "provider", "") == "gemini":
-            voice_to_use = selected_preset.voice
-        return generate_gemini_voiceover(text=text, output_path=output_path, voice_name=voice_to_use, settings=settings)
+        state_path = settings.output_dir / ".runtime" / "gemini_audio_rate_limit.json"
+        limiter = GeminiAudioLimiter(state_path, daily_budget=15)
+        status = limiter.get_current_status()
+        
+        if not status["limit_reached"]:
+            # We are under budget! Use Gemini TTS
+            voice_to_use = "Kore" if "Swara" in voice or "female" in voice.lower() else "Rasalgethi"
+            if voice in ("Rasalgethi", "Puck", "Charon", "Kore", "Fenrir", "Aoede"):
+                voice_to_use = voice
+            try:
+                # Increment and generate
+                remaining, limit_just_hit = limiter.get_remaining_and_increment()
+                if limit_just_hit:
+                    # Send telegram alert that limit is reached
+                    bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+                    chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
+                    if bot_token and chat_id:
+                        try:
+                            from content_pipeline.bots.telegram import send_telegram_message
+                            send_telegram_message(bot_token, chat_id, "⚠️ Daily Gemini Hindi Audio budget (15 audios) hit! Swapping to free Edge TTS Hindi engine.")
+                        except Exception:
+                            pass
+                return generate_gemini_voiceover(text=text, output_path=output_path, voice_name=voice_to_use, settings=settings)
+            except Exception as e:
+                # Fallback to Edge TTS if Gemini fails
+                pass
+                
+        # Budget Exhausted / Fallback: Use Edge TTS Hindi
+        fallback_voice = "hi-IN-SwaraNeural" if "Swara" in voice or "female" in voice.lower() or "Kore" in voice or "Aoede" in voice else "hi-IN-MadhurNeural"
+        _run_async(_write_edge_voice_sample(output_path, voice=fallback_voice, text=text, rate=rate, pitch=pitch))
+        return output_path
+        
+    else:
+        # English: Use the free option directly (Edge TTS)
+        # Determine voice name
+        english_voice = "en-IN-PrabhatNeural"
+        if voice in ("en-IN-PrabhatNeural", "en-IN-NeerjaNeural", "en-US-AnaNeural"):
+            english_voice = voice
+        elif selected_preset is not None and selected_preset.voice in ("en-IN-PrabhatNeural", "en-IN-NeerjaNeural", "en-US-AnaNeural"):
+            english_voice = selected_preset.voice
+            
+        _run_async(_write_edge_voice_sample(output_path, voice=english_voice, text=text, rate=rate, pitch=pitch))
+        return output_path
 
-    _run_async(_write_edge_voice_sample(output_path, voice=voice, text=text, rate=rate, pitch=pitch))
-    return output_path
 
 
 def generate_voice_preview(

@@ -21,7 +21,7 @@ class Settings:
     gcp_location: str = "us-central1"
     imagen_model: str = "imagen-4.0-generate-001"
     gemini_image_model: str = "gemini-2.5-flash-image"
-    gemini_image_daily_budget: int = 0
+    gemini_image_daily_budget: int = 90
     gemini_image_min_interval_seconds: float = 30.0
     gemini_image_max_attempts: int = 8
     gemini_image_retry_backoff_seconds: float = 120.0
@@ -87,7 +87,7 @@ class Settings:
             gcp_location=os.getenv("GCP_LOCATION", "us-central1"),
             imagen_model=os.getenv("IMAGEN_MODEL", "imagen-4.0-generate-001"),
             gemini_image_model=os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image"),
-            gemini_image_daily_budget=int(os.getenv("GEMINI_IMAGE_DAILY_BUDGET", "0")),
+            gemini_image_daily_budget=int(os.getenv("GEMINI_IMAGE_DAILY_BUDGET", "90")),
             gemini_image_min_interval_seconds=float(
                 os.getenv("GEMINI_IMAGE_MIN_INTERVAL_SECONDS", "30")
             ),
