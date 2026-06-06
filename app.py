@@ -692,6 +692,8 @@ def render_preview_panel(overview: dict[str, object], day_root: Path) -> None:
 def render_frontdoor(settings: Settings) -> None:
     latest_day = latest_daily_day(settings.output_dir)
     default_day = date.fromisoformat(latest_day) if latest_day else date.today()
+    latest_overview = day_overview(settings.output_dir / "daily" / latest_day) if latest_day else {"file_count": 0}
+
 
     # Track active page inside session state
     if "active_page" not in st.session_state:
