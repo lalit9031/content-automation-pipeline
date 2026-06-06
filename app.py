@@ -1221,8 +1221,48 @@ def render_frontdoor(settings: Settings) -> None:
         unsafe_allow_html=True,
     )
 
+    # Render Compact Top Quota Status Bar
+    from content_pipeline.bots.image import gemini_image_status
+    from content_pipeline.bots.gemini_tts import GeminiAudioLimiter
+    
+    try:
+        img_status = gemini_image_status(settings)
+        audio_limiter = GeminiAudioLimiter(settings.output_dir / ".runtime" / "gemini_audio_rate_limit.json", daily_budget=15)
+        audio_status = audio_limiter.get_current_status()
+        
+        rem_img = img_status.get("daily_remaining")
+        rem_img_val = f"{rem_img} left" if rem_img is not None else "Unlimited"
+        if img_status.get("daily_limit_reached"):
+            img_badge = "🔴 <span style='font-weight: 800;'>Imagen Quota Hit!</span> (Flux Fallback)"
+        else:
+            img_badge = f"🎨 <span style='font-weight: 800; color: #38bdf8;'>Imagen Quota</span>: <span style='font-weight: 800; color: white;'>{rem_img_val}</span> today"
+            
+        rem_aud = audio_status['remaining']
+        if audio_status.get("limit_reached"):
+            aud_badge = "🔴 <span style='font-weight: 800;'>Hindi TTS Quota Hit!</span> (Edge Fallback)"
+        else:
+            aud_badge = f"🎙️ <span style='font-weight: 800; color: #a855f7;'>Hindi TTS Quota</span>: <span style='font-weight: 800; color: white;'>{rem_aud} left</span> today"
+            
+        st.markdown(
+            f"""
+            <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(30, 41, 59, 0.65); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 8px 18px; margin-bottom: 18px; font-size: 13px; font-family: sans-serif; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);">
+                <div style="display: flex; gap: 24px;">
+                    <div>{img_badge}</div>
+                    <div>{aud_badge}</div>
+                </div>
+                <div style="font-size: 11px; text-transform: uppercase; color: #94a3b8; font-weight: 800; letter-spacing: 0.08em; display: flex; align-items: center; gap: 4px;">
+                    <span style="color: #10b981;">●</span> Gemini API Monitor
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    except Exception:
+        pass
+
     # Render horizontal top bar page navigation inside columns
     nav_cols = st.columns(11)
+
     pages = ["Dashboard", "Music", "Video", "Image", "Kids", "Speech", "Run", "Cloner", "Distribution", "Prompts", "Files"]
     icons = [
         "📊 Dashboard",
