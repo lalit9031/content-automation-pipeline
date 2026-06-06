@@ -105,6 +105,12 @@ def build_cinematic_image_prompt(
 ) -> str:
     topic = _sanitize_image_prompt_text(topic)
     subject = _sanitize_image_prompt_text(subject)
+    
+    # Map ambiguous motor bike terms to motorcycle to avoid bicycle confusion
+    for old_term in ["motor bike", "moter bike", "moterbike", "motorbike", "motor cycle"]:
+        topic = topic.replace(old_term, "motorcycle").replace(old_term.capitalize(), "Motorcycle")
+        subject = subject.replace(old_term, "motorcycle").replace(old_term.capitalize(), "Motorcycle")
+        
     focus = f" about {subject}" if subject else ""
     
     if style_name == "None (Raw Prompt)":
@@ -136,16 +142,21 @@ def build_cinematic_image_prompt(
         is_front_facing = any(phrase in text_to_check for phrase in ["towards us", "towards the camera", "coming towards", "facing the camera", "front view", "facing us"])
 
         if is_outdoor_action:
+            is_motorcycle = "motorcycle" in text_to_check
             direction_detail = (
                 "The subject's face is clearly visible looking forward, facing the camera directly, front of torso and body facing the viewer, "
                 "with correct front-facing anatomy (arms and hands on the handlebars with chest and face facing us, not showing the back of the head or hair draped over the face). "
                 if is_front_facing else ""
             )
+            vehicle_detail = (
+                "The vehicle is a real motorized motorcycle with an engine, fuel tank, and exhaust pipes, with absolutely no bicycle pedals or bicycle frames. "
+                if is_motorcycle else ""
+            )
             photorealistic_style = (
                 f"Style: Professional outdoor lifestyle and action photograph, realistic natural lighting, "
                 f"natural dappled sunlight filtering through the lush green leaves of realistic, organic trees, "
                 f"lifelike tree bark textures and authentic organic foliage, shot on 35mm lens, f/4 aperture to keep both the "
-                f"subject and the beautiful surrounding landscape in sharp focus, {direction_detail}clean composition, masterpiece, 8k resolution, "
+                f"subject and the beautiful surrounding landscape in sharp focus, {direction_detail}{vehicle_detail}clean composition, masterpiece, 8k resolution, "
                 f"no text, no logos."
             )
         elif is_human:
