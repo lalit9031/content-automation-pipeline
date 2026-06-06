@@ -693,6 +693,9 @@ def render_frontdoor(settings: Settings) -> None:
     latest_day = latest_daily_day(settings.output_dir)
     default_day = date.fromisoformat(latest_day) if latest_day else date.today()
     latest_overview = day_overview(settings.output_dir / "daily" / latest_day) if latest_day else {"file_count": 0}
+    latest_dashboard = settings.output_dir / "daily" / latest_day / "daily_dashboard.html" if latest_day else None
+    latest_audio = settings.output_dir / "daily" / latest_day / "audio_status.html" if latest_day else None
+
 
 
     # Track active page inside session state
