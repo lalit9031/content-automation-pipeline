@@ -102,6 +102,9 @@ def _apply_streamlit_secrets() -> None:
         "PROMPT_PROVIDER",
         "IMAGE_PROVIDER",
         "REFERENCE_AUDIO_DIR",
+        "HF_TOKEN",
+        "HF_API_KEY",
+
     ]
     for key in direct_keys:
         value = _secret(key)
