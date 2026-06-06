@@ -852,9 +852,10 @@ def render_frontdoor(settings: Settings) -> None:
     st.session_state.setdefault("audio_tab_choice", "🎙️ Voice Over")
 
     # Dates & JSON view
-    run_day = st.session_state.get("run_day", default_day)
-    inspect_day = st.session_state.get("inspect_day", default_day)
-    show_json = st.session_state.get("show_json", False)
+    run_day = st.session_state.setdefault("run_day", default_day)
+    inspect_day = st.session_state.setdefault("inspect_day", default_day)
+    show_json = st.session_state.setdefault("show_json", False)
+
 
     # Load scene data silently
     json_path = Path("/Users/lalitprasadsingh/.gemini/antigravity/scratch/content-automation-pipeline/scratch/fresher_scenes_data.json")
