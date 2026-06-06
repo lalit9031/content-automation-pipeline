@@ -158,9 +158,17 @@ def _apply_streamlit_secrets() -> None:
         token_secret_key = "YOUTUBE_TOKEN_JSON_TECHWITHLALIT"
         drive_folder_secret_key = "GOOGLE_DRIVE_FOLDER_ID_TECHWITHLALIT"
 
-    # Fall back to default keys if channel-specific keys are not set
+    # Fall back to default keys if channel-specific keys are not set, and use the user's default mappings as pre-programmed fallbacks
+    channel_drive_folders = {
+        "TechWithLalit": "1wKNUTacQGK7XdVTb4Arn_R7oWN33HJlr",
+        "Studio_MagicTales": "1JrJOfipdbOAR_TLwH5fG72m9h0EQMMaq",
+        "LittleBubbles TV": "1fPWKoSaIH5ocuctMZTH5nk7nNNKAWBqk",
+    }
+    smart_default_folder = channel_drive_folders.get(selected_channel, "1pXJjgcxgYQ65K3Gw5kOipHBR0ZpR25eK")
+
     token_json = _secret(token_secret_key) or _secret("YOUTUBE_TOKEN_JSON")
-    drive_folder_val = _secret(drive_folder_secret_key) or _secret("GOOGLE_DRIVE_FOLDER_ID")
+    drive_folder_val = _secret(drive_folder_secret_key) or _secret("GOOGLE_DRIVE_FOLDER_ID") or smart_default_folder
+
 
     if token_json:
         token_dir = PROJECT_ROOT / ".secrets"
