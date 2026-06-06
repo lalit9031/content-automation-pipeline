@@ -783,6 +783,7 @@ def render_frontdoor(settings: Settings) -> None:
             "image_subject",
             "a team reviewing a glowing workflow board",
         )
+        st.session_state["image_art_style"] = saved_studio_state.get("image_art_style", "3D Claymation / Pixar")
         st.session_state["image_studio_prompt"] = saved_studio_state.get(
             "image_studio_prompt",
             saved_studio_state.get(
@@ -790,6 +791,7 @@ def render_frontdoor(settings: Settings) -> None:
                 build_cinematic_image_prompt(
                     st.session_state["image_topic"],
                     st.session_state["image_subject"],
+                    style_name=st.session_state["image_art_style"]
                 ),
             )
         )
@@ -841,11 +843,13 @@ def render_frontdoor(settings: Settings) -> None:
     st.session_state.setdefault("image_provider_choice", img_prov)
     st.session_state.setdefault("image_topic", "Agile project management")
     st.session_state.setdefault("image_subject", "a team reviewing a glowing workflow board")
+    st.session_state.setdefault("image_art_style", "3D Claymation / Pixar")
     st.session_state.setdefault(
         "image_studio_prompt",
         build_cinematic_image_prompt(
             st.session_state["image_topic"],
             st.session_state["image_subject"],
+            style_name=st.session_state["image_art_style"]
         ),
     )
     st.session_state.setdefault("music_mood", "cinematic")
@@ -2113,18 +2117,26 @@ def render_frontdoor(settings: Settings) -> None:
                     st.image(str(scene_img_file), caption=f"Pristine slide illustration", use_container_width=True)
 
     elif active_p == "Image":
-        # Dynamic prompt synchronization when topic or subject changes
+        # Dynamic prompt synchronization when topic, subject, or art style changes
         current_topic = st.session_state.get("image_topic", "")
         current_subject = st.session_state.get("image_subject", "")
+        current_style = st.session_state.get("image_art_style", "3D Claymation / Pixar")
         if "last_image_topic" not in st.session_state:
             st.session_state["last_image_topic"] = current_topic
         if "last_image_subject" not in st.session_state:
             st.session_state["last_image_subject"] = current_subject
+        if "last_image_style" not in st.session_state:
+            st.session_state["last_image_style"] = current_style
             
-        if current_topic != st.session_state["last_image_topic"] or current_subject != st.session_state["last_image_subject"]:
-            st.session_state["image_studio_prompt"] = build_cinematic_image_prompt(current_topic, current_subject)
+        if (current_topic != st.session_state["last_image_topic"] or 
+            current_subject != st.session_state["last_image_subject"] or
+            current_style != st.session_state["last_image_style"]):
+            st.session_state["image_studio_prompt"] = build_cinematic_image_prompt(
+                current_topic, current_subject, style_name=current_style
+            )
             st.session_state["last_image_topic"] = current_topic
             st.session_state["last_image_subject"] = current_subject
+            st.session_state["last_image_style"] = current_style
 
         left_col, right_col = st.columns([6, 4])
 
@@ -2173,7 +2185,7 @@ def render_frontdoor(settings: Settings) -> None:
 
             # Controls underneath canvas box
             st.markdown("#### 🎨 Prompt Engineering & synthesis")
-            param_cols = st.columns(3)
+            param_cols = st.columns(4)
             with param_cols[0]:
                 st.selectbox(
                     "Image synthesis Provider",
@@ -2184,6 +2196,12 @@ def render_frontdoor(settings: Settings) -> None:
                 st.text_input("Explainer Topic", key="image_topic")
             with param_cols[2]:
                 st.text_input("Scene Subject", key="image_subject")
+            with param_cols[3]:
+                st.selectbox(
+                    "Art Style",
+                    options=("3D Claymation / Pixar", "Photorealistic", "Flat Vector", "Cinematic Anime", "None (Raw Prompt)"),
+                    key="image_art_style"
+                )
 
             if st.session_state.get("image_provider_choice") == "gemini":
                 st.info(
@@ -2200,7 +2218,8 @@ def render_frontdoor(settings: Settings) -> None:
                 if st.button("🧙‍♂️ Build Cinematic style-pack Prompt", use_container_width=True, key="btn_build_prompt"):
                     st.session_state["image_studio_prompt"] = build_cinematic_image_prompt(
                         st.session_state["image_topic"],
-                        st.session_state["image_subject"]
+                        st.session_state["image_subject"],
+                        style_name=st.session_state.get("image_art_style", "3D Claymation / Pixar")
                     )
                     st.rerun()
             with act_cols[1]:
@@ -2225,7 +2244,8 @@ def render_frontdoor(settings: Settings) -> None:
             st.markdown("### Visual Theme & metadata")
             image_style_pack = build_image_style_pack(
                 st.session_state["image_topic"],
-                subject=st.session_state["image_subject"]
+                subject=st.session_state["image_subject"],
+                style_name=st.session_state.get("image_art_style", "3D Claymation / Pixar")
             )
             st.json(image_style_pack.as_dict())
 

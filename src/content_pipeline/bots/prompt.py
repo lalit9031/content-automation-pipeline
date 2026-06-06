@@ -97,11 +97,41 @@ class PromptProvider(Protocol):
     def generate(self, day: str, avoid_topics: list[str] | None = None) -> ContentPackage: ...
 
 
-def build_cinematic_image_prompt(topic: str, subject: str = "", audience: str = "professional audiences") -> str:
+def build_cinematic_image_prompt(
+    topic: str,
+    subject: str = "",
+    audience: str = "professional audiences",
+    style_name: str = "3D Claymation / Pixar",
+) -> str:
     topic = _sanitize_image_prompt_text(topic)
     subject = _sanitize_image_prompt_text(subject)
     focus = f" about {subject}" if subject else ""
     
+    if style_name == "None (Raw Prompt)":
+        return f"{topic}{focus}".strip()
+
+    if style_name == "Photorealistic":
+        photorealistic_style = (
+            "Style: High-end photorealistic landscape photograph, clean composition, crisp focus, natural lighting, "
+            "shot on 35mm lens, masterpiece, 8k resolution, realistic textures and details, no text, no logos."
+        )
+        return f"A vivid photorealistic photograph of {topic}{focus}. {photorealistic_style} Design it like a premium hero image with generous negative space for overlays."
+
+    if style_name == "Flat Vector":
+        vector_style = (
+            "Style: Clean flat vector illustration, minimalist design, elegant colors, clean paths, "
+            "modern corporate design style, SVG vector aesthetic, flat color fills, no text, no logos."
+        )
+        return f"A clean flat vector illustration of {topic}{focus}. {vector_style} Design it like a premium hero image with generous negative space for overlays."
+
+    if style_name == "Cinematic Anime":
+        anime_style = (
+            "Style: Cinematic anime digital illustration, hand-drawn detailing, soft atmospheric glow, "
+            "beautiful anime scenery, vibrant colors, masterpiece, no text, no logos."
+        )
+        return f"A beautiful cinematic anime digital illustration of {topic}{focus}. {anime_style} Design it like a premium hero image with generous negative space for overlays."
+
+    # Default to 3D Claymation / Pixar category-based behavior
     text_to_check = (topic + " " + subject).lower()
     is_kids = any(word in text_to_check for word in [
         "kids", "kid", "child", "baby", "cartoon", "nursery", "rhyme", 
@@ -175,10 +205,35 @@ def build_thumbnail_prompt(topic: str, subject: str = "", audience: str = "YouTu
     )
 
 
+STORYBOARD_STYLES = {
+    "3D Claymation / Pixar": (
+        "Use the same vibrant, cinematic 3D visual language across the entire sequence: "
+        "premium animation, rounded shapes, soft glow, vibrant color contrast, smooth "
+        "depth, and a clean scene composition suitable for a polished explainer video."
+    ),
+    "Photorealistic": (
+        "Use a consistent, high-end photorealistic style across the entire sequence: "
+        "clean composition, crisp focus, natural lighting, shot on 35mm lens, realistic textures and details, "
+        "masterpiece, 8k resolution, suitable for a professional documentary look."
+    ),
+    "Flat Vector": (
+        "Use a consistent, clean flat vector illustration style across the entire sequence: "
+        "minimalist graphic design, elegant colors, clean paths, SVG vector aesthetic, flat color fills, "
+        "suitable for a modern professional corporate presentation."
+    ),
+    "Cinematic Anime": (
+        "Use a consistent, cinematic anime digital illustration style across the entire sequence: "
+        "hand-drawn detailing, soft atmospheric glow, beautiful painted scenery, vibrant colors, "
+        "masterpiece, suitable for a premium animated feature look."
+    ),
+    "None (Raw Prompt)": ""
+}
+
 def build_storyboard_prompts(
     topic: str,
     *,
     scene_count: int = 35,
+    style_name: str = "3D Claymation / Pixar",
 ) -> list[dict[str, str]]:
     topic = _sanitize_image_prompt_text(topic)
     
@@ -303,6 +358,8 @@ def build_storyboard_prompts(
             "Social follow-up: floating engagement icons themed around {topic}.",
             "Final end card: a premium outro scene with bold subscribe/like/bell energy for {topic}.",
         ]
+    
+    style_suffix = STORYBOARD_STYLES.get(style_name, STORYBOARD_STYLES["3D Claymation / Pixar"])
     prompts: list[dict[str, str]] = []
     for index in range(scene_count):
         template = scene_templates[index % len(scene_templates)]
@@ -312,7 +369,7 @@ def build_storyboard_prompts(
                 "segment": f"Scene {index + 1:02d}",
                 "prompt": (
                     template.replace("{topic}", topic)
-                    + f" {STORYBOARD_STYLE_BASE}"
+                    + (f" {style_suffix}" if style_suffix else "")
                 ),
             }
         )
@@ -325,11 +382,12 @@ def build_image_style_pack(
     subject: str = "",
     audience: str = "professional audiences",
     scene_count: int = 35,
+    style_name: str = "3D Claymation / Pixar",
 ) -> ImageStylePack:
     return ImageStylePack(
         topic=topic,
-        topic_prompt=build_cinematic_image_prompt(topic, subject, audience),
-        storyboard_prompts=build_storyboard_prompts(topic, scene_count=scene_count),
+        topic_prompt=build_cinematic_image_prompt(topic, subject, audience, style_name=style_name),
+        storyboard_prompts=build_storyboard_prompts(topic, scene_count=scene_count, style_name=style_name),
         thumbnail_prompt=build_thumbnail_prompt(topic, subject, audience="YouTube viewers"),
         notes=[
             "Keep text out of the image prompt itself.",
