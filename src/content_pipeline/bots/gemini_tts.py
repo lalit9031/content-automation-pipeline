@@ -224,40 +224,52 @@ class GeminiAudioLimiter:
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
         self.state_path.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
 
-    def get_remaining_and_increment(self) -> tuple[int, bool]:
-        """Returns (remaining, limit_just_hit) and increments if under budget."""
+    def _reset_daily_if_needed(self, state: dict[str, Any]) -> None:
         today = date.today().isoformat()
-        state = self._load_state()
-        
         current_date = state.get("usage_date", "")
         if current_date != today:
+            yesterday_rollover = state.get("rollover", 0)
+            yesterday_limit = self.daily_budget + yesterday_rollover
+            yesterday_generated = state.get("daily_generated", 0)
+            unused = max(0, yesterday_limit - yesterday_generated)
+            
             state["usage_date"] = today
             state["daily_generated"] = 0
-            
+            state["rollover"] = unused
+
+    def get_remaining_and_increment(self) -> tuple[int, bool]:
+        """Returns (remaining, limit_just_hit) and increments if under budget."""
+        state = self._load_state()
+        self._reset_daily_if_needed(state)
+        
         used = state.get("daily_generated", 0)
-        if used >= self.daily_budget:
+        rollover = state.get("rollover", 0)
+        total_limit = self.daily_budget + rollover
+        
+        if used >= total_limit:
             return 0, False
             
         state["daily_generated"] = used + 1
         self._save_state(state)
         
-        remaining = self.daily_budget - (used + 1)
+        remaining = total_limit - (used + 1)
         limit_just_hit = (remaining == 0)
         return remaining, limit_just_hit
         
     def get_current_status(self) -> dict[str, Any]:
-        today = date.today().isoformat()
         state = self._load_state()
-        current_date = state.get("usage_date", "")
-        if current_date != today:
-            used = 0
-        else:
-            used = state.get("daily_generated", 0)
-        remaining = max(0, self.daily_budget - used)
+        self._reset_daily_if_needed(state)
+        
+        used = state.get("daily_generated", 0)
+        rollover = state.get("rollover", 0)
+        total_limit = self.daily_budget + rollover
+        remaining = max(0, total_limit - used)
         return {
             "used": used,
             "remaining": remaining,
             "daily_budget": self.daily_budget,
-            "limit_reached": used >= self.daily_budget
+            "rollover": rollover,
+            "total_limit": total_limit,
+            "limit_reached": used >= total_limit
         }
 

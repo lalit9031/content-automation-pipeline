@@ -223,7 +223,9 @@ class GeminiImageLimiter:
         self._lock = threading.RLock()
         self._states = [_GeminiKeyState() for _ in range(key_count)]
         self._usage_date = self._today()
+        self.rollover = 0
         self._load()
+
 
     def ensure_capacity(self, count: int) -> None:
         if count <= 0 or self.daily_budget <= 0:
@@ -329,6 +331,7 @@ class GeminiImageLimiter:
             state.usage_date = str(raw_state.get("usage_date", ""))
             state.daily_generated = int(raw_state.get("daily_generated", 0))
         self._usage_date = str(data.get("usage_date", self._today()))
+        self.rollover = int(data.get("rollover", 0))
         self._reset_daily_if_needed()
 
     def _save_locked(self) -> None:
@@ -339,6 +342,7 @@ class GeminiImageLimiter:
             "version": 1,
             "updated_at": self._now(),
             "usage_date": self._usage_date,
+            "rollover": self.rollover,
             "keys": [
                 {
                     "next_available_at": state.next_available_at,
@@ -360,13 +364,20 @@ class GeminiImageLimiter:
         if self.daily_budget <= 0:
             return None
         used = self.current_daily_generated()
-        return max(self.daily_budget - used, 0)
+        total_limit = self.daily_budget + getattr(self, "rollover", 0)
+        return max(total_limit - used, 0)
 
     def _reset_daily_if_needed(self) -> None:
         with self._lock:
             today = self._today()
             if self._usage_date == today:
                 return
+            
+            yesterday_limit = self.daily_budget + getattr(self, "rollover", 0)
+            yesterday_generated = sum(state.daily_generated for state in self._states)
+            unused = max(0, yesterday_limit - yesterday_generated)
+            self.rollover = unused
+            
             self._usage_date = today
             for state in self._states:
                 state.daily_generated = 0
@@ -406,7 +417,8 @@ def gemini_image_status(settings: Settings, now: float | None = None) -> dict[st
     cooling_down_slots: list[int] = []
     next_allowed_at: float | None = None
     daily_usage = 0
-    daily_remaining: int | None = settings.gemini_image_daily_budget if settings.gemini_image_daily_budget > 0 else None
+    rollover = int(raw_state.get("rollover", 0))
+    daily_remaining: int | None = (settings.gemini_image_daily_budget + rollover) if settings.gemini_image_daily_budget > 0 else None
     daily_limit_reached = False
     next_daily_reset_at: float | None = None
     for index, slot in enumerate(configured_slots):
@@ -440,7 +452,7 @@ def gemini_image_status(settings: Settings, now: float | None = None) -> dict[st
             }
         )
     if settings.gemini_image_daily_budget > 0:
-        daily_remaining = max(settings.gemini_image_daily_budget - daily_usage, 0)
+        daily_remaining = max((settings.gemini_image_daily_budget + rollover) - daily_usage, 0)
         daily_limit_reached = daily_remaining == 0
         next_daily_reset_at = (
             datetime.fromtimestamp(now, tz=timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
