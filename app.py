@@ -138,6 +138,24 @@ def _apply_streamlit_secrets() -> None:
         if not os.environ.get(env_key):
             os.environ[env_key] = value
 
+    # Write client secrets and token files dynamically from streamlit secrets if they are provided as raw JSON
+    token_json = _secret("YOUTUBE_TOKEN_JSON")
+    if token_json:
+        token_dir = PROJECT_ROOT / ".secrets"
+        token_dir.mkdir(parents=True, exist_ok=True)
+        token_path = token_dir / "youtube_token.json"
+        token_path.write_text(token_json, encoding="utf-8")
+        os.environ["YOUTUBE_TOKEN_FILE"] = str(token_path)
+
+    client_secrets_json = _secret("YOUTUBE_CLIENT_SECRETS_JSON")
+    if client_secrets_json:
+        scripts_dir = PROJECT_ROOT / "scripts"
+        scripts_dir.mkdir(parents=True, exist_ok=True)
+        client_secrets_path = scripts_dir / "youtube_client_secrets.json"
+        client_secrets_path.write_text(client_secrets_json, encoding="utf-8")
+        os.environ["YOUTUBE_CLIENT_SECRETS_FILE"] = str(client_secrets_path)
+
+
 
 def upload_to_temp_host(file_path: str | Path) -> str:
     try:
