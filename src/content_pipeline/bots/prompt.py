@@ -113,7 +113,8 @@ def build_cinematic_image_prompt(
     if style_name == "Photorealistic":
         text_to_check = (topic + " " + subject).lower()
         is_nature = any(word in text_to_check for word in [
-            "nature", "mountain", "river", "forest", "valleys", "waterfall", "landscape", "scenery", "sky", "desert", "sea", "ocean", "sunset", "sunrise"
+            "nature", "mountain", "river", "forest", "valleys", "waterfall", "landscape", "scenery", "sky", "desert", "sea", "ocean", "sunset", "sunrise",
+            "tree", "trees", "road", "street", "path", "highway", "trail", "park", "garden", "field", "meadow", "grass", "outdoor", "outdoors"
         ])
         is_human = any(word in text_to_check for word in [
             "human", "person", "man", "woman", "girl", "boy", "vendor", "artist", "shepherd", "elder", "character", "face", "portrait"
@@ -128,7 +129,20 @@ def build_cinematic_image_prompt(
             "new", "modern", "futuristic", "smart city", "skyscraper", "hologram", "holographic", "cyber", "neon"
         ])
 
-        if is_human:
+        # Specific outdoor action/lifestyle shot condition (combination of human and nature/outdoor environment keywords)
+        is_outdoor_action = is_human and (is_nature or any(word in text_to_check for word in [
+            "road", "street", "path", "highway", "trail", "bike", "bicycle", "riding", "ride", "running", "walking", "park", "garden", "outdoor", "outdoors", "trees", "forest"
+        ]))
+
+        if is_outdoor_action:
+            photorealistic_style = (
+                "Style: Professional outdoor lifestyle and action photograph, realistic natural lighting, "
+                "natural dappled sunlight filtering through the lush green leaves of realistic, organic trees, "
+                "lifelike tree bark textures and authentic organic foliage, shot on 35mm lens, f/4 aperture to keep both the "
+                "subject and the beautiful surrounding landscape in sharp focus, clean composition, masterpiece, 8k resolution, "
+                "no text, no logos."
+            )
+        elif is_human:
             photorealistic_style = (
                 "Style: High-fidelity close-up portrait photograph, soft dramatic Rembrandt studio lighting, "
                 "gentle depth of field with beautiful background bokeh, sharp focus on eyes, shot on 85mm portrait lens, f/1.8, "
