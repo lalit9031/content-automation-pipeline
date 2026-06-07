@@ -4757,6 +4757,7 @@ def get_git_info() -> str:
 def get_package_info() -> str:
     import sys
     import traceback
+    import os
     res = []
     
     # Check pydub
@@ -4783,8 +4784,39 @@ def get_package_info() -> str:
     if TARGET_SITE_PACKAGES.exists():
         files = [p.name for p in TARGET_SITE_PACKAGES.glob("*")]
         res.append(f"📁 Target Site-Packages Contents: `{files}`")
+        try:
+            stat_site = os.stat(str(TARGET_SITE_PACKAGES))
+            res.append(f"📁 Site-Packages Permissions: `{oct(stat_site.st_mode)}` | Owner: `{stat_site.st_uid}`")
+            pydub_dir = TARGET_SITE_PACKAGES / "pydub"
+            if pydub_dir.exists():
+                stat_pydub = os.stat(str(pydub_dir))
+                res.append(f"📁 pydub folder Permissions: `{oct(stat_pydub.st_mode)}` | Owner: `{stat_pydub.st_uid}`")
+                pydub_files = [p.name for p in pydub_dir.glob("*")]
+                res.append(f"📁 pydub folder contents: `{pydub_files[:15]}`")
+                init_file = pydub_dir / "__init__.py"
+                if init_file.exists():
+                    stat_init = os.stat(str(init_file))
+                    res.append(f"📄 __init__.py Permissions: `{oct(stat_init.st_mode)}` | Owner: `{stat_init.st_uid}`")
+                else:
+                    res.append(f"❌ __init__.py does not exist in pydub folder!")
+        except Exception as perm_err:
+            res.append(f"❌ Failed to read permissions: {perm_err}")
     else:
         res.append(f"📁 Target Site-Packages directory does not exist.")
+        
+    # Try dynamic loading
+    try:
+        from importlib.machinery import SourceFileLoader
+        init_path = TARGET_SITE_PACKAGES / "pydub" / "__init__.py"
+        if init_path.exists():
+            loader = SourceFileLoader("pydub_test", str(init_path))
+            mod = loader.load_module()
+            res.append(f"✅ Dynamic SourceFileLoader imported pydub successfully!")
+        else:
+            res.append(f"❌ SourceFileLoader: __init__.py does not exist at `{init_path}`")
+    except Exception as loader_err:
+        tb_loader = traceback.format_exc()
+        res.append(f"❌ SourceFileLoader failed: {loader_err}  \nTraceback:  \n```\n{tb_loader}\n```")
         
     # Check flag files
     flag_audioop = PROJECT_ROOT / "output" / ".runtime" / "audioop_install_attempted.flag"
