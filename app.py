@@ -1953,7 +1953,7 @@ def render_frontdoor(settings: Settings) -> None:
                         st.info(f"📝 Transcribed Phonetic Lyrics:\n{sanitized_lyrics}")
 
                     st.write("🎵 Dispatching song generation request to Hugging Face...")
-                    client = Client("tencent/SongGeneration", httpx_kwargs={"timeout": 600.0})
+                    client = Client("tencent/SongGeneration", token=settings.hf_token, httpx_kwargs={"timeout": 600.0})
                     
                     result_path, info = client.predict(
                         lyric=sanitized_lyrics,
@@ -2765,7 +2765,7 @@ def render_frontdoor(settings: Settings) -> None:
                         st.info(f"📝 Transcribed Phonetic Lyrics:\n{sanitized_lyrics}")
 
                     st.write("🎵 Dispatching song generation request to Hugging Face...")
-                    client = Client("tencent/SongGeneration", httpx_kwargs={"timeout": 600.0})
+                    client = Client("tencent/SongGeneration", token=settings.hf_token, httpx_kwargs={"timeout": 600.0})
                     
                     result_path, info = client.predict(
                         lyric=sanitized_lyrics,
