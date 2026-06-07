@@ -4783,7 +4783,7 @@ def main() -> None:
         if st.button("🔧 Run Pip Install Diagnostics", key="btn_run_pip_diag"):
             try:
                 import subprocess
-                out = subprocess.check_output([sys.executable, "-m", "pip", "install", "pydub"], stderr=subprocess.STDOUT, text=True)
+                out = subprocess.check_output([sys.executable, "-m", "pip", "install", "--user", "pydub"], stderr=subprocess.STDOUT, text=True)
                 st.code(out)
                 st.rerun()
             except subprocess.CalledProcessError as cpe:

@@ -1,7 +1,7 @@
 from pathlib import Path
 import sys
 
-# Ensure audioop is available on Python 3.13+ via audioop-lts if installed
+# 1. If Python >= 3.13, check and install audioop-lts first
 if sys.version_info >= (3, 13):
     try:
         import audioop
@@ -15,10 +15,29 @@ if sys.version_info >= (3, 13):
                 flag_file_audioop.parent.mkdir(parents=True, exist_ok=True)
                 flag_file_audioop.touch()
                 print("📦 Dynamic installation: installing audioop-lts for Python 3.13+...")
-                subprocess.check_call([sys.executable, "-m", "pip", "install", "audioop-lts"])
+                subprocess.check_call([sys.executable, "-m", "pip", "install", "--user", "audioop-lts"])
                 print("📦 Dynamic installation of audioop-lts finished.")
             except Exception as e:
                 print(f"WARNING: Failed to dynamically install audioop-lts: {e}")
+
+# 2. Check and install pydub next
+try:
+    import pydub
+except ImportError:
+    import os
+    from pathlib import Path
+    flag_file = Path(__file__).resolve().parent / "output" / ".runtime" / "pydub_install_attempted.flag"
+    if not flag_file.exists():
+        import subprocess
+        try:
+            flag_file.parent.mkdir(parents=True, exist_ok=True)
+            flag_file.touch()
+            print("📦 Dynamic installation: installing pydub...")
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "--user", "pydub"])
+            print("📦 Dynamic installation of pydub finished.")
+        except Exception as e:
+            print(f"WARNING: Failed to dynamically install pydub: {e}")
+
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
