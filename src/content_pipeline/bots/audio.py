@@ -1356,8 +1356,8 @@ def generate_edge_tts_song_fallback(
         "frame_rate": int(vocals.frame_rate * 0.94)
     }).set_frame_rate(vocals.frame_rate)
     
-    # Drop the beat volume by 5dB so it doesn't wash out the Indian pronunciation
-    softer_beat = beat - 5
+    # Drop the beat volume by 6dB so it doesn't wash out the Indian pronunciation
+    softer_beat = beat - 6
     
     # Overlay the processed vocals onto the background track (boosting vocals slightly)
     final_mix = softer_beat.overlay(deeper_vocals + 2, position=0)

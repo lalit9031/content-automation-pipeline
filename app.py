@@ -2022,6 +2022,8 @@ def render_frontdoor(settings: Settings) -> None:
                         st.session_state["music_studio_generated_mp3"] = str(out_path)
                         st.success("🎉 Backup Song generated successfully using Edge-TTS fallback mixer!")
                         st.rerun()
+                except Exception as exc:
+                    st.error(f"❌ Error during song preparation: {exc}")
 
     elif active_p == "Video":
         st.markdown(
@@ -2855,6 +2857,8 @@ def render_frontdoor(settings: Settings) -> None:
                         st.session_state["kids_song_generated_mp3"] = str(out_path)
                         st.success("🎉 Backup Kids rhyme generated successfully using Edge-TTS fallback mixer!")
                         st.rerun()
+                except Exception as exc:
+                    st.error(f"❌ Error during kids rhyme preparation: {exc}")
 
     elif active_p == "Speech":
         active_scene_idx = st.session_state.get("scene_index", 0)
