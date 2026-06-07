@@ -909,8 +909,7 @@ def generate_indian_voiceover(
                 generate_gemini_voiceover(text=text, output_path=output_path, voice_name=voice_to_use, settings=settings)
                 generated_ok = True
             except Exception as e:
-                # Fallback to Edge TTS if Gemini fails
-                pass
+                print(f"❌ SYSTEM ERROR: Gemini Voiceover generation failed: {e}. Falling back to Edge-TTS.")
                 
         if not generated_ok:
             # Budget Exhausted / Fallback: Use Edge TTS Hindi
@@ -1508,6 +1507,15 @@ def generate_hindi_song_via_native_audio(
     from content_pipeline.bots.gemini_tts import GeminiAudioLimiter, generate_gemini_voiceover, transliterate_to_devanagari
 
     settings = Settings.from_environment()
+    
+    # Explicit API key validation right at launch/call
+    active_key = os.environ.get("GEMINI_API_KEY") or settings.gemini_api_key or os.environ.get("GOOGLE_API_KEY")
+    if not active_key:
+        print("⚠️ SYSTEM WARNING: No active GEMINI_API_KEY found in settings or environment for Hindi Song generation!")
+    else:
+        masked_key = active_key[:6] + "..." + active_key[-4:] if len(active_key) > 10 else "..."
+        print(f"🔑 SYSTEM CHECK: Gemini API layer initialized. Active key: {masked_key}")
+        
     PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 
     st_write_func = None
@@ -1566,8 +1574,7 @@ def generate_hindi_song_via_native_audio(
             )
             generated_ok = True
         except Exception as e:
-            # Fallback to Edge TTS if Gemini fails
-            pass
+            print(f"❌ SYSTEM ERROR: Gemini Song Vocal generation failed: {e}. Falling back to Edge-TTS.")
 
     if not generated_ok:
         # Budget Exhausted / Fallback: Use Edge TTS Hindi
