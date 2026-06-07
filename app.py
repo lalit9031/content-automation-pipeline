@@ -12,6 +12,9 @@ from pathlib import Path
 from collections.abc import Mapping
 
 PROJECT_ROOT = Path(__file__).resolve().parent
+TARGET_SITE_PACKAGES = PROJECT_ROOT / "output" / ".runtime" / "site-packages"
+if str(TARGET_SITE_PACKAGES) not in sys.path:
+    sys.path.insert(0, str(TARGET_SITE_PACKAGES))
 SRC_DIR = PROJECT_ROOT / "src"
 if SRC_DIR.exists():
     sys.path.insert(0, str(SRC_DIR))
@@ -4783,7 +4786,11 @@ def main() -> None:
         if st.button("🔧 Run Pip Install Diagnostics", key="btn_run_pip_diag"):
             try:
                 import subprocess
-                out = subprocess.check_output([sys.executable, "-m", "pip", "install", "--user", "pydub"], stderr=subprocess.STDOUT, text=True)
+                TARGET_SITE_PACKAGES.mkdir(parents=True, exist_ok=True)
+                out = subprocess.check_output([
+                    sys.executable, "-m", "pip", "install", 
+                    "--target", str(TARGET_SITE_PACKAGES), "pydub"
+                ], stderr=subprocess.STDOUT, text=True)
                 st.code(out)
                 st.rerun()
             except subprocess.CalledProcessError as cpe:
