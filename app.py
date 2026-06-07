@@ -1639,10 +1639,46 @@ def render_frontdoor(settings: Settings) -> None:
                 help="Lyria 3 Pro is used for English/Hinglish. Gemini 2.5/Edge-TTS Native Audio is used for Hindi to achieve perfect pronunciation."
             )
             
-            music_desc_val = st.session_state.get("music_studio_description", "")
+            vibe_presets = {
+                "Custom": "",
+                "Meditative Acoustic (Shekhar Style)": (
+                    "Premium acoustic devotional background score. Soft nylon-string acoustic guitar arpeggios, "
+                    "deep warm acoustic bass guitar, airy ethereal synthesizer ambient pads, "
+                    "soulful traditional bansuri flute solo melody, gentle meditative pace, 65 BPM, "
+                    "sacred temple hall acoustics with a clean plate reverb."
+                ),
+                "Heavy Cinematic Epic": (
+                    "Powerful orchestral dramatic arrangement. Heavy orchestral string sections, "
+                    "booming cinematic dhol and taiko percussion ensembles, deep brass horn swells, "
+                    "shimmering high-tension sitar stabs, fast rhythmic pacing, 120 BPM, massive stadium echo."
+                ),
+                "Soulful Sufi / Semi-Classical": (
+                    "Acoustic semi-classical studio background score. Traditional hand-pumped harmonium chord sweeps, "
+                    "organic wooden tabla percussion loops, gentle acoustic sarangi strokes, calm rhythm, "
+                    "80 BPM, clean acoustic studio environment."
+                )
+            }
+            
+            selected_vibe = st.selectbox(
+                "Soundscape Vibe Preset",
+                options=list(vibe_presets.keys()),
+                key="music_studio_vibe_preset",
+                help="Select a musical style preset to automatically populate the Style Description."
+            )
+            
+            if "prev_music_studio_vibe" not in st.session_state:
+                st.session_state["prev_music_studio_vibe"] = selected_vibe
+                
+            if st.session_state["prev_music_studio_vibe"] != selected_vibe:
+                st.session_state["prev_music_studio_vibe"] = selected_vibe
+                if selected_vibe != "Custom":
+                    st.session_state["music_studio_description_input"] = vibe_presets[selected_vibe]
+            
+            if "music_studio_description_input" not in st.session_state:
+                st.session_state["music_studio_description_input"] = st.session_state.get("music_studio_description", "")
+                
             desc = st.text_area(
                 "Style Description",
-                value=music_desc_val,
                 height=120,
                 key="music_studio_description_input",
                 help="Describe instruments, tempo (BPM), vocal qualities, and style of the song."
@@ -2496,10 +2532,42 @@ def render_frontdoor(settings: Settings) -> None:
                 help="Lyria 3 Pro is used for English/Hinglish. Gemini 2.5/Edge-TTS Native Audio is used for Hindi to achieve perfect pronunciation."
             )
             
-            kids_desc_val = st.session_state.get("kids_song_description", "")
+            kids_vibe_presets = {
+                "Custom": "",
+                "Cheerful Nursery (Playful & Bouncy)": (
+                    "cheerful nursery rhyme, magical kids show music, happy bouncy melody, 92 BPM, "
+                    "ukulele, soft piano, glockenspiel, bells."
+                ),
+                "Lullaby (Calm & Dreamy)": (
+                    "soft soothing lullaby, magical bedtime stars melody, calm ambient pace, 60 BPM, "
+                    "sweet music box chime, gentle harp, warm pad strings."
+                ),
+                "Adventure (Energetic & Dynamic)": (
+                    "playful upbeat cartoon theme song, brass horn swells, xylophone, "
+                    "fast dynamic percussion, happy adventurous pacing, 115 BPM."
+                )
+            }
+            
+            selected_vibe_kids = st.selectbox(
+                "Soundscape Vibe Preset",
+                options=list(kids_vibe_presets.keys()),
+                key="kids_studio_vibe_preset",
+                help="Select a musical style preset to automatically populate the Style Description."
+            )
+            
+            if "prev_kids_studio_vibe" not in st.session_state:
+                st.session_state["prev_kids_studio_vibe"] = selected_vibe_kids
+                
+            if st.session_state["prev_kids_studio_vibe"] != selected_vibe_kids:
+                st.session_state["prev_kids_studio_vibe"] = selected_vibe_kids
+                if selected_vibe_kids != "Custom":
+                    st.session_state["kids_song_description_input"] = kids_vibe_presets[selected_vibe_kids]
+            
+            if "kids_song_description_input" not in st.session_state:
+                st.session_state["kids_song_description_input"] = st.session_state.get("kids_song_description", "")
+                
             desc = st.text_area(
                 "Style Description",
-                value=kids_desc_val,
                 height=120,
                 key="kids_song_description_input",
                 help="Describe instruments, tempo (BPM), vocal qualities, and style of the song."
