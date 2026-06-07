@@ -1952,6 +1952,24 @@ def render_frontdoor(settings: Settings) -> None:
                             from content_pipeline.bots.gemini_tts import transliterate_to_devanagari
                             sanitized_lyrics = transliterate_to_devanagari(sanitized_lyrics, settings)
                             st.info(f"📝 Transliterated Devanagari Lyrics:\n{sanitized_lyrics}")
+                        
+                        st.write("🔀 Language: Hindi detected. Bypassing Hugging Face Lyria to use Native Audio Pipeline...")
+                        from content_pipeline.bots.audio import generate_hindi_song_via_native_audio
+                        
+                        out_path = PROJECT_ROOT / "output" / "Music_Studio_Generated_Song.mp3"
+                        if not out_path.parent.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio").exists():
+                            out_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio/Music_Studio_Generated_Song.mp3")
+                        out_path.parent.mkdir(parents=True, exist_ok=True)
+                        
+                        generate_hindi_song_via_native_audio(
+                            lyrics=sanitized_lyrics,
+                            output_path=out_path,
+                            singer_gender=singer_gender,
+                            selected_ref=selected_ref
+                        )
+                        st.session_state["music_studio_generated_mp3"] = str(out_path)
+                        st.success("🎉 Hindi Song generated successfully using Native Audio Pipeline!")
+                        st.rerun()
                     elif lang == "Hinglish":
                         st.write("🔮 Applying advanced phonetic transcription layer for perfect Indian accent...")
                         from content_pipeline.bots.phonetic_mapper import hindi_to_phonetic_hinglish
@@ -2785,6 +2803,27 @@ def render_frontdoor(settings: Settings) -> None:
                             from content_pipeline.bots.gemini_tts import transliterate_to_devanagari
                             sanitized_lyrics = transliterate_to_devanagari(sanitized_lyrics, settings)
                             st.info(f"📝 Transliterated Devanagari Lyrics:\n{sanitized_lyrics}")
+                        
+                        st.write("🔀 Language: Hindi detected. Bypassing Hugging Face Lyria to use Native Audio Pipeline...")
+                        from content_pipeline.bots.audio import generate_hindi_song_via_native_audio
+                        
+                        out_path = PROJECT_ROOT / "output" / "LittleBubbles_Generated_Song.mp3"
+                        if not out_path.parent.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio").exists():
+                            out_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio/LittleBubbles_Generated_Song.mp3")
+                        out_path.parent.mkdir(parents=True, exist_ok=True)
+                        
+                        singer_gender = st.session_state.get("kids_song_singer_gender", "Male")
+                        selected_ref = st.session_state.get("kids_song_ref_audio_choice", "None (Text-only)")
+                        
+                        generate_hindi_song_via_native_audio(
+                            lyrics=sanitized_lyrics,
+                            output_path=out_path,
+                            singer_gender=singer_gender,
+                            selected_ref=selected_ref
+                        )
+                        st.session_state["kids_song_generated_mp3"] = str(out_path)
+                        st.success("🎉 Hindi Kids Rhyme generated successfully using Native Audio Pipeline!")
+                        st.rerun()
                     elif lang == "Hinglish":
                         st.write("🔮 Applying advanced phonetic transcription layer for perfect Indian accent...")
                         from content_pipeline.bots.phonetic_mapper import hindi_to_phonetic_hinglish

@@ -1375,3 +1375,159 @@ def generate_edge_tts_song_fallback(
         
     return output_path
 
+
+def generate_hindi_song_via_native_audio(
+    lyrics: str,
+    output_path: Path,
+    singer_gender: str = "Male",
+    selected_ref: str = "None (Text-only)",
+) -> Path:
+    """Unified Hindi Song Generator:
+    Bypasses Hugging Face Space entirely and generates native vocals.
+    1. Try Gemini TTS (under budget) with Puck (male) or Aoede/Kore (female).
+    2. Fall back to Edge-TTS (hi-IN-MadhurNeural or hi-IN-SwaraNeural) if Gemini TTS fails/over budget.
+    3. Mix vocals with background beat (ducked by -6dB, vocal deepened by 0.94x, boosted by +2dB).
+    """
+    import re
+    import math
+    import os
+    from pydub import AudioSegment
+    from content_pipeline.config import Settings
+    from content_pipeline.bots.gemini_tts import GeminiAudioLimiter, generate_gemini_voiceover, transliterate_to_devanagari
+
+    settings = Settings.from_environment()
+    PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+
+    # 1. Ensure lyrics are in standard Devanagari script for perfect native accent
+    is_devanagari = any("\u0900" <= char <= "\u097f" for char in lyrics)
+    devanagari_lyrics = lyrics
+    if not is_devanagari:
+        devanagari_lyrics = transliterate_to_devanagari(lyrics, settings)
+
+    # Clean up bracketed lyrics tags (like [verse], [chorus]) for TTS narration
+    clean_lyrics = re.sub(r"\[.*?\]", "", devanagari_lyrics).strip()
+
+    # 2. Setup paths
+    temp_dir = settings.output_dir / ".runtime"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    raw_vocals_file = temp_dir / "hindi_raw_vocals_song.wav"
+
+    generated_ok = False
+    gender_lower = singer_gender.strip().lower()
+    voice_to_use = "Puck" if gender_lower == "male" else "Aoede"
+
+    state_path = settings.output_dir / ".runtime" / "gemini_audio_rate_limit.json"
+    limiter = GeminiAudioLimiter(state_path, daily_budget=15)
+    status = limiter.get_current_status()
+
+    if not status["limit_reached"]:
+        try:
+            # Increment and generate
+            remaining, limit_just_hit = limiter.get_remaining_and_increment()
+            if limit_just_hit:
+                # Send telegram alert that limit is reached
+                bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+                chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
+                if bot_token and chat_id:
+                    try:
+                        from content_pipeline.bots.telegram import send_telegram_message
+                        send_telegram_message(bot_token, chat_id, "⚠️ Daily Gemini Hindi Song Audio budget (15 audios) hit! Swapping to free Edge TTS Hindi engine.")
+                    except Exception:
+                        pass
+            
+            # Write to raw_vocals_file
+            generate_gemini_voiceover(
+                text=clean_lyrics,
+                output_path=raw_vocals_file,
+                voice_name=voice_to_use,
+                settings=settings
+            )
+            generated_ok = True
+        except Exception as e:
+            # Fallback to Edge TTS if Gemini fails
+            pass
+
+    if not generated_ok:
+        # Budget Exhausted / Fallback: Use Edge TTS Hindi
+        fallback_voice = "hi-IN-MadhurNeural" if gender_lower == "male" else "hi-IN-SwaraNeural"
+        edge_raw_vocals = temp_dir / "edge_raw_vocals_song.mp3"
+        try:
+            _run_async(_write_edge_voice_sample(
+                edge_raw_vocals,
+                voice=fallback_voice,
+                text=clean_lyrics,
+                rate="+0%",
+                pitch="+0Hz"
+            ))
+            raw_vocals_file = edge_raw_vocals
+            generated_ok = True
+        except Exception as edge_err:
+            raise RuntimeError(f"Both Gemini TTS and Edge-TTS failed for Hindi song generation. Edge err: {edge_err}")
+
+    # 3. Load vocals
+    vocals = AudioSegment.from_file(str(raw_vocals_file))
+
+    # Determine the background beat file
+    beat_path = None
+    if selected_ref != "None (Text-only)":
+        ref_full_path = PROJECT_ROOT / "output" / "reference_audio" / selected_ref
+        if not ref_full_path.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio").exists():
+            ref_full_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio") / selected_ref
+        if ref_full_path.exists():
+            beat_path = ref_full_path
+
+    if not beat_path:
+        # Check if there is any default beat/mp3 in desktop New Audio folder
+        desktop_ref_dir = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio")
+        if desktop_ref_dir.exists():
+            mp3_files = sorted(list(desktop_ref_dir.glob("*.mp3")))
+            # Find first file that is not the generated song
+            for f in mp3_files:
+                if "Generated_Song" not in f.name:
+                    beat_path = f
+                    break
+        if not beat_path:
+            # Fallback to creating a silent/ambient background beat
+            beat_path = temp_dir / "fallback_beat.wav"
+            generate_music_preview(beat_path, "ambient", duration_seconds=int(vocals.duration_seconds + 5))
+
+    # Load beat
+    if beat_path.suffix.lower() == ".mp3":
+        beat = AudioSegment.from_mp3(str(beat_path))
+    else:
+        beat = AudioSegment.from_wav(str(beat_path))
+
+    # Ensure beat is long enough to fit the vocals
+    if beat.duration_seconds < vocals.duration_seconds:
+        # Loop beat to match vocals duration
+        loops = math.ceil(vocals.duration_seconds / beat.duration_seconds)
+        beat = beat * loops
+
+    # Crop beat to match vocals + 3 seconds of buffer
+    beat = beat[:int((vocals.duration_seconds + 3) * 1000)]
+
+    # 4. Deepen voice for warm chest voice (0.94x pitch-shifting resonance filter)
+    deeper_vocals = vocals._spawn(vocals.raw_data, overrides={
+        "frame_rate": int(vocals.frame_rate * 0.94)
+    }).set_frame_rate(vocals.frame_rate)
+
+    # Drop the beat volume by 6dB so it doesn't wash out the Indian pronunciation
+    softer_beat = beat - 6
+
+    # Overlay the processed vocals onto the background track (boosting vocals slightly)
+    final_mix = softer_beat.overlay(deeper_vocals + 2, position=0)
+
+    # Export the final product
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    final_mix.export(str(output_path), format="mp3")
+
+    # Clean up temp raw vocals
+    try:
+        if raw_vocals_file.exists():
+            os.remove(raw_vocals_file)
+    except Exception:
+        pass
+
+    return output_path
+
+
