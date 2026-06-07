@@ -1,3 +1,4 @@
+# Force dependency rebuild: 2026-06-07T14:58:47+05:30
 streamlit>=1.37.0
 cairosvg>=2.7.1
 edge-tts>=6.1.12

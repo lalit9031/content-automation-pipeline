@@ -1273,6 +1273,24 @@ def render_frontdoor(settings: Settings) -> None:
             """,
             unsafe_allow_html=True
         )
+        if audio_status.get("limit_reached"):
+            col_reset1, col_reset2 = st.columns([8, 2])
+            with col_reset2:
+                if st.button("🔄 Reset Quota", key="btn_reset_tts_quota"):
+                    from datetime import date
+                    import json
+                    state_path = settings.output_dir / ".runtime" / "gemini_audio_rate_limit.json"
+                    try:
+                        state_path.parent.mkdir(parents=True, exist_ok=True)
+                        state_path.write_text(json.dumps({
+                            "usage_date": date.today().isoformat(),
+                            "daily_generated": 0,
+                            "rollover": 0
+                        }, indent=2) + "\n", encoding="utf-8")
+                        st.toast("Quota reset successfully!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Failed to reset quota: {e}")
     except Exception:
         pass
 
@@ -1372,6 +1390,21 @@ def render_frontdoor(settings: Settings) -> None:
             with q_cols[1]:
                 if audio_status.get("limit_reached"):
                     st.error("⚠️ **Hindi Audio Limit (15) Hit!** Swapped to free Edge TTS.")
+                    if st.button("🔄 Reset Quota", key="btn_reset_tts_quota_dashboard"):
+                        from datetime import date
+                        import json
+                        state_path = settings.output_dir / ".runtime" / "gemini_audio_rate_limit.json"
+                        try:
+                            state_path.parent.mkdir(parents=True, exist_ok=True)
+                            state_path.write_text(json.dumps({
+                                "usage_date": date.today().isoformat(),
+                                "daily_generated": 0,
+                                "rollover": 0
+                            }, indent=2) + "\n", encoding="utf-8")
+                            st.toast("Quota reset successfully!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Failed to reset quota: {e}")
                 else:
                     st.success(f"🎙️ Hindi TTS Quota: **{audio_status['remaining']}** left today.")
         except Exception:
