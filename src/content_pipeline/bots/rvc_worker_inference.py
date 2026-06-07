@@ -275,18 +275,14 @@ def main():
     
     args = parser.parse_args()
     
-    model_dir = Path("models/singers")
-    model_path = model_dir / f"{args.model}.pth"
-    
-    # If the model does not exist, download the community Arijit Singh RVC model as placeholder/test model
-    if not model_path.exists():
-        print(f"⚠️ Singer model {model_path} not found.")
-        model_url = "https://huggingface.co/ivaan2003/ai-rvc/resolve/main/arijit-singh.zip"
-        try:
-            download_and_extract_model(model_url, model_path)
-        except Exception as e:
-            print(f"❌ Failed to download/extract RVC model: {e}")
-            raise FileNotFoundError(f"RVC Model file not found at {model_path} and download/extract failed.")
+    # Verify and dynamically download/cache singer model from the manifest registry
+    from singer_manifest import verify_and_cache_singer_model
+    try:
+        model_prefix = verify_and_cache_singer_model(args.model)
+        args.model = model_prefix
+    except Exception as e:
+        print(f"❌ Failed to verify/cache singer model: {e}. Falling back to default Arijit_Singh prefix.")
+        args.model = "Arijit_Singh"
             
     # Instantiate the wrapper and run
     wrapper = AdvancedRVCEngineWrapper(model_name=args.model, device="cpu:0")

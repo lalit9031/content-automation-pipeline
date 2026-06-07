@@ -1701,6 +1701,7 @@ def generate_hindi_song_via_native_audio(
     temperature: float = 0.40,
     cfg_coef: float = 1.8,
     style_description: str = "",
+    singer_key: str = "arijit_singh",
 ) -> Path:
     """Unified Hindi Song Generator:
     Bypasses Hugging Face Space for vocals, but dynamically generates
@@ -1718,6 +1719,17 @@ def generate_hindi_song_via_native_audio(
     from content_pipeline.bots.gemini_tts import GeminiAudioLimiter, generate_gemini_voiceover, transliterate_to_devanagari
 
     settings = Settings.from_environment()
+    
+    # Resolve gender and config from the artist manifest
+    from content_pipeline.bots.singer_manifest import SINGER_MANIFEST
+    resolved_singer_key = singer_key
+    if resolved_singer_key == "arijit_singn":
+        resolved_singer_key = "arijit_singh"
+        
+    if resolved_singer_key in SINGER_MANIFEST:
+        manifest_gender = SINGER_MANIFEST[resolved_singer_key]["gender"]
+        singer_gender = manifest_gender.capitalize()  # Override with manifest gender ("Male" or "Female")
+        print(f"🎤 Manifest Lookup: Resolved singer '{resolved_singer_key}' -> Gender: {singer_gender}")
     
     # Explicit API key validation right at launch/call
     active_key = os.environ.get("GEMINI_API_KEY") or settings.gemini_api_key or os.environ.get("GOOGLE_API_KEY")
@@ -1816,7 +1828,7 @@ def generate_hindi_song_via_native_audio(
     # 3. Load and process vocals with dynamic voice conversion (RVC) and genre-aware resonance filter
     from content_pipeline.bots.singing_synthesis import convert_speech_to_melodic_singing
     from content_pipeline.bots.melody_generator import generate_synthetic_melody_guide
-    model_filename = "bollywood_male" if singer_gender.strip().lower() == "male" else "bollywood_female"
+    model_filename = singer_key
     
     # Check if a vocal reference track is selected
     use_vocal_ref_as_guide = False

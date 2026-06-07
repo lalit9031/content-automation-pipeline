@@ -17,9 +17,10 @@ def main():
     res = generate_hindi_song_via_native_audio(
         lyrics=lyrics,
         output_path=output_path,
-        singer_gender="Male",
+        singer_gender="Female",
         selected_ref="None (Text-only)",
-        hf_token=settings.hf_token
+        hf_token=settings.hf_token,
+        singer_key="shreya_ghoshal"
     )
     
     print(f"✅ Unified native audio routing test completed! Result path: {res}")

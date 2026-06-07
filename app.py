@@ -1568,8 +1568,24 @@ def render_frontdoor(settings: Settings) -> None:
         # One-Click Creator
         with st.expander("⚡ One-Click Song Creator", expanded=True):
             st.markdown("<small style='color: #94a3b8;'>Type a simple idea (e.g., 'create an emotional song') and generate a complete song in one click.</small>", unsafe_allow_html=True)
-            one_click_prompt = st.text_input("Song Idea", placeholder="e.g., create an emotional song", key="music_studio_one_click_song_idea")
-            one_click_gender = st.selectbox("Singer Voice Gender Selection", ["Female", "Male"], key="music_studio_one_click_singer_gender")
+            lang = st.session_state.get("music_studio_language", "English")
+            if lang in ["Hindi", "Hinglish"]:
+                from content_pipeline.bots.singer_manifest import SINGER_MANIFEST
+                singer_opts = {v["display_name"]: k for k, v in SINGER_MANIFEST.items()}
+                selected_display = st.selectbox(
+                    "Select Playback Singer Voice Profile:",
+                    options=list(singer_opts.keys()),
+                    key="music_studio_playback_singer_display"
+                )
+                active_singer = singer_opts[selected_display]
+                st.session_state["music_studio_playback_singer_key"] = active_singer
+                
+                singer_gender = SINGER_MANIFEST[active_singer]["gender"].capitalize()
+                st.session_state["music_studio_one_click_singer_gender"] = singer_gender
+                one_click_gender = singer_gender
+            else:
+                one_click_gender = st.selectbox("Singer Voice Gender Selection", ["Female", "Male"], key="music_studio_one_click_singer_gender")
+                st.session_state["music_studio_playback_singer_key"] = "arijit_singh" if one_click_gender == "Male" else "shreya_ghoshal"
             
             if st.button("🚀 Create & Generate Song Draft", type="primary", use_container_width=True, key="music_studio_btn_one_click"):
                 if not one_click_prompt.strip():
@@ -2096,7 +2112,8 @@ def render_frontdoor(settings: Settings) -> None:
                             genre=genre,
                             temperature=temp,
                             cfg_coef=cfg,
-                            style_description=desc
+                            style_description=desc,
+                            singer_key=st.session_state.get("music_studio_playback_singer_key", "arijit_singh")
                         )
                         st.session_state["music_studio_generated_mp3"] = str(out_path)
                         st.success("🎉 Hindi Song generated successfully using Native Audio Pipeline!")
@@ -2496,13 +2513,29 @@ def render_frontdoor(settings: Settings) -> None:
             with st.expander("⚡ One-Click Song Creator", expanded=True):
                 st.markdown("<small style='color: #94a3b8;'>Type a simple idea (e.g., 'create an emotional song') and generate a complete song in one click.</small>", unsafe_allow_html=True)
                 one_click_prompt = st.text_input("Song Idea", placeholder="e.g., create an emotional song", key="one_click_song_idea")
-                one_click_gender = st.selectbox("Singer Voice Gender Selection", ["Female", "Male"], key="one_click_singer_gender")
+                kids_lang = st.session_state.get("kids_studio_language", "English")
+                if kids_lang in ["Hindi", "Hinglish"]:
+                    from content_pipeline.bots.singer_manifest import SINGER_MANIFEST
+                    singer_opts = {v["display_name"]: k for k, v in SINGER_MANIFEST.items()}
+                    selected_display = st.selectbox(
+                        "Select Playback Singer Voice Profile:",
+                        options=list(singer_opts.keys()),
+                        key="kids_studio_playback_singer_display"
+                    )
+                    active_singer = singer_opts[selected_display]
+                    st.session_state["kids_studio_playback_singer_key"] = active_singer
+                    
+                    singer_gender = SINGER_MANIFEST[active_singer]["gender"].capitalize()
+                    st.session_state["kids_song_singer_gender"] = singer_gender
+                    one_click_gender = singer_gender
+                else:
+                    one_click_gender = st.selectbox("Singer Voice Gender Selection", ["Female", "Male"], key="one_click_singer_gender")
+                    st.session_state["kids_studio_playback_singer_key"] = "arijit_singh" if one_click_gender == "Male" else "shreya_ghoshal"
                 
                 if st.button("🚀 Create & Generate Song", type="primary", use_container_width=True):
                     if not one_click_prompt.strip():
                         st.warning("Please enter a song idea first.")
                     else:
-                        kids_lang = st.session_state.get("kids_studio_language", "English")
                         lyrics_exp, desc_exp = expand_prompt_to_lyrics_and_style_dynamic(settings, one_click_prompt, one_click_gender, kids_lang)
                         if kids_lang in ["Hindi", "Hinglish"]:
                             desc_exp = clean_style_description_for_instrumental(desc_exp)
@@ -3000,7 +3033,8 @@ def render_frontdoor(settings: Settings) -> None:
                             genre=genre,
                             temperature=temp,
                             cfg_coef=cfg,
-                            style_description=desc
+                            style_description=desc,
+                            singer_key=st.session_state.get("kids_studio_playback_singer_key", "arijit_singh")
                         )
                         st.session_state["kids_song_generated_mp3"] = str(out_path)
                         st.success("🎉 Hindi Kids Rhyme generated successfully using Native Audio Pipeline!")
