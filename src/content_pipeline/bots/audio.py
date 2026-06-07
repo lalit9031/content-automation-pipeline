@@ -1291,10 +1291,65 @@ def _load_audio_manifests(output_dir: Path, pattern: str) -> list[dict[str, Any]
 
 
 def prepare_singing_lyrics(lyrics: str) -> str:
-    """Prepare lyrics for singing. Returns clean correctly spelled lyrics,
-    relying on model-level instructions for natural singing cadence.
     """
-    return lyrics.strip()
+    Transforms rigid text into fluid musical notation to force 
+    the TTS model to naturally sustain its vocal frames and hold its breath.
+    """
+    import re
+    # Clean up standard structural markers
+    clean_text = lyrics.replace("।", "").replace("॥", "")
+    
+    # Syllabic elongation map designed for native Indian vocal tracts
+    melodic_map = {
+        "जय": "जय्य~",
+        "हनुमान": "हनुमााान~",
+        "ज्ञान": "ग्यााान~",
+        "गुन": "गुुन~",
+        "सागर": "साागर~",
+        "राम": "रााम~",
+        "पुत्र": "पुुत्र~",
+        "मेरी": "मेएरीीी~",
+        "जिंदगी": "जििन-द-गीीी~"
+    }
+    
+    words = clean_text.split()
+    processed_words = [melodic_map.get(word, word) for word in words]
+    
+    # Inject an explicit performance instruction token into the final delivery string
+    vocal_directive = (
+        "[performance_mode: singing, vocal_style: legato, sustain_vowels: true] "
+        f"{' '.join(processed_words)}"
+    )
+    return vocal_directive
+
+def process_studio_vocal_resonance(raw_vocal_path: Path, genre_preset: str, voice_gender: str) -> AudioSegment:
+    """
+    Dynamically adjusts the physical audio spectrum based on 
+    the selected song genre and singer profile.
+    """
+    from pydub import AudioSegment
+    vocals = AudioSegment.from_file(str(raw_vocal_path))
+    
+    # Dynamic Frequency Modulation Blueprint
+    genre_lower = genre_preset.strip().lower()
+    gender_lower = voice_gender.strip().lower()
+    
+    if gender_lower == "female":
+        # Keep female vocals bright and clean to avoid unnatural boxy distortions
+        pitch_factor = 0.98 if "romantic" in genre_lower or "pop" in genre_lower else 0.96
+        vocal_gain = +3
+    else:
+        # Give male tracks that rich, deep playback singer warmth
+        pitch_factor = 0.95 if "acoustic" in genre_lower or "meditative" in genre_lower or "folk" in genre_lower else 0.93
+        vocal_gain = +2
+
+    # Execute frame-rate override modulation
+    processed_vocals = vocals._spawn(vocals.raw_data, overrides={
+        "frame_rate": int(vocals.frame_rate * pitch_factor)
+    }).set_frame_rate(vocals.frame_rate)
+    
+    return processed_vocals + vocal_gain
+
 
 def prepare_singing_lyrics_old(lyrics: str) -> str:
     import re
@@ -1596,8 +1651,8 @@ def generate_hindi_song_via_native_audio(
         except Exception as edge_err:
             raise RuntimeError(f"Both Gemini TTS and Edge-TTS failed for Hindi song generation. Edge err: {edge_err}")
 
-    # 3. Load vocals
-    vocals = AudioSegment.from_file(str(raw_vocals_file))
+    # 3. Load and process vocals with dynamic genre-aware resonance filter
+    vocals = process_studio_vocal_resonance(raw_vocals_file, genre_preset=genre, voice_gender=singer_gender)
 
     # 4. Determine background beat file (Decoupled Pipeline using Lyria instrumental)
     beat_path = None
@@ -1722,16 +1777,11 @@ def generate_hindi_song_via_native_audio(
     # Crop beat to match vocals + 3 seconds of buffer
     beat = beat[:int((vocals.duration_seconds + 3) * 1000)]
 
-    # 5. Deepen voice for warm chest voice (0.95x pitch-shifting resonance filter for classical playback singing)
-    deeper_vocals = vocals._spawn(vocals.raw_data, overrides={
-        "frame_rate": int(vocals.frame_rate * 0.95)
-    }).set_frame_rate(vocals.frame_rate)
-
     # Drop the beat volume by 7dB to ensure dental consonants cut through smoothly
     softer_beat = beat - 7
 
-    # Overlay the processed vocals onto the background track (boosting vocals slightly with +3dB headroom)
-    final_mix = softer_beat.overlay(deeper_vocals + 3, position=0)
+    # Overlay the processed vocals onto the background track (pitch factor and vocal gain are already applied)
+    final_mix = softer_beat.overlay(vocals, position=0)
 
     # Export the final product
     output_path.parent.mkdir(parents=True, exist_ok=True)
