@@ -16,6 +16,16 @@ from content_pipeline.config import Settings
 from content_pipeline.bots.gemini_tts import generate_gemini_voiceover
 
 
+def is_vocal_track(filename: str) -> bool:
+    """Checks if a reference track is known to contain vocals/singing."""
+    fn_lower = filename.lower()
+    # If the file contains 'instrumental' or 'bgm' or 'beat', it is vocal-free
+    if any(x in fn_lower for x in ["instrumental", "bgm", "beat", "karaoke"]):
+        return False
+    # By default, assume reference files contain vocals unless they are explicitly marked as instrumental
+    return True
+
+
 HINDI_PRONUNCIATION_TEXT = (
     "गोकुल की सुनहरी सुबह में, मैया यशोदा ने पुकारा, कान्हा! "
     "मेरे प्यारे कान्हा, कहाँ छिपे हो? नन्हे कान्हा मुस्कुराते हुए बोले, "
@@ -1318,7 +1328,7 @@ def generate_edge_tts_song_fallback(
         ref_full_path = PROJECT_ROOT / "output" / "reference_audio" / selected_ref
         if not ref_full_path.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio").exists():
             ref_full_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio") / selected_ref
-        if ref_full_path.exists():
+        if ref_full_path.exists() and not is_vocal_track(selected_ref):
             beat_path = ref_full_path
             
     if not beat_path:
@@ -1477,7 +1487,7 @@ def generate_hindi_song_via_native_audio(
         
         # Determine prompt_audio_param for style references
         prompt_audio_param = None
-        if selected_ref != "None (Text-only)":
+        if selected_ref != "None (Text-only)" and not is_vocal_track(selected_ref):
             ref_full_path = PROJECT_ROOT / "output" / "reference_audio" / selected_ref
             if not ref_full_path.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio").exists():
                 ref_full_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio") / selected_ref
@@ -1507,12 +1517,10 @@ def generate_hindi_song_via_native_audio(
 
         client = Client("tencent/SongGeneration", token=hf_token, httpx_kwargs={"timeout": 600.0})
         
-        # Enforce instrumental-only description
-        inst_desc = style_description or "traditional north indian music, sitar and bansuri flute, no vocals, no background singing."
+        # Enforce positive instrumental description, avoiding negation words that trigger vocals
+        inst_desc = style_description or "traditional north indian music, pure instrumental, solo sitar and bansuri flute melody, acoustic tabla rhythm, studio recording"
         if "instrumental" not in inst_desc.lower():
-            inst_desc = "Instrumental only, no vocals, no singing. " + inst_desc
-        if "negative" not in inst_desc.lower():
-            inst_desc += ", negative_prompt: vocals, singing, backing vocals, english voice, whispering"
+            inst_desc = "Instrumental, " + inst_desc
             
         # Call prediction with instrumental lyric placeholder
         inst_lyric = "[intro-medium]\n\n[verse]\n[silence]\n\n[outro-medium]"
@@ -1551,7 +1559,7 @@ def generate_hindi_song_via_native_audio(
             ref_full_path = PROJECT_ROOT / "output" / "reference_audio" / selected_ref
             if not ref_full_path.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio").exists():
                 ref_full_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio") / selected_ref
-            if ref_full_path.exists():
+            if ref_full_path.exists() and not is_vocal_track(selected_ref):
                 beat_path = ref_full_path
 
         if not beat_path:
