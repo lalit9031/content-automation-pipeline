@@ -15,6 +15,8 @@ from typing import Any
 from content_pipeline.config import Settings
 from content_pipeline.bots.gemini_tts import generate_gemini_voiceover
 from pydub import AudioSegment
+import numpy as np
+import scipy.signal as signal
 
 
 def is_vocal_track(filename: str) -> bool:
@@ -1354,10 +1356,44 @@ def apply_ambient_reverb_tail(vocal_segment: AudioSegment, decay_db: float = 12,
     return spatial_vocals
 
 
+def denasalize_vocal_spectrum(vocal_segment: AudioSegment) -> AudioSegment:
+    """
+    Clears out the 'stuffy nose' robotic frequencies by applying a digital 
+    notch filter at 1kHz and boosting high-end vocal air clarity.
+    """
+    print("🎛️ Mastering Layer: Executing Anti-Nasal Vocal EQ...")
+    
+    # Ensure it's mono for clean signal processing
+    if vocal_segment.channels > 1:
+        vocal_segment = vocal_segment.set_channels(1)
+        
+    # Convert Pydub audio segment to raw numpy array for signal processing
+    sample_rate = vocal_segment.frame_rate
+    samples = np.array(vocal_segment.get_array_of_samples(), dtype=np.float32)
+    
+    # 1. Apply a Notch Filter to cut the exact nasal resonance point (1000 Hz)
+    notch_freq = 1000.0  # Center of nasal tone
+    quality_factor = 1.5  # Width of the cut
+    b, a = signal.iirnotch(notch_freq, quality_factor, sample_rate)
+    clean_samples = signal.lfilter(b, a, samples)
+    
+    # 2. Apply a High-Pass Filter to add "Air" and brightness (Boost above 3kHz)
+    b_hp, a_hp = signal.butter(2, 3000.0 / (sample_rate / 2.0), btype='high')
+    air_samples = signal.lfilter(b_hp, a_hp, clean_samples)
+    
+    # Blend 85% of the clean track with 15% of the high-pass track for crispness
+    mastered_samples = (clean_samples * 0.85) + (air_samples * 0.15)
+    
+    # Convert back into Pydub Audio Segment
+    mastered_samples = mastered_samples.clip(-32768, 32767).astype(np.int16)
+    new_vocal_segment = vocal_segment._spawn(mastered_samples.tobytes())
+    
+    return new_vocal_segment
+
+
 def process_studio_vocal_resonance(raw_vocal_path: Path, genre_preset: str, voice_gender: str) -> AudioSegment:
     """
-    Dynamically adjusts the physical audio spectrum based on 
-    the selected song genre and singer profile.
+    Updated resonance matrix that shifts pitch smoothly without squashing the throat formants.
     """
     from pydub import AudioSegment
     vocals = AudioSegment.from_file(str(raw_vocal_path))
@@ -1368,11 +1404,11 @@ def process_studio_vocal_resonance(raw_vocal_path: Path, genre_preset: str, voic
     
     if gender_lower == "female":
         # Keep female vocals bright and clean to avoid unnatural boxy distortions
-        pitch_factor = 0.98 if "romantic" in genre_lower or "pop" in genre_lower else 0.96
+        pitch_factor = 0.99
         vocal_gain = +3
     else:
         # Give male tracks that rich, deep playback singer warmth
-        pitch_factor = 0.95 if "acoustic" in genre_lower or "meditative" in genre_lower or "folk" in genre_lower else 0.93
+        pitch_factor = 0.97
         vocal_gain = +2
 
     # Execute frame-rate override modulation
@@ -1380,7 +1416,11 @@ def process_studio_vocal_resonance(raw_vocal_path: Path, genre_preset: str, voic
         "frame_rate": int(vocals.frame_rate * pitch_factor)
     }).set_frame_rate(vocals.frame_rate)
     
-    return processed_vocals + vocal_gain
+    # PASS THROUGH THE ANTI-NASAL FILTER
+    clear_vocals = denasalize_vocal_spectrum(processed_vocals)
+    
+    return clear_vocals + vocal_gain
+
 
 
 def prepare_singing_lyrics_old(lyrics: str) -> str:
