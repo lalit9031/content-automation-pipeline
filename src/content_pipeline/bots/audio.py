@@ -1295,33 +1295,16 @@ def _load_audio_manifests(output_dir: Path, pattern: str) -> list[dict[str, Any]
 
 def prepare_singing_lyrics(lyrics: str) -> str:
     """
-    Transforms rigid text into fluid musical notation to force 
-    the TTS model to naturally sustain its vocal frames and hold its breath.
+    Cleans up the text manipulation layer so it passes standard Devanagari words 
+    without manual vowel padding, relying entirely on bracketed system directives.
     """
-    import re
     # Clean up standard structural markers
-    clean_text = lyrics.replace("।", "").replace("॥", "")
-    
-    # Syllabic elongation map designed for native Indian vocal tracts
-    melodic_map = {
-        "जय": "जय्य~",
-        "हनुमान": "हनुमााान~",
-        "ज्ञान": "ग्यााान~",
-        "गुन": "गुुन~",
-        "सागर": "साागर~",
-        "राम": "रााम~",
-        "पुत्र": "पुुत्र~",
-        "मेरी": "मेएरीीी~",
-        "जिंदगी": "जििन-द-गीीी~"
-    }
-    
-    words = clean_text.split()
-    processed_words = [melodic_map.get(word, word) for word in words]
+    clean_text = lyrics.replace("।", "").replace("॥", "").strip()
     
     # Inject an explicit performance instruction token into the final delivery string
     vocal_directive = (
         "[performance_mode: singing, vocal_style: legato, sustain_vowels: true] "
-        f"{' '.join(processed_words)}"
+        f"{clean_text}"
     )
     return vocal_directive
 
@@ -1358,37 +1341,32 @@ def apply_ambient_reverb_tail(vocal_segment: AudioSegment, decay_db: float = 12,
 
 def denasalize_vocal_spectrum(vocal_segment: AudioSegment) -> AudioSegment:
     """
-    Clears out the 'stuffy nose' robotic frequencies by applying a digital 
-    notch filter at 1kHz and boosting high-end vocal air clarity.
+    Carves out lower-end heavy mud and boxy rumble while 
+    preserving mid-range vocal presence and clear air.
     """
-    print("🎛️ Mastering Layer: Executing Anti-Nasal Vocal EQ...")
+    print("🎛️ Mastering Layer: Executing Heavy Voice Mud Removal EQ...")
     
-    # Ensure it's mono for clean signal processing
-    if vocal_segment.channels > 1:
-        vocal_segment = vocal_segment.set_channels(1)
-        
-    # Convert Pydub audio segment to raw numpy array for signal processing
-    sample_rate = vocal_segment.frame_rate
-    samples = np.array(vocal_segment.get_array_of_samples(), dtype=np.float32)
+    # Enforce mono conversion layout for signal array consistency
+    mono_vocals = vocal_segment.set_channels(1)
+    sample_rate = mono_vocals.frame_rate
+    samples = np.array(mono_vocals.get_array_of_samples(), dtype=np.float32)
     
-    # 1. Apply a Notch Filter to cut the exact nasal resonance point (1000 Hz)
-    notch_freq = 1000.0  # Center of nasal tone
-    quality_factor = 1.5  # Width of the cut
+    # SHIFT NOTCH DOWN: Target the 400Hz muddy chamber instead of 1000Hz
+    notch_freq = 400.0  
+    quality_factor = 2.0  # Narrower cut to protect adjacent frequencies
     b, a = signal.iirnotch(notch_freq, quality_factor, sample_rate)
     clean_samples = signal.lfilter(b, a, samples)
     
-    # 2. Apply a High-Pass Filter to add "Air" and brightness (Boost above 3kHz)
+    # High-pass filter above 3000 Hz for premium acoustic clarity
     b_hp, a_hp = signal.butter(2, 3000.0 / (sample_rate / 2.0), btype='high')
     air_samples = signal.lfilter(b_hp, a_hp, clean_samples)
     
-    # Blend 85% of the clean track with 15% of the high-pass track for crispness
-    mastered_samples = (clean_samples * 0.85) + (air_samples * 0.15)
-    
-    # Convert back into Pydub Audio Segment
+    # Balanced mix matrix
+    mastered_samples = (clean_samples * 0.88) + (air_samples * 0.12)
     mastered_samples = mastered_samples.clip(-32768, 32767).astype(np.int16)
-    new_vocal_segment = vocal_segment._spawn(mastered_samples.tobytes())
     
-    return new_vocal_segment
+    return mono_vocals._spawn(mastered_samples.tobytes())
+
 
 
 def process_studio_vocal_resonance(raw_vocal_path: Path, genre_preset: str, voice_gender: str) -> AudioSegment:
