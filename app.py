@@ -1946,63 +1946,82 @@ def render_frontdoor(settings: Settings) -> None:
                         sanitized_lyrics = "[verse]\n" + sanitized_lyrics
 
                     lang = st.session_state.get("music_studio_language", "English")
-                    if lang in ["Hindi", "Hinglish"]:
+                    if lang == "Hindi":
+                        if not any("\u0900" <= char <= "\u097f" for char in sanitized_lyrics):
+                            st.write("🔮 Converting Romanized lyrics to native Devanagari script for perfect Indian accent...")
+                            from content_pipeline.bots.gemini_tts import transliterate_to_devanagari
+                            sanitized_lyrics = transliterate_to_devanagari(sanitized_lyrics, settings)
+                            st.info(f"📝 Transliterated Devanagari Lyrics:\n{sanitized_lyrics}")
+                    elif lang == "Hinglish":
                         st.write("🔮 Applying advanced phonetic transcription layer for perfect Indian accent...")
                         from content_pipeline.bots.phonetic_mapper import hindi_to_phonetic_hinglish
                         sanitized_lyrics = hindi_to_phonetic_hinglish(sanitized_lyrics, gemini_api_key=settings.gemini_api_key)
                         st.info(f"📝 Transcribed Phonetic Lyrics:\n{sanitized_lyrics}")
 
                     st.write("🎵 Dispatching song generation request to Hugging Face...")
-                    client = Client("tencent/SongGeneration", token=settings.hf_token, httpx_kwargs={"timeout": 600.0})
-                    
-                    result_path, info = client.predict(
-                        lyric=sanitized_lyrics,
-                        description=desc,
-                        prompt_audio=prompt_audio_param,
-                        genre=genre,
-                        cfg_coef=cfg,
-                        temperature=temp,
-                        api_name="/generate_song"
-                    )
-                    
-                    if not result_path or str(result_path).strip().lower() == "none":
-                        raise ValueError(f"Hugging Face space did not return a valid audio track. Details: {info}")
-
-                    st.write("🔄 Transcoding generated audio from FLAC to genuine MP3 with smooth fade-out...")
-                    out_path = PROJECT_ROOT / "output" / "Music_Studio_Generated_Song.mp3"
-                    if not out_path.parent.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio").exists():
-                        out_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio/Music_Studio_Generated_Song.mp3")
-                    out_path.parent.mkdir(parents=True, exist_ok=True)
-                    
-                    duration_cmd = [
-                        "ffprobe", "-i", str(result_path),
-                        "-show_entries", "format=duration",
-                        "-v", "quiet", "-of", "csv=p=0"
-                    ]
-                    duration_res = subprocess.run(duration_cmd, capture_output=True, text=True, check=True)
-                    total_duration = float(duration_res.stdout.strip())
-                    
-                    fade_duration = 5.0
-                    if total_duration > 15.0:
-                        start_fade = total_duration - fade_duration
-                    else:
-                        fade_duration = min(2.0, total_duration * 0.2)
-                        start_fade = total_duration - fade_duration
+                    try:
+                        client = Client("tencent/SongGeneration", token=settings.hf_token, httpx_kwargs={"timeout": 600.0})
                         
-                    transcode_cmd = [
-                        "ffmpeg", "-y", "-i", str(result_path),
-                        "-filter:a", f"afade=t=out:st={start_fade:.3f}:d={fade_duration:.3f}",
-                        "-codec:a", "libmp3lame", "-qscale:a", "2",
-                        str(out_path)
-                    ]
-                    subprocess.run(transcode_cmd, check=True)
-                    
-                    st.session_state["music_studio_generated_mp3"] = str(out_path)
-                    st.success("🎉 Song generated successfully!")
-                    st.rerun()
-                    
-                except Exception as exc:
-                    st.error(f"❌ Error generating song: {exc}")
+                        result_path, info = client.predict(
+                            lyric=sanitized_lyrics,
+                            description=desc,
+                            prompt_audio=prompt_audio_param,
+                            genre=genre,
+                            cfg_coef=cfg,
+                            temperature=temp,
+                            api_name="/generate_song"
+                        )
+                        
+                        if not result_path or str(result_path).strip().lower() == "none":
+                            raise ValueError(f"Hugging Face space did not return a valid audio track. Details: {info}")
+
+                        st.write("🔄 Transcoding generated audio from FLAC to genuine MP3 with smooth fade-out...")
+                        out_path = PROJECT_ROOT / "output" / "Music_Studio_Generated_Song.mp3"
+                        if not out_path.parent.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio").exists():
+                            out_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio/Music_Studio_Generated_Song.mp3")
+                        out_path.parent.mkdir(parents=True, exist_ok=True)
+                        
+                        duration_cmd = [
+                            "ffprobe", "-i", str(result_path),
+                            "-show_entries", "format=duration",
+                            "-v", "quiet", "-of", "csv=p=0"
+                        ]
+                        duration_res = subprocess.run(duration_cmd, capture_output=True, text=True, check=True)
+                        total_duration = float(duration_res.stdout.strip())
+                        
+                        fade_duration = 5.0
+                        if total_duration > 15.0:
+                            start_fade = total_duration - fade_duration
+                        else:
+                            fade_duration = min(2.0, total_duration * 0.2)
+                            start_fade = total_duration - fade_duration
+                            
+                        transcode_cmd = [
+                            "ffmpeg", "-y", "-i", str(result_path),
+                            "-filter:a", f"afade=t=out:st={start_fade:.3f}:d={fade_duration:.3f}",
+                            "-codec:a", "libmp3lame", "-qscale:a", "2",
+                            str(out_path)
+                        ]
+                        subprocess.run(transcode_cmd, check=True)
+                        
+                        st.session_state["music_studio_generated_mp3"] = str(out_path)
+                        st.success("🎉 Song generated successfully!")
+                        st.rerun()
+                    except Exception as hf_exc:
+                        st.warning(f"⚠️ Hugging Face song generation failed: {hf_exc}. Activating free Edge-TTS backup mixer...")
+                        from content_pipeline.bots.audio import generate_edge_tts_song_fallback
+                        out_path = PROJECT_ROOT / "output" / "Music_Studio_Generated_Song.mp3"
+                        if not out_path.parent.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio").exists():
+                            out_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio/Music_Studio_Generated_Song.mp3")
+                        generate_edge_tts_song_fallback(
+                            lyrics=sanitized_lyrics,
+                            output_path=out_path,
+                            singer_gender=singer_gender,
+                            selected_ref=selected_ref
+                        )
+                        st.session_state["music_studio_generated_mp3"] = str(out_path)
+                        st.success("🎉 Backup Song generated successfully using Edge-TTS fallback mixer!")
+                        st.rerun()
 
     elif active_p == "Video":
         st.markdown(
@@ -2758,63 +2777,84 @@ def render_frontdoor(settings: Settings) -> None:
                         sanitized_lyrics = "[verse]\n" + sanitized_lyrics
 
                     lang = st.session_state.get("kids_studio_language", "English")
-                    if lang in ["Hindi", "Hinglish"]:
+                    if lang == "Hindi":
+                        if not any("\u0900" <= char <= "\u097f" for char in sanitized_lyrics):
+                            st.write("🔮 Converting Romanized lyrics to native Devanagari script for perfect Indian accent...")
+                            from content_pipeline.bots.gemini_tts import transliterate_to_devanagari
+                            sanitized_lyrics = transliterate_to_devanagari(sanitized_lyrics, settings)
+                            st.info(f"📝 Transliterated Devanagari Lyrics:\n{sanitized_lyrics}")
+                    elif lang == "Hinglish":
                         st.write("🔮 Applying advanced phonetic transcription layer for perfect Indian accent...")
                         from content_pipeline.bots.phonetic_mapper import hindi_to_phonetic_hinglish
                         sanitized_lyrics = hindi_to_phonetic_hinglish(sanitized_lyrics, gemini_api_key=settings.gemini_api_key)
                         st.info(f"📝 Transcribed Phonetic Lyrics:\n{sanitized_lyrics}")
 
                     st.write("🎵 Dispatching song generation request to Hugging Face...")
-                    client = Client("tencent/SongGeneration", token=settings.hf_token, httpx_kwargs={"timeout": 600.0})
-                    
-                    result_path, info = client.predict(
-                        lyric=sanitized_lyrics,
-                        description=desc,
-                        prompt_audio=prompt_audio_param,
-                        genre=genre,
-                        cfg_coef=cfg,
-                        temperature=temp,
-                        api_name="/generate_song"
-                    )
-                    
-                    if not result_path or str(result_path).strip().lower() == "none":
-                        raise ValueError(f"Hugging Face space did not return a valid audio track. Details: {info}")
-
-                    st.write("🔄 Transcoding generated audio from FLAC to genuine MP3 with smooth fade-out...")
-                    out_path = PROJECT_ROOT / "output" / "LittleBubbles_Generated_Song.mp3"
-                    if not out_path.parent.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio").exists():
-                        out_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio/LittleBubbles_Generated_Song.mp3")
-                    out_path.parent.mkdir(parents=True, exist_ok=True)
-                    
-                    duration_cmd = [
-                        "ffprobe", "-i", str(result_path),
-                        "-show_entries", "format=duration",
-                        "-v", "quiet", "-of", "csv=p=0"
-                    ]
-                    duration_res = subprocess.run(duration_cmd, capture_output=True, text=True, check=True)
-                    total_duration = float(duration_res.stdout.strip())
-                    
-                    fade_duration = 5.0
-                    if total_duration > 15.0:
-                        start_fade = total_duration - fade_duration
-                    else:
-                        fade_duration = min(2.0, total_duration * 0.2)
-                        start_fade = total_duration - fade_duration
+                    try:
+                        client = Client("tencent/SongGeneration", token=settings.hf_token, httpx_kwargs={"timeout": 600.0})
                         
-                    transcode_cmd = [
-                        "ffmpeg", "-y", "-i", str(result_path),
-                        "-filter:a", f"afade=t=out:st={start_fade:.3f}:d={fade_duration:.3f}",
-                        "-codec:a", "libmp3lame", "-qscale:a", "2",
-                        str(out_path)
-                    ]
-                    subprocess.run(transcode_cmd, check=True)
-                    
-                    st.session_state["kids_song_generated_mp3"] = str(out_path)
-                    st.success("🎉 Kids rhyme generated successfully!")
-                    st.rerun()
-                    
-                except Exception as exc:
-                    st.error(f"❌ Error generating kids rhyme: {exc}")
+                        result_path, info = client.predict(
+                            lyric=sanitized_lyrics,
+                            description=desc,
+                            prompt_audio=prompt_audio_param,
+                            genre=genre,
+                            cfg_coef=cfg,
+                            temperature=temp,
+                            api_name="/generate_song"
+                        )
+                        
+                        if not result_path or str(result_path).strip().lower() == "none":
+                            raise ValueError(f"Hugging Face space did not return a valid audio track. Details: {info}")
+
+                        st.write("🔄 Transcoding generated audio from FLAC to genuine MP3 with smooth fade-out...")
+                        out_path = PROJECT_ROOT / "output" / "LittleBubbles_Generated_Song.mp3"
+                        if not out_path.parent.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio").exists():
+                            out_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio/LittleBubbles_Generated_Song.mp3")
+                        out_path.parent.mkdir(parents=True, exist_ok=True)
+                        
+                        duration_cmd = [
+                            "ffprobe", "-i", str(result_path),
+                            "-show_entries", "format=duration",
+                            "-v", "quiet", "-of", "csv=p=0"
+                        ]
+                        duration_res = subprocess.run(duration_cmd, capture_output=True, text=True, check=True)
+                        total_duration = float(duration_res.stdout.strip())
+                        
+                        fade_duration = 5.0
+                        if total_duration > 15.0:
+                            start_fade = total_duration - fade_duration
+                        else:
+                            fade_duration = min(2.0, total_duration * 0.2)
+                            start_fade = total_duration - fade_duration
+                            
+                        transcode_cmd = [
+                            "ffmpeg", "-y", "-i", str(result_path),
+                            "-filter:a", f"afade=t=out:st={start_fade:.3f}:d={fade_duration:.3f}",
+                            "-codec:a", "libmp3lame", "-qscale:a", "2",
+                            str(out_path)
+                        ]
+                        subprocess.run(transcode_cmd, check=True)
+                        
+                        st.session_state["kids_song_generated_mp3"] = str(out_path)
+                        st.success("🎉 Kids rhyme generated successfully!")
+                        st.rerun()
+                    except Exception as hf_exc:
+                        st.warning(f"⚠️ Hugging Face song generation failed: {hf_exc}. Activating free Edge-TTS backup mixer...")
+                        from content_pipeline.bots.audio import generate_edge_tts_song_fallback
+                        out_path = PROJECT_ROOT / "output" / "LittleBubbles_Generated_Song.mp3"
+                        if not out_path.parent.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio").exists():
+                            out_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio/LittleBubbles_Generated_Song.mp3")
+                        singer_gender = st.session_state.get("kids_song_singer_gender", "Male")
+                        selected_ref = st.session_state.get("kids_song_ref_audio_choice", "None (Text-only)")
+                        generate_edge_tts_song_fallback(
+                            lyrics=sanitized_lyrics,
+                            output_path=out_path,
+                            singer_gender=singer_gender,
+                            selected_ref=selected_ref
+                        )
+                        st.session_state["kids_song_generated_mp3"] = str(out_path)
+                        st.success("🎉 Backup Kids rhyme generated successfully using Edge-TTS fallback mixer!")
+                        st.rerun()
 
     elif active_p == "Speech":
         active_scene_idx = st.session_state.get("scene_index", 0)
@@ -4184,7 +4224,7 @@ def expand_general_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, sin
         Target Song Language: "{language}"
         
         Requirements:
-        1. If the Target Song Language is 'Hindi', write the lyrics in Romanized Hindi/Hinglish (Devanagari is NOT allowed, use Roman characters like 'Hum tum' instead of 'हम tum' for clean phonetics and natural voice output). Explicitly mention 'native Indian {singer_gender.lower()} singing voice with natural Indian accent', 'Bollywood style playback singer (e.g. Arijit Singh/Atif Aslam style male, Shreya Ghoshal style female)', 'expressive emotional delivery with traditional vocal ornamentations (gamaq and murki)', 'clear Hinglish pronunciation', 'traditional Indian instruments (sitar, bansuri flute, dholak, tabla, acoustic guitar)', and 'highly polished T-Series/Saregama style commercial pop mix with grand cinematic reverb and spacious stereo delay' in the style description.
+        1. If the Target Song Language is 'Hindi', write the lyrics in standard Devanagari script (Hindi characters) like 'जय हनुमान ज्ञान गुन सागर' rather than Romanized/Hinglish (e.g. 'Jai Hanuman'). This forces the neural network to activate its native Indian mouth-shape and dental consonant engines for a perfect native accent. Explicitly mention 'native Indian {singer_gender.lower()} singing voice with natural Indian accent', 'Bollywood style playback singer (e.g. Arijit Singh/Atif Aslam style male, Shreya Ghoshal style female)', 'expressive emotional delivery with traditional vocal ornamentations (gamaq and murki)', 'clear native pronunciation', 'traditional Indian instruments (sitar, bansuri flute, dholak, tabla, acoustic guitar)', and 'highly polished T-Series/Saregama style commercial pop mix with grand cinematic reverb and spacious stereo delay' in the style description.
         2. SPECIAL DEVOTIONAL EXCEPTION: If the User Song Idea or prompt contains references to Hindu deities, devotional topics, or prayers (such as 'Hanuman', 'Chalisa', 'bhajan', 'aarti', 'spiritual', 'ram', 'krishna', 'shiva', 'ganesha', 'temple', 'prayer', 'devotional'), then override the modern commercial pop styles. Instead, explicitly require:
            - 'authentic traditional Indian devotional bhajan/kirtan mood'
            - 'deeply spiritual native Indian {singer_gender.lower()} devotional singer voice'
@@ -4248,7 +4288,7 @@ def expand_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, singer_gend
         Target Song Language: "{language}"
         
         Requirements:
-        1. If the Target Song Language is 'Hindi', write the lyrics in Romanized Hindi/Hinglish (Devanagari is NOT allowed, use Roman characters like 'Mummy papa' instead of 'मम्मी पापा' for clean phonetics and natural voice output). Explicitly mention 'native Indian {singer_gender.lower()} singing voice', 'Bollywood style kids singer', 'natural Indian accent', 'clear Hinglish pronunciation', and use appropriate Indian instruments and child-friendly tones (e.g. glockenspiel, bells, sitar, bansuri flute, dholak, tabla, acoustic guitar) in the style description.
+        1. If the Target Song Language is 'Hindi', write the lyrics in standard Devanagari script (Hindi characters) like 'जय हनुमान ज्ञान गुन सागर' rather than Romanized/Hinglish (e.g. 'Jai Hanuman'). This forces the neural network to activate its native Indian mouth-shape and dental consonant engines for a perfect native accent. Explicitly mention 'native Indian {singer_gender.lower()} singing voice', 'Bollywood style kids singer', 'natural Indian accent', 'clear native pronunciation', and use appropriate Indian instruments and child-friendly tones (e.g. glockenspiel, bells, sitar, bansuri flute, dholak, tabla, acoustic guitar) in the style description.
         2. SPECIAL DEVOTIONAL EXCEPTION: If the User Kids Song Idea or prompt contains references to Hindu deities, devotional topics, or prayers (such as 'Hanuman', 'Chalisa', 'bhajan', 'aarti', 'spiritual', 'ram', 'krishna', 'shiva', 'ganesha', 'temple', 'prayer', 'devotional'), then override standard kids pop. Instead, explicitly require:
            - 'traditional Indian devotional bhajan style adapted for kids'
            - 'sweet spiritual native Indian {singer_gender.lower()} singer voice'

@@ -224,6 +224,45 @@ def generate_gemini_voiceover(
     raise RuntimeError("Gemini Neural TTS generation failed after cycling all API key slots and models.")
 
 
+import logging
+logger = logging.getLogger(__name__)
+
+def transliterate_to_devanagari(text: str, settings: Settings) -> str:
+    """Transliterates Romanized Hinglish/Hindi text into standard Devanagari script using Gemini 2.5 Flash."""
+    keys = list(settings.gemini_api_keys)
+    if not keys and settings.gemini_api_key:
+        keys = [settings.gemini_api_key]
+    if os.environ.get("GEMINI_API_KEY") and os.environ.get("GEMINI_API_KEY") not in keys:
+        keys.insert(0, os.environ.get("GEMINI_API_KEY"))
+    keys = [k for k in keys if k]
+    if not keys:
+        logger.warning("No Gemini API key available for transliteration.")
+        return text
+
+    prompt = (
+        "You are a professional Hindi translator.\n"
+        "Convert the following Romanized Hindi/Hinglish text into standard native Devanagari script.\n"
+        "Maintain all punctuation and bracketed emotion/formatting tags (like [excitedly], [very slow]) exactly as they are.\n"
+        "Output ONLY the final Devanagari text. Do not add any explanation, notes, or markdown formatting.\n\n"
+        f"Text to convert:\n{text}"
+    )
+
+    for key in keys:
+        try:
+            client = genai.Client(api_key=key)
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt
+            )
+            res_text = response.text.strip()
+            if res_text:
+                return res_text
+        except Exception as e:
+            logger.warning(f"Gemini transliteration attempt failed: {e}")
+            
+    return text
+
+
 from datetime import date
 import json
 
