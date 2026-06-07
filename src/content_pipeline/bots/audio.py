@@ -1295,18 +1295,20 @@ def _load_audio_manifests(output_dir: Path, pattern: str) -> list[dict[str, Any]
 
 def prepare_singing_lyrics(lyrics: str) -> str:
     """
-    Cleans up the text manipulation layer so it passes standard Devanagari words 
-    without manual vowel padding, relying entirely on bracketed system directives.
+    Cleans structural markers and strips artificial character elongation.
+    Ensures 100% clean Devanagari is passed to prevent token fragmentation
+    and completely eliminate background ghost voice anomalies.
     """
-    # Clean up standard structural markers
-    clean_text = lyrics.replace("।", "").replace("॥", "").strip()
+    # Remove standard punctuation boundaries
+    clean_text = lyrics.replace("।", "").replace("॥", "")
     
-    # Inject an explicit performance instruction token into the final delivery string
-    vocal_directive = (
-        "[performance_mode: singing, vocal_style: legato, sustain_vowels: true] "
-        f"{clean_text}"
-    )
-    return vocal_directive
+    # Regex filter to deduplicate accidentally repeated Devanagari vowel signs
+    # This prevents the model from synthesizing secondary harmonic tracking whispers
+    clean_text = re.sub(r'([\u093e-\u094c])\1+', r'\1', clean_text)
+    clean_text = re.sub(r'([\u0a00-\u0a7f])\1+', r'\1', clean_text)
+    
+    return clean_text.strip()
+
 
 def apply_studio_stereo_doubling(vocal_segment: AudioSegment) -> AudioSegment:
     """
@@ -1344,31 +1346,30 @@ def clean_and_master_pop_vocals(vocal_segment: AudioSegment) -> AudioSegment:
     Carves away low-end mud, amplifies high-end air clarity, and applies 
     tight range compression to match modern commercial acoustic pop profiles.
     """
-    print("🎛️ Mastering Layer: Executing Modern Pop Vocal Mastering...")
+    print("🎛️ Mastering Suite: Executing Pop Vocal Calibration Matrix...")
     from pydub.effects import compress_dynamic_range
     
-    # Force mono channel layout for signal array processing stability
+    # Force mono conversion for raw signal array processing layout consistency
     mono_vocals = vocal_segment.set_channels(1)
     sample_rate = mono_vocals.frame_rate
     samples = np.array(mono_vocals.get_array_of_samples(), dtype=np.float32)
     
-    # 1. Carve away room rumble and muddy low-end frequencies at 400Hz
+    # STEP A: Cut the 400Hz boxy/heavy room rumble chamber (Quality Factor = 2.0)
     notch_freq = 400.0  
-    quality_factor = 2.0  
-    b, a = signal.iirnotch(notch_freq, quality_factor, sample_rate)
+    b, a = signal.iirnotch(notch_freq, 2.0, sample_rate)
     clean_samples = signal.lfilter(b, a, samples)
     
-    # 2. Extract and boost vocal "air" presence above 2500Hz for a crisp pop texture
+    # STEP B: High-pass filter above 2500Hz to capture clean, crisp pop air clarity
     b_hp, a_hp = signal.butter(2, 2500.0 / (sample_rate / 2.0), btype='high')
     air_samples = signal.lfilter(b_hp, a_hp, clean_samples)
     
-    # Commercial Pop Mix: 80% clean track blended with a 20% high-frequency clarity boost
-    mastered_samples = (clean_samples * 0.80) + (air_samples * 0.20)
+    # STEP C: Blend 82% clean signal with an 18% high-end presence boost
+    mastered_samples = (clean_samples * 0.82) + (air_samples * 0.18)
     mastered_samples = mastered_samples.clip(-32768, 32767).astype(np.int16)
     mastered_vocals = mono_vocals._spawn(mastered_samples.tobytes())
     
-    # 3. Dynamic Range Compression: Glues the voice tightly into the instruments
-    # Prevents trailing syllables from dropping out or sounding like spoken text
+    # STEP D: Dynamic Range Compression
+    # Flattens audio peaks and boosts soft consonants so it sounds like a record
     compressed_vocals = compress_dynamic_range(
         mastered_vocals,
         threshold=-15.0,
@@ -1382,33 +1383,22 @@ def clean_and_master_pop_vocals(vocal_segment: AudioSegment) -> AudioSegment:
 
 def process_studio_vocal_resonance(raw_vocal_path: Path, genre_preset: str, voice_gender: str) -> AudioSegment:
     """
-    Updated resonance matrix that shifts pitch smoothly without squashing the throat formants.
+    Gives vocals deep playback resonance without over-compressing 
+    or altering natural mouth and throat shapes (formants).
     """
     from pydub import AudioSegment
     vocals = AudioSegment.from_file(str(raw_vocal_path))
     
-    # Dynamic Frequency Modulation Blueprint
-    genre_lower = genre_preset.strip().lower()
-    gender_lower = voice_gender.strip().lower()
+    # Soft, light calibrations that do not introduce nasal/stuffy artifacts
+    pitch_factor = 0.97 if voice_gender.lower() == "male" else 0.99
     
-    if gender_lower == "female":
-        # Keep female vocals bright and clean to avoid unnatural boxy distortions
-        pitch_factor = 0.99
-        vocal_gain = +3
-    else:
-        # Give male tracks that rich, deep playback singer warmth
-        pitch_factor = 0.97
-        vocal_gain = +2
-
-    # Execute frame-rate override modulation
     processed_vocals = vocals._spawn(vocals.raw_data, overrides={
         "frame_rate": int(vocals.frame_rate * pitch_factor)
     }).set_frame_rate(vocals.frame_rate)
     
-    # PASS THROUGH THE POP VOCAL MASTERING FILTER
-    clear_vocals = clean_and_master_pop_vocals(processed_vocals)
-    
-    return clear_vocals + vocal_gain
+    # Run through the Pop Mastering filter
+    return clean_and_master_pop_vocals(processed_vocals)
+
 
 
 
@@ -1685,12 +1675,21 @@ def generate_hindi_song_via_native_audio(
                     except Exception:
                         pass
             
+            # Overhaul Prompt Directives: Command a professional Bollywood studio playback singer style
+            # utilizing a 'fluid, continuous legato melody', explicitly banning 'word-by-word reading'
+            # and 'ghost backing voices or tracking whispers.'
+            song_instruction = (
+                "You are a professional Bollywood studio playback singer performing in a clear, expressive pop style.\n"
+                "Deliver the text as a fluid, continuous legato melody. Strictly avoid word-by-word reading, mechanical prose cadences, and any background tracking voices, echo effects, or harmonic duplication whispers."
+            )
+            
             # Write to raw_vocals_file
             generate_gemini_voiceover(
                 text=clean_lyrics_gemini,
                 output_path=raw_vocals_file,
                 voice_name=voice_to_use,
-                settings=settings
+                settings=settings,
+                system_instruction=song_instruction
             )
             generated_ok = True
         except Exception as e:

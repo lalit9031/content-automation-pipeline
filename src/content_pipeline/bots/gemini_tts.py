@@ -89,6 +89,7 @@ def generate_gemini_voiceover(
     output_path: Path,
     voice_name: str,
     settings: Settings,
+    system_instruction: str = None,
 ) -> Path:
     """Generates speech audio using Google's Gemini TTS models (Flash/Pro preview tts).
 
@@ -178,7 +179,9 @@ def generate_gemini_voiceover(
             try:
                 # Prompt prepending for Hindi pronunciation guidelines (required because system_instructions is not supported on Flash TTS models)
                 prompt_text = text
-                if is_hindi:
+                if system_instruction:
+                    prompt_text = system_instruction + "\n\nHere is the text to speak:\n" + text
+                elif is_hindi:
                     accent_instructions = (
                         "You are an expert native Indian classical playback singer performing a sacred hymn.\n"
                         "Deliver the text as a continuous, fluid, legato melody track with absolutely zero background tracking voices or harmonic duplication whispers, NOT as spoken text.\n"
