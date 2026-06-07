@@ -1307,31 +1307,31 @@ def prepare_singing_lyrics(lyrics: str) -> str:
     # Dynamic matra elongation mapping helper
     def elongate_line(line_str: str) -> str:
         replacements = {
-            'ा': 'ााा',
-            'ी': 'ीीी',
-            'ू': 'ूूू',
-            'ो': 'ोोो',
+            'ा': 'ाा',
+            'ी': 'ीी',
+            'ू': 'ूू',
+            'ो': 'ोो',
             'ु': 'ुु',
-            'े': 'ेेे',
-            'ै': 'ैैै',
-            'ं': 'ंंं',
+            'े': 'ेे',
+            'ै': 'ैै',
+            'ं': 'ंं',
         }
         word_map = {
-            "जय": "जय्य्य",
-            "हनुमान": "हनुमााान",
-            "ज्ञान": "ग्यााान",
+            "जय": "जय्य",
+            "हनुमान": "हनुमाान",
+            "ज्ञान": "ग्याान",
             "गुन": "गुुन",
-            "सागर": "सााागर",
-            "कपीस": "कपीीीस",
-            "लोक": "लोोोक",
-            "उजागर": "उजााागर",
-            "राम": "राााम",
-            "दूत": "दूूूत",
+            "सागर": "साागर",
+            "कपीस": "कपीीस",
+            "लोक": "लोोक",
+            "उजागर": "उजाागर",
+            "राम": "रााम",
+            "दूत": "दूूत",
             "अतुलित": "अतुुलित",
-            "अंजनि": "अंंंजनि",
+            "अंजनि": "अंंजनि",
             "पुत्र": "पुुत्र",
             "पवनसुत": "पवनसुुत",
-            "नामा": "नााामााा",
+            "नामा": "नाामाा",
         }
         
         words = line_str.split()
@@ -1456,9 +1456,9 @@ def generate_edge_tts_song_fallback(
     # Crop beat to match vocals + 3 seconds of buffer
     beat = beat[:int((vocals.duration_seconds + 3) * 1000)]
     
-    # 4. Deepen voice for warm chest voice (0.91x pitch-shifting resonance filter for classical playback singing)
+    # 4. Deepen voice for warm chest voice (0.95x pitch-shifting resonance filter for classical playback singing)
     deeper_vocals = vocals._spawn(vocals.raw_data, overrides={
-        "frame_rate": int(vocals.frame_rate * 0.91)
+        "frame_rate": int(vocals.frame_rate * 0.95)
     }).set_frame_rate(vocals.frame_rate)
     
     # Drop the beat volume by 7dB to ensure dental consonants cut through smoothly
@@ -1712,9 +1712,9 @@ def generate_hindi_song_via_native_audio(
     # Crop beat to match vocals + 3 seconds of buffer
     beat = beat[:int((vocals.duration_seconds + 3) * 1000)]
 
-    # 5. Deepen voice for warm chest voice (0.91x pitch-shifting resonance filter for classical playback singing)
+    # 5. Deepen voice for warm chest voice (0.95x pitch-shifting resonance filter for classical playback singing)
     deeper_vocals = vocals._spawn(vocals.raw_data, overrides={
-        "frame_rate": int(vocals.frame_rate * 0.91)
+        "frame_rate": int(vocals.frame_rate * 0.95)
     }).set_frame_rate(vocals.frame_rate)
 
     # Drop the beat volume by 7dB to ensure dental consonants cut through smoothly
