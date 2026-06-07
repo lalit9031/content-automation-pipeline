@@ -90,9 +90,9 @@ def generate_gemini_voiceover(
     voice_name: str,
     settings: Settings,
 ) -> Path:
-    """Generates speech audio using the gemini-2.5-pro-preview-tts model.
+    """Generates speech audio using Google's Gemini TTS models (Flash/Pro preview tts).
 
-    Cycles through available API keys to ensure high resilience.
+    Cycles through available API keys and models to ensure high resilience.
     """
     keys = list(settings.gemini_api_keys)
     if not keys and settings.gemini_api_key:
@@ -160,48 +160,68 @@ def generate_gemini_voiceover(
         speech_config=speech_config,
     )
 
-    contents = [
-        types.Content(
-            role="user",
-            parts=[types.Part.from_text(text=text)],
-        ),
+    models_to_try = [
+        "gemini-3.1-flash-tts-preview",
+        "gemini-2.5-flash-preview-tts",
+        "gemini-2.5-pro-preview-tts",
     ]
 
     last_error: Exception | None = None
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
+    # Detect if text contains Hindi characters
+    is_hindi = any("\u0900" <= char <= "\u097f" for char in text)
+
     for idx, key in enumerate(keys):
-        try:
-            client = genai.Client(api_key=key)
-            audio_buffer = bytearray()
-            mime_type = "audio/L16;rate=24000"
+        client = genai.Client(api_key=key)
+        for model in models_to_try:
+            try:
+                # Prompt prepending for Hindi pronunciation guidelines (required because system_instructions is not supported on Flash TTS models)
+                prompt_text = text
+                if is_hindi:
+                    accent_instructions = (
+                        "You must speak and chant with a 100% authentic Indian accent.\n"
+                        "Strictly adhere to Hindi phonetics: use soft dental sounds for 'त' and 'द', "
+                        "and proper retroflex sounds for 'ट' and 'ड'. Do not truncate trailing vowels. "
+                        "Match your vocal pacing, emotional weight, and cadence perfectly.\n\n"
+                        "Here is the text to speak:\n"
+                    )
+                    prompt_text = accent_instructions + text
 
-            # Pull and stream audio chunks
-            for chunk in client.models.generate_content_stream(
-                model="gemini-2.5-pro-preview-tts",
-                contents=contents,
-                config=generate_content_config,
-            ):
-                if chunk.parts is None:
-                    continue
-                if chunk.parts[0].inline_data and chunk.parts[0].inline_data.data:
-                    inline_data = chunk.parts[0].inline_data
-                    audio_buffer.extend(inline_data.data)
-                    if inline_data.mime_type:
-                        mime_type = inline_data.mime_type
+                contents = [
+                    types.Content(
+                        role="user",
+                        parts=[types.Part.from_text(text=prompt_text)],
+                    ),
+                ]
 
-            if audio_buffer:
-                wav_bytes = convert_to_wav(bytes(audio_buffer), mime_type)
-                output_path.write_bytes(wav_bytes)
-                return output_path
+                audio_buffer = bytearray()
+                mime_type = "audio/L16;rate=24000"
 
-            raise RuntimeError("Gemini Neural TTS returned empty audio data buffer.")
-        except Exception as e:
-            last_error = e
+                # Pull and stream audio chunks
+                for chunk in client.models.generate_content_stream(
+                    model=model,
+                    contents=contents,
+                    config=generate_content_config,
+                ):
+                    if chunk.parts is None:
+                        continue
+                    if chunk.parts[0].inline_data and chunk.parts[0].inline_data.data:
+                        inline_data = chunk.parts[0].inline_data
+                        audio_buffer.extend(inline_data.data)
+                        if inline_data.mime_type:
+                            mime_type = inline_data.mime_type
+
+                if audio_buffer:
+                    wav_bytes = convert_to_wav(bytes(audio_buffer), mime_type)
+                    output_path.write_bytes(wav_bytes)
+                    return output_path
+            except Exception as e:
+                last_error = e
 
     if last_error is not None:
         raise last_error
-    raise RuntimeError("Gemini Neural TTS generation failed after cycling all API key slots.")
+    raise RuntimeError("Gemini Neural TTS generation failed after cycling all API key slots and models.")
 
 
 from datetime import date
