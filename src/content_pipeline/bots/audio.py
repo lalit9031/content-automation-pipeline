@@ -1339,34 +1339,45 @@ def apply_ambient_reverb_tail(vocal_segment: AudioSegment, decay_db: float = 12,
     return spatial_vocals
 
 
-def denasalize_vocal_spectrum(vocal_segment: AudioSegment) -> AudioSegment:
+def clean_and_master_pop_vocals(vocal_segment: AudioSegment) -> AudioSegment:
     """
-    Carves out lower-end heavy mud and boxy rumble while 
-    preserving mid-range vocal presence and clear air.
+    Carves away low-end mud, amplifies high-end air clarity, and applies 
+    tight range compression to match modern commercial acoustic pop profiles.
     """
-    print("🎛️ Mastering Layer: Executing Heavy Voice Mud Removal EQ...")
+    print("🎛️ Mastering Layer: Executing Modern Pop Vocal Mastering...")
+    from pydub.effects import compress_dynamic_range
     
-    # Enforce mono conversion layout for signal array consistency
+    # Force mono channel layout for signal array processing stability
     mono_vocals = vocal_segment.set_channels(1)
     sample_rate = mono_vocals.frame_rate
     samples = np.array(mono_vocals.get_array_of_samples(), dtype=np.float32)
     
-    # SHIFT NOTCH DOWN: Target the 400Hz muddy chamber instead of 1000Hz
+    # 1. Carve away room rumble and muddy low-end frequencies at 400Hz
     notch_freq = 400.0  
-    quality_factor = 2.0  # Narrower cut to protect adjacent frequencies
+    quality_factor = 2.0  
     b, a = signal.iirnotch(notch_freq, quality_factor, sample_rate)
     clean_samples = signal.lfilter(b, a, samples)
     
-    # High-pass filter above 3000 Hz for premium acoustic clarity
-    b_hp, a_hp = signal.butter(2, 3000.0 / (sample_rate / 2.0), btype='high')
+    # 2. Extract and boost vocal "air" presence above 2500Hz for a crisp pop texture
+    b_hp, a_hp = signal.butter(2, 2500.0 / (sample_rate / 2.0), btype='high')
     air_samples = signal.lfilter(b_hp, a_hp, clean_samples)
     
-    # Balanced mix matrix
-    mastered_samples = (clean_samples * 0.88) + (air_samples * 0.12)
+    # Commercial Pop Mix: 80% clean track blended with a 20% high-frequency clarity boost
+    mastered_samples = (clean_samples * 0.80) + (air_samples * 0.20)
     mastered_samples = mastered_samples.clip(-32768, 32767).astype(np.int16)
+    mastered_vocals = mono_vocals._spawn(mastered_samples.tobytes())
     
-    return mono_vocals._spawn(mastered_samples.tobytes())
-
+    # 3. Dynamic Range Compression: Glues the voice tightly into the instruments
+    # Prevents trailing syllables from dropping out or sounding like spoken text
+    compressed_vocals = compress_dynamic_range(
+        mastered_vocals,
+        threshold=-15.0,
+        attack=10.0,
+        release=100.0,
+        ratio=3.5
+    )
+    
+    return compressed_vocals
 
 
 def process_studio_vocal_resonance(raw_vocal_path: Path, genre_preset: str, voice_gender: str) -> AudioSegment:
@@ -1394,10 +1405,11 @@ def process_studio_vocal_resonance(raw_vocal_path: Path, genre_preset: str, voic
         "frame_rate": int(vocals.frame_rate * pitch_factor)
     }).set_frame_rate(vocals.frame_rate)
     
-    # PASS THROUGH THE ANTI-NASAL FILTER
-    clear_vocals = denasalize_vocal_spectrum(processed_vocals)
+    # PASS THROUGH THE POP VOCAL MASTERING FILTER
+    clear_vocals = clean_and_master_pop_vocals(processed_vocals)
     
     return clear_vocals + vocal_gain
+
 
 
 

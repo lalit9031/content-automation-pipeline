@@ -181,7 +181,7 @@ def generate_gemini_voiceover(
                 if is_hindi:
                     accent_instructions = (
                         "You are an expert native Indian classical playback singer performing a sacred hymn.\n"
-                        "Deliver the text as a continuous, flowing melodic chant, NOT as spoken text.\n"
+                        "Deliver the text as a continuous, fluid, legato melody track with absolutely zero background tracking voices or harmonic duplication whispers, NOT as spoken text.\n"
                         "Sustain your breath and smoothly elongate the vowel sounds natively at the end of each poetic phrase.\n"
                         "Maintain a deeply resonant, warm chest-voice register that matches a slow, meditative 65 BPM tempo.\n"
                         "Do not pause mechanically between words; ensure a fluid, legato transition from one syllable to the next.\n"
