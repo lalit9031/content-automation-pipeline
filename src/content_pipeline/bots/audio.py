@@ -1381,12 +1381,19 @@ def generate_hindi_song_via_native_audio(
     output_path: Path,
     singer_gender: str = "Male",
     selected_ref: str = "None (Text-only)",
+    hf_token: str = "",
+    genre: str = "Folk",
+    temperature: float = 0.40,
+    cfg_coef: float = 1.8,
+    style_description: str = "",
 ) -> Path:
     """Unified Hindi Song Generator:
-    Bypasses Hugging Face Space entirely and generates native vocals.
-    1. Try Gemini TTS (under budget) with Puck (male) or Aoede/Kore (female).
-    2. Fall back to Edge-TTS (hi-IN-MadhurNeural or hi-IN-SwaraNeural) if Gemini TTS fails/over budget.
-    3. Mix vocals with background beat (ducked by -6dB, vocal deepened by 0.94x, boosted by +2dB).
+    Bypasses Hugging Face Space for vocals, but dynamically generates
+    an instrumental-only backing track using tencent/SongGeneration.
+    1. Try generating an instrumental-only backing track using tencent/SongGeneration.
+    2. Try Gemini TTS (under budget) with Puck (male) or Aoede/Kore (female) for vocals.
+    3. Fall back to Edge-TTS (hi-IN-MadhurNeural or hi-IN-SwaraNeural) if Gemini TTS fails/over budget.
+    4. Mix vocals with background beat (ducked by -6dB, vocal deepened by 0.94x, boosted by +2dB).
     """
     import re
     import math
@@ -1397,6 +1404,13 @@ def generate_hindi_song_via_native_audio(
 
     settings = Settings.from_environment()
     PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+
+    st_write_func = None
+    try:
+        import streamlit as st
+        st_write_func = st.write
+    except Exception:
+        pass
 
     # 1. Ensure lyrics are in standard Devanagari script for perfect native accent
     is_devanagari = any("\u0900" <= char <= "\u097f" for char in lyrics)
@@ -1467,29 +1481,102 @@ def generate_hindi_song_via_native_audio(
     # 3. Load vocals
     vocals = AudioSegment.from_file(str(raw_vocals_file))
 
-    # Determine the background beat file
+    # 4. Determine background beat file (Decoupled Pipeline using Lyria instrumental)
     beat_path = None
-    if selected_ref != "None (Text-only)":
-        ref_full_path = PROJECT_ROOT / "output" / "reference_audio" / selected_ref
-        if not ref_full_path.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio").exists():
-            ref_full_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio") / selected_ref
-        if ref_full_path.exists():
-            beat_path = ref_full_path
 
+    # Try generating dynamic instrumental backing track using Lyria
+    try:
+        from gradio_client import Client, handle_file
+        
+        # Determine prompt_audio_param for style references
+        prompt_audio_param = None
+        if selected_ref != "None (Text-only)":
+            ref_full_path = PROJECT_ROOT / "output" / "reference_audio" / selected_ref
+            if not ref_full_path.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio").exists():
+                ref_full_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio") / selected_ref
+            
+            if ref_full_path.exists():
+                # Crop reference audio to 15 seconds for Lyria style reference input
+                cropped_ref_path = temp_dir / "hindi_ref_cropped.mp3"
+                start_time = "0"
+                if ref_full_path.name == "बार्नबी गिलहरी की व्यर्थ खोज.mp3":
+                    start_time = "4.5"
+                    
+                import subprocess
+                cmd = [
+                    "ffmpeg", "-y", "-i", str(ref_full_path),
+                    "-ss", start_time, "-t", "15",
+                    "-codec:a", "libmp3lame", "-b:a", "128k",
+                    str(cropped_ref_path)
+                ]
+                subprocess.run(cmd, capture_output=True)
+                if cropped_ref_path.exists():
+                    prompt_audio_param = handle_file(str(cropped_ref_path))
+
+        if st_write_func:
+            st_write_func("🎵 Generating dynamic instrumental backing track using Hugging Face Lyria (vocals disabled)...")
+        else:
+            print("Generating dynamic instrumental backing track using Hugging Face Lyria...")
+
+        client = Client("tencent/SongGeneration", token=hf_token, httpx_kwargs={"timeout": 600.0})
+        
+        # Enforce instrumental-only description
+        inst_desc = style_description or "traditional north indian music, sitar and bansuri flute, no vocals, no background singing."
+        if "instrumental" not in inst_desc.lower():
+            inst_desc = "Instrumental only, no vocals, no singing. " + inst_desc
+        if "negative" not in inst_desc.lower():
+            inst_desc += ", negative_prompt: vocals, singing, backing vocals, english voice, whispering"
+            
+        # Call prediction with instrumental lyric placeholder
+        inst_lyric = "[instrumental]\n[inst-medium]\n[silence]\n[inst-long]"
+        
+        # Force Folk genre and lower temperature for traditional Indian feel
+        active_genre = genre if genre and genre != "Auto" else "Folk"
+        active_temp = min(temperature, 0.40) # Lower temp to prevent Western deviations
+        
+        result_path, info = client.predict(
+            lyric=inst_lyric,
+            description=inst_desc,
+            prompt_audio=prompt_audio_param,
+            genre=active_genre,
+            cfg_coef=cfg_coef,
+            temperature=active_temp,
+            api_name="/generate_song"
+        )
+        
+        if result_path and str(result_path).strip().lower() != "none" and Path(result_path).exists():
+            beat_path = Path(result_path)
+            if st_write_func:
+                st_write_func("✅ Dynamic instrumental backing track generated successfully.")
+        else:
+            raise ValueError("Lyria did not return a valid audio path for the backing track.")
+            
+    except Exception as lyria_err:
+        if st_write_func:
+            st_write_func(f"⚠️ Lyria instrumental generation failed: {lyria_err}. Falling back to default beats/ambient...")
+        else:
+            print(f"Lyria instrumental generation failed: {lyria_err}")
+
+    # Fallback to local files if Lyria fails or is bypassed
     if not beat_path:
-        # Check if there is any default beat/mp3 in desktop New Audio folder
-        desktop_ref_dir = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio")
-        if desktop_ref_dir.exists():
-            mp3_files = sorted(list(desktop_ref_dir.glob("*.mp3")))
-            # Find first file that is not the generated song
-            for f in mp3_files:
-                if "Generated_Song" not in f.name:
-                    beat_path = f
-                    break
+        if selected_ref != "None (Text-only)":
+            ref_full_path = PROJECT_ROOT / "output" / "reference_audio" / selected_ref
+            if not ref_full_path.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio").exists():
+                ref_full_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio") / selected_ref
+            if ref_full_path.exists():
+                beat_path = ref_full_path
+
         if not beat_path:
-            # Fallback to creating a silent/ambient background beat
-            beat_path = temp_dir / "fallback_beat.wav"
-            generate_music_preview(beat_path, "ambient", duration_seconds=int(vocals.duration_seconds + 5))
+            desktop_ref_dir = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio")
+            if desktop_ref_dir.exists():
+                mp3_files = sorted(list(desktop_ref_dir.glob("*.mp3")))
+                for f in mp3_files:
+                    if "Generated_Song" not in f.name and "clean_hindi_vocals" not in f.name and "isolated_indian_accent_track" not in f.name:
+                        beat_path = f
+                        break
+            if not beat_path:
+                beat_path = temp_dir / "fallback_beat.wav"
+                generate_music_preview(beat_path, "ambient", duration_seconds=int(vocals.duration_seconds + 5))
 
     # Load beat
     if beat_path.suffix.lower() == ".mp3":
@@ -1506,7 +1593,7 @@ def generate_hindi_song_via_native_audio(
     # Crop beat to match vocals + 3 seconds of buffer
     beat = beat[:int((vocals.duration_seconds + 3) * 1000)]
 
-    # 4. Deepen voice for warm chest voice (0.94x pitch-shifting resonance filter)
+    # 5. Deepen voice for warm chest voice (0.94x pitch-shifting resonance filter)
     deeper_vocals = vocals._spawn(vocals.raw_data, overrides={
         "frame_rate": int(vocals.frame_rate * 0.94)
     }).set_frame_rate(vocals.frame_rate)

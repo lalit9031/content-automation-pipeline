@@ -1970,7 +1970,12 @@ def render_frontdoor(settings: Settings) -> None:
                             lyrics=sanitized_lyrics,
                             output_path=out_path,
                             singer_gender=singer_gender,
-                            selected_ref=selected_ref
+                            selected_ref=selected_ref,
+                            hf_token=settings.hf_token,
+                            genre=genre,
+                            temperature=temp,
+                            cfg_coef=cfg,
+                            style_description=desc
                         )
                         st.session_state["music_studio_generated_mp3"] = str(out_path)
                         st.success("🎉 Hindi Song generated successfully using Native Audio Pipeline!")
@@ -2829,7 +2834,12 @@ def render_frontdoor(settings: Settings) -> None:
                             lyrics=sanitized_lyrics,
                             output_path=out_path,
                             singer_gender=singer_gender,
-                            selected_ref=selected_ref
+                            selected_ref=selected_ref,
+                            hf_token=settings.hf_token,
+                            genre=genre,
+                            temperature=temp,
+                            cfg_coef=cfg,
+                            style_description=desc
                         )
                         st.session_state["kids_song_generated_mp3"] = str(out_path)
                         st.success("🎉 Hindi Kids Rhyme generated successfully using Native Audio Pipeline!")

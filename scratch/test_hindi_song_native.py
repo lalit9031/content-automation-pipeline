@@ -2,21 +2,24 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
+from content_pipeline.config import Settings
 from content_pipeline.bots.audio import generate_hindi_song_via_native_audio
 
 def main():
+    settings = Settings.from_environment()
     lyrics = """
     जय हनुमान ज्ञान गुन सागर। जय कपीस तिहुं लोक उजागर॥
     राम दूत अतुलित बल धामा। अंजनि पुत्र पवनसुत नामा॥
     """
     output_path = Path(__file__).resolve().parent / "test_hindi_song_native.mp3"
-    print("🤖 Generating Hindi song using unified native audio router...")
+    print("🤖 Generating Hindi song using unified native audio router and settings...")
     
     res = generate_hindi_song_via_native_audio(
         lyrics=lyrics,
         output_path=output_path,
         singer_gender="Male",
-        selected_ref="None (Text-only)"
+        selected_ref="None (Text-only)",
+        hf_token=settings.hf_token
     )
     
     print(f"✅ Unified native audio routing test completed! Result path: {res}")
