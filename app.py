@@ -12,6 +12,7 @@ from pathlib import Path
 from collections.abc import Mapping
 
 import site
+import importlib
 PROJECT_ROOT = Path(__file__).resolve().parent
 TARGET_SITE_PACKAGES = PROJECT_ROOT / "output" / ".runtime" / "site-packages"
 if str(TARGET_SITE_PACKAGES) not in sys.path:
@@ -19,6 +20,11 @@ if str(TARGET_SITE_PACKAGES) not in sys.path:
     site.addsitedir(str(TARGET_SITE_PACKAGES))
     new_paths = sys.path[old_len:]
     sys.path = new_paths + sys.path[:old_len]
+
+# Invalidate import caches to force python to check the filesystem fresh
+importlib.invalidate_caches()
+sys.path_importer_cache.clear()
+
 SRC_DIR = PROJECT_ROOT / "src"
 if SRC_DIR.exists() and str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
@@ -4758,6 +4764,9 @@ def get_package_info() -> str:
     import sys
     import traceback
     import os
+    import importlib
+    importlib.invalidate_caches()
+    sys.path_importer_cache.clear()
     res = []
     
     # Check pydub
@@ -4891,11 +4900,15 @@ def main() -> None:
                 try:
                     import sys
                     import site
+                    import importlib
                     if str(TARGET_SITE_PACKAGES) not in sys.path:
                         old_len = len(sys.path)
                         site.addsitedir(str(TARGET_SITE_PACKAGES))
                         new_paths = sys.path[old_len:]
                         sys.path = new_paths + sys.path[:old_len]
+                    
+                    importlib.invalidate_caches()
+                    sys.path_importer_cache.clear()
                     
                     # Force reload or clean import
                     if 'pydub' in sys.modules:

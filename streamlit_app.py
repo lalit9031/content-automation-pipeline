@@ -12,6 +12,9 @@ if str(TARGET_SITE_PACKAGES) not in sys.path:
     site.addsitedir(str(TARGET_SITE_PACKAGES))
     new_paths = sys.path[old_len:]
     sys.path = new_paths + sys.path[:old_len]
+    import importlib
+    importlib.invalidate_caches()
+    sys.path_importer_cache.clear()
 
 # Run dynamic installer once per Python process lifetime to keep page reruns instant
 if not hasattr(sys, "_antigravity_installer_run"):
@@ -30,6 +33,9 @@ if not hasattr(sys, "_antigravity_installer_run"):
                     "--target", str(TARGET_SITE_PACKAGES), "audioop-lts"
                 ])
                 print("📦 Dynamic installation of audioop-lts finished.")
+                import importlib
+                importlib.invalidate_caches()
+                sys.path_importer_cache.clear()
             except Exception as e:
                 print(f"WARNING: Failed to dynamically install audioop-lts: {e}")
 
@@ -45,6 +51,9 @@ if not hasattr(sys, "_antigravity_installer_run"):
                 "--target", str(TARGET_SITE_PACKAGES), "pydub"
             ])
             print("📦 Dynamic installation of pydub finished.")
+            import importlib
+            importlib.invalidate_caches()
+            sys.path_importer_cache.clear()
         except Exception as e:
             print(f"WARNING: Failed to dynamically install pydub: {e}")
 
