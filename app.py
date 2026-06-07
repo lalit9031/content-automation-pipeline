@@ -4786,6 +4786,9 @@ def main() -> None:
                 out = subprocess.check_output([sys.executable, "-m", "pip", "install", "pydub"], stderr=subprocess.STDOUT, text=True)
                 st.code(out)
                 st.rerun()
+            except subprocess.CalledProcessError as cpe:
+                st.error("Pip install failed with CalledProcessError:")
+                st.code(cpe.output)
             except Exception as e:
                 st.error(f"Pip install failed: {e}")
         
