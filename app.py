@@ -11,12 +11,16 @@ from html import escape
 from pathlib import Path
 from collections.abc import Mapping
 
+import site
 PROJECT_ROOT = Path(__file__).resolve().parent
 TARGET_SITE_PACKAGES = PROJECT_ROOT / "output" / ".runtime" / "site-packages"
 if str(TARGET_SITE_PACKAGES) not in sys.path:
-    sys.path.insert(0, str(TARGET_SITE_PACKAGES))
+    old_len = len(sys.path)
+    site.addsitedir(str(TARGET_SITE_PACKAGES))
+    new_paths = sys.path[old_len:]
+    sys.path = new_paths + sys.path[:old_len]
 SRC_DIR = PROJECT_ROOT / "src"
-if SRC_DIR.exists():
+if SRC_DIR.exists() and str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 import streamlit as st
@@ -4752,6 +4756,7 @@ def get_git_info() -> str:
 
 def get_package_info() -> str:
     import sys
+    import traceback
     res = []
     
     # Check pydub
@@ -4759,14 +4764,16 @@ def get_package_info() -> str:
         import pydub
         res.append(f"✅ `pydub` imported successfully (path: `{pydub.__file__}`)")
     except Exception as e:
-        res.append(f"❌ `pydub` import failed: {e}")
+        tb = traceback.format_exc()
+        res.append(f"❌ `pydub` import failed: {e}  \nTraceback:  \n```\n{tb}\n```")
         
     # Check audioop
     try:
         import audioop
         res.append(f"✅ `audioop` imported successfully (path: `{audioop.__file__}`)" if hasattr(audioop, '__file__') else "✅ `audioop` imported successfully")
     except Exception as e:
-        res.append(f"❌ `audioop` import failed: {e}")
+        tb = traceback.format_exc()
+        res.append(f"❌ `audioop` import failed: {e}  \nTraceback:  \n```\n{tb}\n```")
         
     # Check python version
     res.append(f"🐍 Python version: `{sys.version}`")
@@ -4799,6 +4806,15 @@ def main() -> None:
     with st.expander("🛠️ System & Environment Diagnostics (Debug Info)", expanded=False):
         st.markdown(get_git_info())
         st.markdown(get_package_info())
+        
+        # Display persistent logs if they exist in session state
+        if "pip_diagnostics_output" in st.session_state:
+            st.markdown("### 📋 Pip Install Logs")
+            st.code(st.session_state.pip_diagnostics_output)
+            if st.button("🧹 Clear Logs", key="btn_clear_pip_diag_logs"):
+                del st.session_state.pip_diagnostics_output
+                st.rerun()
+                
         if st.button("🔧 Run Pip Install Diagnostics", key="btn_run_pip_diag"):
             try:
                 import subprocess
@@ -4808,29 +4824,46 @@ def main() -> None:
                 flag_audioop = PROJECT_ROOT / "output" / ".runtime" / "audioop_install_attempted.flag"
                 flag_pydub = PROJECT_ROOT / "output" / ".runtime" / "pydub_install_attempted.flag"
                 if flag_audioop.exists():
-                    flag_audioop.unlink()
+                    try:
+                        flag_audioop.unlink()
+                    except Exception:
+                        pass
                 if flag_pydub.exists():
-                    flag_pydub.unlink()
+                    try:
+                        flag_pydub.unlink()
+                    except Exception:
+                        pass
                 
-                st.write("⏳ Running pip install for audioop-lts...")
-                out_audioop = subprocess.check_output([
-                    sys.executable, "-m", "pip", "install", 
-                    "--target", str(TARGET_SITE_PACKAGES), "audioop-lts"
-                ], stderr=subprocess.STDOUT, text=True)
-                st.code(out_audioop)
-                
-                st.write("⏳ Running pip install for pydub...")
-                out_pydub = subprocess.check_output([
-                    sys.executable, "-m", "pip", "install", 
-                    "--target", str(TARGET_SITE_PACKAGES), "pydub"
-                ], stderr=subprocess.STDOUT, text=True)
-                st.code(out_pydub)
+                logs = []
+                logs.append("⏳ Running pip install for audioop-lts...")
+                try:
+                    out_audioop = subprocess.check_output([
+                        sys.executable, "-m", "pip", "install", 
+                        "--target", str(TARGET_SITE_PACKAGES), "audioop-lts"
+                    ], stderr=subprocess.STDOUT, text=True)
+                    logs.append(out_audioop)
+                except subprocess.CalledProcessError as cpe:
+                    logs.append(f"Failed to install audioop-lts:\n{cpe.output}")
+                    
+                logs.append("⏳ Running pip install for pydub...")
+                try:
+                    out_pydub = subprocess.check_output([
+                        sys.executable, "-m", "pip", "install", 
+                        "--target", str(TARGET_SITE_PACKAGES), "pydub"
+                    ], stderr=subprocess.STDOUT, text=True)
+                    logs.append(out_pydub)
+                except subprocess.CalledProcessError as cpe:
+                    logs.append(f"Failed to install pydub:\n{cpe.output}")
                 
                 # Try to import
                 try:
                     import sys
+                    import site
                     if str(TARGET_SITE_PACKAGES) not in sys.path:
-                        sys.path.insert(0, str(TARGET_SITE_PACKAGES))
+                        old_len = len(sys.path)
+                        site.addsitedir(str(TARGET_SITE_PACKAGES))
+                        new_paths = sys.path[old_len:]
+                        sys.path = new_paths + sys.path[:old_len]
                     
                     # Force reload or clean import
                     if 'pydub' in sys.modules:
@@ -4840,22 +4873,20 @@ def main() -> None:
                         
                     import audioop
                     import pydub
-                    st.success(f"🎉 Successfully imported audioop and pydub!")
+                    logs.append(f"🎉 Successfully imported audioop and pydub in diagnostics run!")
                 except Exception as imp_err:
-                    st.error(f"⚠️ Import test failed after installation: {imp_err}")
+                    import traceback
+                    logs.append(f"⚠️ Import test failed: {imp_err}\n{traceback.format_exc()}")
                 
-                st.info("Please refresh the page to update the main UI diagnostics display.")
+                st.session_state.pip_diagnostics_output = "\n".join(logs)
+                st.rerun()
                 
-            except subprocess.CalledProcessError as cpe:
-                st.error("Pip install failed with CalledProcessError:")
-                st.code(cpe.output)
             except Exception as e:
-                st.error(f"Pip install failed: {e}")
-
-        
+                st.session_state.pip_diagnostics_output = f"Diagnostics error: {e}"
+                st.rerun()
+                
     render_frontdoor(settings)
 
 
 if __name__ == "__main__":
     main()
-

@@ -1,13 +1,17 @@
-from pathlib import Path
 import sys
+from pathlib import Path
+import site
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 TARGET_SITE_PACKAGES = PROJECT_ROOT / "output" / ".runtime" / "site-packages"
 TARGET_SITE_PACKAGES.mkdir(parents=True, exist_ok=True)
 
-# Add our custom site-packages to sys.path so any packages installed there are importable
+# Add our custom site-packages using site.addsitedir to process .pth files and set up paths correctly
 if str(TARGET_SITE_PACKAGES) not in sys.path:
-    sys.path.insert(0, str(TARGET_SITE_PACKAGES))
+    old_len = len(sys.path)
+    site.addsitedir(str(TARGET_SITE_PACKAGES))
+    new_paths = sys.path[old_len:]
+    sys.path = new_paths + sys.path[:old_len]
 
 # 1. If Python >= 3.13, check and install audioop-lts first
 if sys.version_info >= (3, 13):
