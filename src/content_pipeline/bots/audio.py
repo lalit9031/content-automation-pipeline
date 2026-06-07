@@ -14,6 +14,7 @@ from typing import Any
 
 from content_pipeline.config import Settings
 from content_pipeline.bots.gemini_tts import generate_gemini_voiceover
+from pydub import AudioSegment
 
 
 def is_vocal_track(filename: str) -> bool:
@@ -1322,6 +1323,37 @@ def prepare_singing_lyrics(lyrics: str) -> str:
     )
     return vocal_directive
 
+def apply_studio_stereo_doubling(vocal_segment: AudioSegment) -> AudioSegment:
+    """
+    Simulates a studio vocal doubler by splitting a mono track,
+    panning left/right, and introducing a micro-delay.
+    """
+    print("🎛️ Mastering Layer: Applying Stereo Vocal Doubling...")
+    # Pan channels slightly left and right to open the soundstage
+    left_channel = vocal_segment.pan(-0.20)
+    right_channel = vocal_segment.pan(0.20)
+    
+    # Add a tiny 20ms delay to the right channel for human timing variance
+    delayed_right = AudioSegment.silent(duration=20) + right_channel
+    
+    # Overlay channels to create wide stereo vocals
+    widened_vocals = left_channel.overlay(delayed_right, position=0)
+    return widened_vocals
+
+def apply_ambient_reverb_tail(vocal_segment: AudioSegment, decay_db: float = 12, delay_ms: int = 120) -> AudioSegment:
+    """
+    Introduces a smooth, natural acoustic studio hall reflection 
+    by layering a quieted, delayed duplicate of the vocal track.
+    """
+    print("✨ Mastering Layer: Blending Ambient Reverb Space...")
+    reverb_tail = vocal_segment - decay_db
+    delayed_tail = AudioSegment.silent(duration=delay_ms) + reverb_tail
+    
+    # Layer the original vocal segment with its acoustic decay tail
+    spatial_vocals = vocal_segment.overlay(delayed_tail, position=0)
+    return spatial_vocals
+
+
 def process_studio_vocal_resonance(raw_vocal_path: Path, genre_preset: str, voice_gender: str) -> AudioSegment:
     """
     Dynamically adjusts the physical audio spectrum based on 
@@ -1652,7 +1684,10 @@ def generate_hindi_song_via_native_audio(
             raise RuntimeError(f"Both Gemini TTS and Edge-TTS failed for Hindi song generation. Edge err: {edge_err}")
 
     # 3. Load and process vocals with dynamic genre-aware resonance filter
-    vocals = process_studio_vocal_resonance(raw_vocals_file, genre_preset=genre, voice_gender=singer_gender)
+    vocals_clean = process_studio_vocal_resonance(raw_vocals_file, genre_preset=genre, voice_gender=singer_gender)
+    # Apply spatial mastering suite: stereo doubler and ambient reverb tail
+    vocals_doubled = apply_studio_stereo_doubling(vocals_clean)
+    vocals = apply_ambient_reverb_tail(vocals_doubled)
 
     # 4. Determine background beat file (Decoupled Pipeline using Lyria instrumental)
     beat_path = None
@@ -1780,8 +1815,8 @@ def generate_hindi_song_via_native_audio(
     # Drop the beat volume by 7dB to ensure dental consonants cut through smoothly
     softer_beat = beat - 7
 
-    # Overlay the processed vocals onto the background track (pitch factor and vocal gain are already applied)
-    final_mix = softer_beat.overlay(vocals, position=0)
+    # Overlay the processed vocals onto the background track (with +3dB headroom)
+    final_mix = softer_beat.overlay(vocals + 3, position=0)
 
     # Export the final product
     output_path.parent.mkdir(parents=True, exist_ok=True)
