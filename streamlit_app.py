@@ -13,17 +13,17 @@ if str(TARGET_SITE_PACKAGES) not in sys.path:
     new_paths = sys.path[old_len:]
     sys.path = new_paths + sys.path[:old_len]
 
-# 1. If Python >= 3.13, check and install audioop-lts first
-if sys.version_info >= (3, 13):
-    try:
-        import audioop
-    except ImportError:
-        flag_file_audioop = PROJECT_ROOT / "output" / ".runtime" / "audioop_install_attempted.flag"
-        if not flag_file_audioop.exists():
+# Run dynamic installer once per Python process lifetime to keep page reruns instant
+if not hasattr(sys, "_antigravity_installer_run"):
+    sys._antigravity_installer_run = True
+    
+    # 1. If Python >= 3.13, check and install audioop-lts first
+    if sys.version_info >= (3, 13):
+        try:
+            import audioop
+        except ImportError:
             import subprocess
             try:
-                flag_file_audioop.parent.mkdir(parents=True, exist_ok=True)
-                flag_file_audioop.touch()
                 print("📦 Dynamic installation: installing audioop-lts to target dir...")
                 subprocess.check_call([
                     sys.executable, "-m", "pip", "install", 
@@ -33,16 +33,12 @@ if sys.version_info >= (3, 13):
             except Exception as e:
                 print(f"WARNING: Failed to dynamically install audioop-lts: {e}")
 
-# 2. Check and install pydub next
-try:
-    import pydub
-except ImportError:
-    flag_file = PROJECT_ROOT / "output" / ".runtime" / "pydub_install_attempted.flag"
-    if not flag_file.exists():
+    # 2. Check and install pydub next
+    try:
+        import pydub
+    except ImportError:
         import subprocess
         try:
-            flag_file.parent.mkdir(parents=True, exist_ok=True)
-            flag_file.touch()
             print("📦 Dynamic installation: installing pydub to target dir...")
             subprocess.check_call([
                 sys.executable, "-m", "pip", "install", 
