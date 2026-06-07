@@ -4764,12 +4764,28 @@ def get_package_info() -> str:
     # Check audioop
     try:
         import audioop
-        res.append(f"✅ `audioop` imported successfully")
+        res.append(f"✅ `audioop` imported successfully (path: `{audioop.__file__}`)" if hasattr(audioop, '__file__') else "✅ `audioop` imported successfully")
     except Exception as e:
         res.append(f"❌ `audioop` import failed: {e}")
         
     # Check python version
     res.append(f"🐍 Python version: `{sys.version}`")
+    
+    # Check TARGET_SITE_PACKAGES contents
+    res.append(f"📁 Target Site-Packages Path: `{TARGET_SITE_PACKAGES}`")
+    if TARGET_SITE_PACKAGES.exists():
+        files = [p.name for p in TARGET_SITE_PACKAGES.glob("*")]
+        res.append(f"📁 Target Site-Packages Contents: `{files}`")
+    else:
+        res.append(f"📁 Target Site-Packages directory does not exist.")
+        
+    # Check flag files
+    flag_audioop = PROJECT_ROOT / "output" / ".runtime" / "audioop_install_attempted.flag"
+    flag_pydub = PROJECT_ROOT / "output" / ".runtime" / "pydub_install_attempted.flag"
+    res.append(f"🚩 audioop flag exists: `{flag_audioop.exists()}` | 🚩 pydub flag exists: `{flag_pydub.exists()}`")
+    
+    # Show sys.path
+    res.append(f"🔍 `sys.path`: `{sys.path}`")
     
     return "  \n".join(res)
 
@@ -4787,17 +4803,55 @@ def main() -> None:
             try:
                 import subprocess
                 TARGET_SITE_PACKAGES.mkdir(parents=True, exist_ok=True)
-                out = subprocess.check_output([
+                
+                # Delete flag files to allow clean retries on next startup
+                flag_audioop = PROJECT_ROOT / "output" / ".runtime" / "audioop_install_attempted.flag"
+                flag_pydub = PROJECT_ROOT / "output" / ".runtime" / "pydub_install_attempted.flag"
+                if flag_audioop.exists():
+                    flag_audioop.unlink()
+                if flag_pydub.exists():
+                    flag_pydub.unlink()
+                
+                st.write("⏳ Running pip install for audioop-lts...")
+                out_audioop = subprocess.check_output([
+                    sys.executable, "-m", "pip", "install", 
+                    "--target", str(TARGET_SITE_PACKAGES), "audioop-lts"
+                ], stderr=subprocess.STDOUT, text=True)
+                st.code(out_audioop)
+                
+                st.write("⏳ Running pip install for pydub...")
+                out_pydub = subprocess.check_output([
                     sys.executable, "-m", "pip", "install", 
                     "--target", str(TARGET_SITE_PACKAGES), "pydub"
                 ], stderr=subprocess.STDOUT, text=True)
-                st.code(out)
-                st.rerun()
+                st.code(out_pydub)
+                
+                # Try to import
+                try:
+                    import sys
+                    if str(TARGET_SITE_PACKAGES) not in sys.path:
+                        sys.path.insert(0, str(TARGET_SITE_PACKAGES))
+                    
+                    # Force reload or clean import
+                    if 'pydub' in sys.modules:
+                        del sys.modules['pydub']
+                    if 'audioop' in sys.modules:
+                        del sys.modules['audioop']
+                        
+                    import audioop
+                    import pydub
+                    st.success(f"🎉 Successfully imported audioop and pydub!")
+                except Exception as imp_err:
+                    st.error(f"⚠️ Import test failed after installation: {imp_err}")
+                
+                st.info("Please refresh the page to update the main UI diagnostics display.")
+                
             except subprocess.CalledProcessError as cpe:
                 st.error("Pip install failed with CalledProcessError:")
                 st.code(cpe.output)
             except Exception as e:
                 st.error(f"Pip install failed: {e}")
+
         
     render_frontdoor(settings)
 
