@@ -1712,11 +1712,20 @@ def generate_hindi_song_via_native_audio(
         except Exception as edge_err:
             raise RuntimeError(f"Both Gemini TTS and Edge-TTS failed for Hindi song generation. Edge err: {edge_err}")
 
-    # 3. Load and process vocals with dynamic genre-aware resonance filter
-    vocals_clean = process_studio_vocal_resonance(raw_vocals_file, genre_preset=genre, voice_gender=singer_gender)
+    # 3. Load and process vocals with dynamic voice conversion (RVC) and genre-aware resonance filter
+    from content_pipeline.bots.singing_synthesis import convert_speech_to_melodic_singing
+    model_filename = "bollywood_male" if singer_gender.strip().lower() == "male" else "bollywood_female"
+    
+    # Morph spoken TTS stem into a singing voice stem using RVC
+    singing_vocals_file = convert_speech_to_melodic_singing(raw_vocals_file, model_filename)
+    
+    # Master the singing vocals using formant-protected resonance and pop mastering EQ
+    vocals_clean = process_studio_vocal_resonance(singing_vocals_file, genre_preset=genre, voice_gender=singer_gender)
+    
     # Apply spatial mastering suite: stereo doubler and ambient reverb tail
     vocals_doubled = apply_studio_stereo_doubling(vocals_clean)
     vocals = apply_ambient_reverb_tail(vocals_doubled)
+
 
     # 4. Determine background beat file (Decoupled Pipeline using Lyria instrumental)
     beat_path = None
