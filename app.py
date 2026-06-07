@@ -1568,6 +1568,7 @@ def render_frontdoor(settings: Settings) -> None:
         # One-Click Creator
         with st.expander("⚡ One-Click Song Creator", expanded=True):
             st.markdown("<small style='color: #94a3b8;'>Type a simple idea (e.g., 'create an emotional song') and generate a complete song in one click.</small>", unsafe_allow_html=True)
+            one_click_prompt = st.text_input("Song Idea", placeholder="e.g., create an emotional song", key="music_studio_one_click_song_idea")
             lang = st.session_state.get("music_studio_language", "English")
             if lang in ["Hindi", "Hinglish"]:
                 from content_pipeline.bots.singer_manifest import SINGER_MANIFEST
