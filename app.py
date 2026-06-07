@@ -1588,6 +1588,12 @@ def render_frontdoor(settings: Settings) -> None:
                 one_click_gender = st.selectbox("Singer Voice Gender Selection", ["Female", "Male"], key="music_studio_one_click_singer_gender")
                 st.session_state["music_studio_playback_singer_key"] = "arijit_singh" if one_click_gender == "Male" else "shreya_ghoshal"
             
+            if st.session_state.get("gemini_api_error"):
+                st.error("⚠️ **Gemini API Call Failed (Offline Fallback Active)**\n\n"
+                         "The application fell back to the local offline template song because the Gemini API keys failed:\n"
+                         f"```\n{st.session_state['gemini_api_error']}\n```\n"
+                         "Please check your `.env` or system environment keys.")
+
             if st.button("🚀 Create & Generate Song Draft", type="primary", use_container_width=True, key="music_studio_btn_one_click"):
                 if not one_click_prompt.strip():
                     st.warning("Please enter a song idea first.")
@@ -2537,6 +2543,12 @@ def render_frontdoor(settings: Settings) -> None:
                     one_click_gender = st.selectbox("Singer Voice Gender Selection", ["Female", "Male"], key="one_click_singer_gender")
                     st.session_state["kids_studio_playback_singer_key"] = "arijit_singh" if one_click_gender == "Male" else "shreya_ghoshal"
                 
+                if st.session_state.get("gemini_api_error"):
+                    st.error("⚠️ **Gemini API Call Failed (Offline Fallback Active)**\n\n"
+                             "The application fell back to the local offline template song because the Gemini API keys failed:\n"
+                             f"```\n{st.session_state['gemini_api_error']}\n```\n"
+                             "Please check your `.env` or system environment keys.")
+
                 if st.button("🚀 Create & Generate Song", type="primary", use_container_width=True):
                     if not one_click_prompt.strip():
                         st.warning("Please enter a song idea first.")
@@ -4495,6 +4507,9 @@ def expand_general_prompt_to_lyrics_and_style(prompt: str, singer_gender: str) -
 def expand_general_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, singer_gender: str, language: str) -> tuple[str, str]:
     import os
     import json
+    if "gemini_api_error" in st.session_state:
+        del st.session_state["gemini_api_error"]
+
     keys = list(settings.gemini_api_keys)
     if not keys and settings.gemini_api_key:
         keys = [settings.gemini_api_key]
@@ -4531,6 +4546,7 @@ def expand_general_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, sin
             "style": "comma-separated musical style description"
         }}
         """
+        errors = []
         for key in keys:
             try:
                 from google import genai
@@ -4547,9 +4563,15 @@ def expand_general_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, sin
                 data = json.loads(response.text)
                 if "lyrics" in data and "style" in data:
                     return data["lyrics"], data["style"]
+                else:
+                    errors.append(f"Invalid JSON returned (missing 'lyrics' or 'style'): {response.text}")
             except Exception as e:
-                pass
-                
+                errors.append(f"API key beginning with '{key[:6]}...': {str(e)}")
+        if errors:
+            st.session_state["gemini_api_error"] = "\n".join(errors)
+    else:
+        st.session_state["gemini_api_error"] = "No Gemini API keys found in Settings or Environment."
+        
     if language == "Hindi":
         return expand_general_prompt_to_lyrics_and_style_hindi_local(prompt, singer_gender)
     else:
@@ -4559,6 +4581,9 @@ def expand_general_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, sin
 def expand_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, singer_gender: str, language: str) -> tuple[str, str]:
     import os
     import json
+    if "gemini_api_error" in st.session_state:
+        del st.session_state["gemini_api_error"]
+
     keys = list(settings.gemini_api_keys)
     if not keys and settings.gemini_api_key:
         keys = [settings.gemini_api_key]
@@ -4595,6 +4620,7 @@ def expand_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, singer_gend
             "style": "comma-separated musical style description"
         }}
         """
+        errors = []
         for key in keys:
             try:
                 from google import genai
@@ -4611,9 +4637,15 @@ def expand_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, singer_gend
                 data = json.loads(response.text)
                 if "lyrics" in data and "style" in data:
                     return data["lyrics"], data["style"]
+                else:
+                    errors.append(f"Invalid JSON returned (missing 'lyrics' or 'style'): {response.text}")
             except Exception as e:
-                pass
-                
+                errors.append(f"API key beginning with '{key[:6]}...': {str(e)}")
+        if errors:
+            st.session_state["gemini_api_error"] = "\n".join(errors)
+    else:
+        st.session_state["gemini_api_error"] = "No Gemini API keys found in Settings or Environment."
+        
     if language == "Hindi":
         return expand_prompt_to_lyrics_and_style_hindi_local(prompt, singer_gender)
     else:
