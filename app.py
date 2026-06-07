@@ -1673,6 +1673,12 @@ def render_frontdoor(settings: Settings) -> None:
                 st.session_state["prev_music_studio_vibe"] = selected_vibe
                 if selected_vibe != "Custom":
                     st.session_state["music_studio_description_input"] = vibe_presets[selected_vibe]
+                    preset_genres = {
+                        "Meditative Acoustic (Shekhar Style)": "Folk",
+                        "Heavy Cinematic Epic": "Soundtrack",
+                        "Soulful Sufi / Semi-Classical": "Traditional"
+                    }
+                    st.session_state["music_studio_genre_input"] = preset_genres[selected_vibe]
             
             if "music_studio_description_input" not in st.session_state:
                 st.session_state["music_studio_description_input"] = st.session_state.get("music_studio_description", "")
@@ -1736,7 +1742,7 @@ def render_frontdoor(settings: Settings) -> None:
             )
             st.session_state["music_studio_temperature"] = temp
             
-            genre_options = ['Auto', 'Pop', 'Latin', 'Rock', 'Electronic', 'Metal', 'Country', 'R&B/Soul', 'Ballad', 'Jazz', 'World', 'Hip-Hop', 'Funk', 'Soundtrack']
+            genre_options = ['Auto', 'Pop', 'Latin', 'Rock', 'Electronic', 'Metal', 'Country', 'R&B/Soul', 'Ballad', 'Jazz', 'World', 'Hip-Hop', 'Funk', 'Soundtrack', 'Folk', 'Traditional']
             curr_genre = st.session_state.get("music_studio_genre", "Pop")
             genre_index = genre_options.index(curr_genre) if curr_genre in genre_options else 1
             genre = st.selectbox(
@@ -1747,16 +1753,8 @@ def render_frontdoor(settings: Settings) -> None:
             )
             st.session_state["music_studio_genre"] = genre
 
-            music_gender_options = ["Male", "Female"]
-            curr_gender = st.session_state.get("music_studio_singer_gender", "Male")
-            gender_index = music_gender_options.index(curr_gender) if curr_gender in music_gender_options else 0
-            singer_gender = st.selectbox(
-                "Singer Voice Gender",
-                options=music_gender_options,
-                index=gender_index,
-                key="music_studio_singer_gender_input",
-                help="Choose whether the singing voice is Male or Female. The engine will automatically update the description prompt."
-            )
+            # Bind singer voice gender directly from the top-level selection (⚡ One-Click Song Creator)
+            singer_gender = st.session_state.get("music_studio_one_click_singer_gender", "Male")
             st.session_state["music_studio_singer_gender"] = singer_gender
 
         st.markdown("---")
@@ -2026,11 +2024,15 @@ def render_frontdoor(settings: Settings) -> None:
                     try:
                         client = Client("tencent/SongGeneration", token=settings.hf_token, httpx_kwargs={"timeout": 600.0})
                         
+                        # Translate UI-only genres (Folk, Traditional) to valid Lyria Space genres
+                        valid_genres = ['Auto', 'Pop', 'Latin', 'Rock', 'Electronic', 'Metal', 'Country', 'R&B/Soul', 'Ballad', 'Jazz', 'World', 'Hip-Hop', 'Funk', 'Soundtrack']
+                        api_genre = genre if genre in valid_genres else "World"
+                        
                         result_path, info = client.predict(
                             lyric=sanitized_lyrics,
                             description=desc,
                             prompt_audio=prompt_audio_param,
-                            genre=genre,
+                            genre=api_genre,
                             cfg_coef=cfg,
                             temperature=temp,
                             api_name="/generate_song"
@@ -2562,6 +2564,12 @@ def render_frontdoor(settings: Settings) -> None:
                 st.session_state["prev_kids_studio_vibe"] = selected_vibe_kids
                 if selected_vibe_kids != "Custom":
                     st.session_state["kids_song_description_input"] = kids_vibe_presets[selected_vibe_kids]
+                    kids_preset_genres = {
+                        "Cheerful Nursery (Playful & Bouncy)": "Auto",
+                        "Lullaby (Calm & Dreamy)": "Ballad",
+                        "Adventure (Energetic & Dynamic)": "Soundtrack"
+                    }
+                    st.session_state["kids_song_genre_input"] = kids_preset_genres[selected_vibe_kids]
             
             if "kids_song_description_input" not in st.session_state:
                 st.session_state["kids_song_description_input"] = st.session_state.get("kids_song_description", "")
@@ -2625,7 +2633,7 @@ def render_frontdoor(settings: Settings) -> None:
             )
             st.session_state["kids_song_temperature"] = temp
             
-            genre_options = ['Auto', 'Pop', 'Latin', 'Rock', 'Electronic', 'Metal', 'Country', 'R&B/Soul', 'Ballad', 'Jazz', 'World', 'Hip-Hop', 'Funk', 'Soundtrack']
+            genre_options = ['Auto', 'Pop', 'Latin', 'Rock', 'Electronic', 'Metal', 'Country', 'R&B/Soul', 'Ballad', 'Jazz', 'World', 'Hip-Hop', 'Funk', 'Soundtrack', 'Folk', 'Traditional']
             curr_genre = st.session_state.get("kids_song_genre", "Auto")
             genre_index = genre_options.index(curr_genre) if curr_genre in genre_options else 0
             genre = st.selectbox(
@@ -2636,16 +2644,8 @@ def render_frontdoor(settings: Settings) -> None:
             )
             st.session_state["kids_song_genre"] = genre
 
-            kids_gender_options = ["Male", "Female"]
-            curr_gender = st.session_state.get("kids_song_singer_gender", "Male")
-            gender_index = kids_gender_options.index(curr_gender) if curr_gender in kids_gender_options else 0
-            singer_gender = st.selectbox(
-                "Singer Voice Gender",
-                options=kids_gender_options,
-                index=gender_index,
-                key="kids_song_singer_gender_input",
-                help="Choose whether the singing voice is Male or Female. The engine will automatically update the description prompt."
-            )
+            # Bind singer voice gender directly from the top-level selection (⚡ One-Click Song Creator)
+            singer_gender = st.session_state.get("one_click_singer_gender", "Male")
             st.session_state["kids_song_singer_gender"] = singer_gender
 
         st.markdown("---")
@@ -2922,11 +2922,15 @@ def render_frontdoor(settings: Settings) -> None:
                     try:
                         client = Client("tencent/SongGeneration", token=settings.hf_token, httpx_kwargs={"timeout": 600.0})
                         
+                        # Translate UI-only genres (Folk, Traditional) to valid Lyria Space genres
+                        valid_genres = ['Auto', 'Pop', 'Latin', 'Rock', 'Electronic', 'Metal', 'Country', 'R&B/Soul', 'Ballad', 'Jazz', 'World', 'Hip-Hop', 'Funk', 'Soundtrack']
+                        api_genre = genre if genre in valid_genres else "World"
+                        
                         result_path, info = client.predict(
                             lyric=sanitized_lyrics,
                             description=desc,
                             prompt_audio=prompt_audio_param,
-                            genre=genre,
+                            genre=api_genre,
                             cfg_coef=cfg,
                             temperature=temp,
                             api_name="/generate_song"
