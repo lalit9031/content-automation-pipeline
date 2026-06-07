@@ -4780,6 +4780,14 @@ def main() -> None:
     with st.expander("🛠️ System & Environment Diagnostics (Debug Info)", expanded=False):
         st.markdown(get_git_info())
         st.markdown(get_package_info())
+        if st.button("🔧 Run Pip Install Diagnostics", key="btn_run_pip_diag"):
+            try:
+                import subprocess
+                out = subprocess.check_output([sys.executable, "-m", "pip", "install", "pydub"], stderr=subprocess.STDOUT, text=True)
+                st.code(out)
+                st.rerun()
+            except Exception as e:
+                st.error(f"Pip install failed: {e}")
         
     render_frontdoor(settings)
 
