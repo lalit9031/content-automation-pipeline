@@ -2097,6 +2097,10 @@ def render_frontdoor(settings: Settings) -> None:
                             st.info(f"📝 Transliterated Devanagari Lyrics:\n{sanitized_lyrics}")
                         
                         st.write("🔀 Language: Hindi detected. Bypassing Hugging Face Lyria to use Native Audio Pipeline...")
+                        import sys
+                        import importlib
+                        if "content_pipeline.bots.audio" in sys.modules:
+                            importlib.reload(sys.modules["content_pipeline.bots.audio"])
                         from content_pipeline.bots.audio import generate_hindi_song_via_native_audio
                         
                         out_path = PROJECT_ROOT / "output" / "Music_Studio_Generated_Song.mp3"
@@ -3015,6 +3019,10 @@ def render_frontdoor(settings: Settings) -> None:
                             st.info(f"📝 Transliterated Devanagari Lyrics:\n{sanitized_lyrics}")
                         
                         st.write("🔀 Language: Hindi detected. Bypassing Hugging Face Lyria to use Native Audio Pipeline...")
+                        import sys
+                        import importlib
+                        if "content_pipeline.bots.audio" in sys.modules:
+                            importlib.reload(sys.modules["content_pipeline.bots.audio"])
                         from content_pipeline.bots.audio import generate_hindi_song_via_native_audio
                         
                         out_path = PROJECT_ROOT / "output" / "LittleBubbles_Generated_Song.mp3"
