@@ -1639,29 +1639,27 @@ def render_frontdoor(settings: Settings) -> None:
                 help="Lyria 3 Pro is used for English/Hinglish. Gemini 2.5/Edge-TTS Native Audio is used for Hindi to achieve perfect pronunciation."
             )
             
-            vibe_presets = {
-                "Custom": "",
-                "Meditative Acoustic (Shekhar Style)": (
-                    "Premium acoustic devotional background score. Soft nylon-string acoustic guitar arpeggios, "
-                    "deep warm acoustic bass guitar, airy ethereal synthesizer ambient pads, "
-                    "soulful traditional bansuri flute solo melody, gentle meditative pace, 65 BPM, "
-                    "sacred temple hall acoustics with a clean plate reverb."
-                ),
-                "Heavy Cinematic Epic": (
-                    "Powerful orchestral dramatic arrangement. Heavy orchestral string sections, "
-                    "booming cinematic dhol and taiko percussion ensembles, deep brass horn swells, "
-                    "shimmering high-tension sitar stabs, fast rhythmic pacing, 120 BPM, massive stadium echo."
-                ),
-                "Soulful Sufi / Semi-Classical": (
-                    "Acoustic semi-classical studio background score. Traditional hand-pumped harmonium chord sweeps, "
-                    "organic wooden tabla percussion loops, gentle acoustic sarangi strokes, calm rhythm, "
-                    "80 BPM, clean acoustic studio environment."
-                )
+            SOUNDSCAPE_PRESETS = {
+                "Meditative Acoustic (Shekhar Style)": {
+                    "style_description": "Pure instrumental. Soft fingerpicked acoustic guitar arpeggios, deep warm bass guitar, airy ambient synthesizer pads, soulful solo bansuri flute, gentle meditative pace, 65 BPM, sacred hall acoustics.",
+                    "temperature": 0.30,
+                    "genre": "Auto"
+                },
+                "Epic Classical Cinematic": {
+                    "style_description": "Pure instrumental. Booming traditional dhol and taiko percussion layers, heavy dramatic orchestral string sections, deep brass swells, rhythmic sitar strabs, massive stadium echo, fast tempo, 115 BPM.",
+                    "temperature": 0.35,
+                    "genre": "Auto"
+                },
+                "Soulful Sufi / Ghazal Studio": {
+                    "style_description": "Pure instrumental. Traditional hand-pumped wooden harmonium sweeps, organic acoustic tabla loops, calm acoustic sarangi strokes, slow steady studio recording, 80 BPM, clean proximity environment.",
+                    "temperature": 0.30,
+                    "genre": "Auto"
+                }
             }
             
             selected_vibe = st.selectbox(
                 "Soundscape Vibe Preset",
-                options=list(vibe_presets.keys()),
+                options=["Custom"] + list(SOUNDSCAPE_PRESETS.keys()),
                 key="music_studio_vibe_preset",
                 help="Select a musical style preset to automatically populate the Style Description."
             )
@@ -1672,13 +1670,13 @@ def render_frontdoor(settings: Settings) -> None:
             if st.session_state["prev_music_studio_vibe"] != selected_vibe:
                 st.session_state["prev_music_studio_vibe"] = selected_vibe
                 if selected_vibe != "Custom":
-                    st.session_state["music_studio_description_input"] = vibe_presets[selected_vibe]
-                    preset_genres = {
-                        "Meditative Acoustic (Shekhar Style)": "Folk",
-                        "Heavy Cinematic Epic": "Soundtrack",
-                        "Soulful Sufi / Semi-Classical": "Traditional"
-                    }
-                    st.session_state["music_studio_genre_input"] = preset_genres[selected_vibe]
+                    preset_data = SOUNDSCAPE_PRESETS[selected_vibe]
+                    st.session_state["music_studio_description_input"] = preset_data["style_description"]
+                    st.session_state["music_studio_description"] = preset_data["style_description"]
+                    st.session_state["music_studio_genre_input"] = preset_data["genre"]
+                    st.session_state["music_studio_genre"] = preset_data["genre"]
+                    st.session_state["music_studio_temperature_input"] = preset_data["temperature"]
+                    st.session_state["music_studio_temperature"] = preset_data["temperature"]
             
             if "music_studio_description_input" not in st.session_state:
                 st.session_state["music_studio_description_input"] = st.session_state.get("music_studio_description", "")
@@ -1901,6 +1899,9 @@ def render_frontdoor(settings: Settings) -> None:
                     lang = st.session_state.get("music_studio_language", "English")
                     singer_gender = st.session_state.get("music_studio_singer_gender", "Male").lower()
                     if lang == "Hindi":
+                        # Decoupled audio pipeline: backing track must be vocal-free
+                        pass
+                    elif lang == "Hinglish":
                         if singer_gender == "female":
                             desc = re.sub(r" male ", " female ", desc, flags=re.IGNORECASE)
                             if "female" not in desc.lower():
@@ -2796,6 +2797,9 @@ def render_frontdoor(settings: Settings) -> None:
                     lang = st.session_state.get("kids_studio_language", "English")
                     singer_gender = st.session_state.get("kids_song_singer_gender", "Male").lower()
                     if lang == "Hindi":
+                        # Decoupled audio pipeline: backing track must be vocal-free
+                        pass
+                    elif lang == "Hinglish":
                         if singer_gender == "female":
                             desc = re.sub(r" male ", " female ", desc, flags=re.IGNORECASE)
                             if "female" not in desc.lower():

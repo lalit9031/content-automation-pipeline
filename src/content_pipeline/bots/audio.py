@@ -53,6 +53,25 @@ MUSIC_PRESETS: dict[str, tuple[list[float], float]] = {
 }
 
 
+SOUNDSCAPE_PRESETS: dict[str, dict[str, Any]] = {
+    "Meditative Acoustic (Shekhar Style)": {
+        "style_description": "Pure instrumental. Soft fingerpicked acoustic guitar arpeggios, deep warm bass guitar, airy ambient synthesizer pads, soulful solo bansuri flute, gentle meditative pace, 65 BPM, sacred hall acoustics.",
+        "temperature": 0.30,
+        "genre": "Auto"
+    },
+    "Epic Classical Cinematic": {
+        "style_description": "Pure instrumental. Booming traditional dhol and taiko percussion layers, heavy dramatic orchestral string sections, deep brass swells, rhythmic sitar strabs, massive stadium echo, fast tempo, 115 BPM.",
+        "temperature": 0.35,
+        "genre": "Auto"
+    },
+    "Soulful Sufi / Ghazal Studio": {
+        "style_description": "Pure instrumental. Traditional hand-pumped wooden harmonium sweeps, organic acoustic tabla loops, calm acoustic sarangi strokes, slow steady studio recording, 80 BPM, clean proximity environment.",
+        "temperature": 0.30,
+        "genre": "Auto"
+    }
+}
+
+
 @dataclass(frozen=True)
 class VoiceEngineProfile:
     name: str
@@ -1518,9 +1537,31 @@ def generate_hindi_song_via_native_audio(
         client = Client("tencent/SongGeneration", token=hf_token, httpx_kwargs={"timeout": 600.0})
         
         # Enforce positive instrumental description, avoiding negation words that trigger vocals
-        inst_desc = style_description or "traditional north indian music, pure instrumental, solo sitar and bansuri flute melody, acoustic tabla rhythm, studio recording"
+        raw_desc = style_description or "traditional north indian music, pure instrumental, solo sitar and bansuri flute melody, acoustic tabla rhythm, studio recording"
+        
+        # Split by clause/sentence boundaries to filter out vocal references without losing instrumental details
+        clauses = re.split(r'([.,!?])', raw_desc)
+        filtered_clauses = []
+        vocal_terms_regex = re.compile(
+            r"\b(vocals?|singing|voices?|singers?|vocalists?|lyrics?|chanting|backing vocals)\b", 
+            re.IGNORECASE
+        )
+        for i in range(0, len(clauses), 2):
+            clause = clauses[i]
+            punct = clauses[i+1] if i+1 < len(clauses) else ""
+            if not vocal_terms_regex.search(clause):
+                filtered_clauses.append(clause + punct)
+        inst_desc = "".join(filtered_clauses).strip()
+        # Clean up double punctuation resulting from filtering
+        inst_desc = re.sub(r'\s*,\s*,', ',', inst_desc)
+        inst_desc = re.sub(r'\s*\.\s*\.', '.', inst_desc)
+        inst_desc = re.sub(r',\s*\.', '.', inst_desc)
+        inst_desc = re.sub(r'\.\s*,', '.', inst_desc)
+        inst_desc = re.sub(r'\s+', ' ', inst_desc).strip()
+        
+        # Ensure we have "Pure instrumental" at the start
         if "instrumental" not in inst_desc.lower():
-            inst_desc = "Instrumental, " + inst_desc
+            inst_desc = "Pure instrumental. " + inst_desc
             
         # Call prediction with instrumental lyric placeholder
         inst_lyric = "[intro-medium]\n\n[verse]\n[silence]\n\n[outro-medium]"
