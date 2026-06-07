@@ -1578,6 +1578,8 @@ def render_frontdoor(settings: Settings) -> None:
                     with st.spinner("Writing lyrics and composing style..."):
                         lang = st.session_state.get("music_studio_language", "English")
                         lyrics_exp, desc_exp = expand_general_prompt_to_lyrics_and_style_dynamic(settings, one_click_prompt, one_click_gender, lang)
+                        if lang in ["Hindi", "Hinglish"]:
+                            desc_exp = clean_style_description_for_instrumental(desc_exp)
                         st.session_state["music_studio_lyrics"] = lyrics_exp
                         st.session_state["music_studio_description"] = desc_exp
                         # Force refresh fields
@@ -2500,7 +2502,10 @@ def render_frontdoor(settings: Settings) -> None:
                     if not one_click_prompt.strip():
                         st.warning("Please enter a song idea first.")
                     else:
-                        lyrics_exp, desc_exp = expand_prompt_to_lyrics_and_style_dynamic(settings, one_click_prompt, one_click_gender, st.session_state.get("kids_studio_language", "English"))
+                        kids_lang = st.session_state.get("kids_studio_language", "English")
+                        lyrics_exp, desc_exp = expand_prompt_to_lyrics_and_style_dynamic(settings, one_click_prompt, one_click_gender, kids_lang)
+                        if kids_lang in ["Hindi", "Hinglish"]:
+                            desc_exp = clean_style_description_for_instrumental(desc_exp)
                         st.session_state["kids_song_lyrics"] = lyrics_exp
                         st.session_state["kids_song_description"] = desc_exp
                         st.session_state["kids_song_singer_gender"] = one_click_gender
@@ -4163,6 +4168,24 @@ def render_frontdoor(settings: Settings) -> None:
             "reference_audio_bank_size": str(st.session_state["reference_audio_bank_size"]),
         },
     )
+
+def clean_style_description_for_instrumental(style_desc: str) -> str:
+    """
+    Cleans a musical style description by stripping out all vocal-specific clauses
+    or terms, leaving only the pure instrumental/structural tags for backing track generators.
+    """
+    if not style_desc:
+        return ""
+    # Split the comma-separated terms
+    parts = [p.strip() for p in style_desc.split(",")]
+    vocal_keywords = ["vocal", "vocals", "singer", "singing", "accent", "pronunciation", "voice", "voices", "male", "female", "performance_mode", "lyric", "lyrics"]
+    cleaned_parts = []
+    for part in parts:
+        part_lower = part.lower()
+        if not any(keyword in part_lower for keyword in vocal_keywords):
+            cleaned_parts.append(part)
+    return ", ".join(cleaned_parts)
+
 def parse_prompt_into_sections(prompt_text: str) -> dict[str, str]:
     import re
     base_patterns = {
@@ -4561,93 +4584,93 @@ def expand_general_prompt_to_lyrics_and_style_hindi_local(prompt: str, singer_ge
     if any(k in p for k in ["emotional", "sad", "touch", "heart", "ballad", "acoustic", "slow", "love"]):
         lyrics = (
             "[verse]\n"
-            "Dil ki raahon mein khamoshi hai basi,\n"
-            "Tum bin adhuri hai har ek khushi.\n"
-            "Yaadon ki baarish mein bheegta hoon main,\n"
-            "Aankhon mein chhupi hai wahi bekhudi.\n\n"
+            "दिल की राहों में खामोशी है बसी,\n"
+            "तुम बिन अधूरी है हर एक खुशी।\n"
+            "यादों की बारिश में भीगता हूं मैं,\n"
+            "आँखों में छुपी है वही बेखुदी।\n\n"
             "[chorus]\n"
-            "Aa bhi jaa mere paas, kehde dil ki baat,\n"
-            "Hathoon mein ho tera haath, guzre ye raat.\n"
-            "Har lamha har ghadi, bas tera hi intezar,\n"
-            "Sacha hai mera pyaar, sacha hai mera pyaar.\n\n"
+            "आ भी जा मेरे पास, कहदे दिल की बात,\n"
+            "हाथों में हो तेरा हाथ, गुज़रे ये रात।\n"
+            "हर लम्हा हर घड़ी, बस तेरा ही इंतज़ार,\n"
+            "सच्चा है मेरा प्यार, सच्चा है मेरा प्यार।\n\n"
             "[verse]\n"
-            "Sannaata hai ab to har su yahaan,\n"
-            "Bin tere soona hai mera jahaan.\n"
-            "Taaron ki roshni mein dhoondhe nazar,\n"
-            "Miloge tum kahan, miloge tum kahan."
+            "सन्नाटा है अब तो हर सू यहाँ,\n"
+            "बिन तेरे सूना है मेरा जहाँ।\n"
+            "तारों की रोशनी में ढूँढे नज़र,\n"
+            "मिलोगे तुम कहाँ, मिलोगे तुम कहाँ।"
         )
         style = (
             f"gentle emotional pop ballad, slow acoustic feel, warm piano, soft acoustic guitar, slow building strings, 78 BPM, "
-            f"heart-touching emotional melody, warm clear friendly native Indian {singer_gender.lower()} singing voice, Bollywood style singer, natural Indian accent, expressive vocal delivery, clear Hinglish pronunciation, clean mix."
+            f"heart-touching emotional melody, warm clear friendly native Indian {singer_gender.lower()} singing voice, Bollywood style singer, natural Indian accent, expressive vocal delivery, clear native pronunciation, clean mix."
         )
         
     elif any(k in p for k in ["happy", "fun", "dance", "upbeat", "energetic", "pop", "party", "cheerful"]):
         lyrics = (
             "[verse]\n"
-            "Subah ki dhoop mein hai naya rang chhaya,\n"
-            "Dil ne hamare ek naya geet gaaya.\n"
-            "Chhoro ye baatein jo beeti kal yahaan,\n"
-            "Khushiyon ki mehfil ko humne sajaaya.\n\n"
+            "सुबह की धूप में है नया रंग छाया,\n"
+            "दिल ने हमारे एक नया गीत गाया।\n"
+            "छोड़ो ये बातें जो बीती कल यहाँ,\n"
+            "खुशियों की महफ़िल को हमने सजाया।\n\n"
             "[chorus]\n"
-            "Nachlo saare ab to milke mere yaar,\n"
-            "Mauj manalo aaya din dildaar.\n"
-            "Hawaon mein hai masti, dil hai bekarar,\n"
-            "Zindagi se karlo thoda sa pyaar!\n\n"
+            "नाचलो सारे अब तो मिलके मेरे यार,\n"
+            "मौज मनालो आया दिन दिलदार।\n"
+            "हवाओं में है मस्ती, दिल है बेक़रार,\n"
+            "ज़िंदगी से करलो थोड़ा सा प्यार!\n\n"
             "[verse]\n"
-            "Ek ek kadam pe nayi dhoop khile,\n"
-            "Hum tum jahan bhi ab milte chale.\n"
-            "Piche na dekhna aage hi badhna,\n"
-            "Zindagi ka maza ab humne liya."
+            "एक एक कदम पे नयी धूप खिले,\n"
+            "हम तुम जहाँ भी अब मिलते चलें।\n"
+            "पीछे न देखना आगे ही बढ़ना,\n"
+            "ज़िंदगी का मज़ा अब हमने लिया।"
         )
         style = (
             f"catchy modern pop, upbeat dance rhythm, 120 BPM, driving synth bass, electronic drums, sparkling synthesizers, "
-            f"bright friendly native Indian {singer_gender.lower()} vocals, Bollywood style singer, natural Indian accent, energetic vocal delivery, clear Hinglish pronunciation, clean mix."
+            f"bright friendly native Indian {singer_gender.lower()} vocals, Bollywood style singer, natural Indian accent, energetic vocal delivery, clear native pronunciation, clean mix."
         )
         
     elif any(k in p for k in ["rock", "guitar", "metal", "heavy", "alternative", "band", "drums"]):
         lyrics = (
             "[verse]\n"
-            "Neon roshni mein hum bhaage chale,\n"
-            "Raaton ke andhere se aage chale.\n"
-            "Suno ye garjan badhne lagi,\n"
-            "Aankhon mein aag si jalne lagi.\n\n"
+            "नियोन रोशनी में हम भागे चले,\n"
+            "रातों के अंधेरे से आगे चले।\n"
+            "सुनो ये गर्जन बढ़ने लगी,\n"
+            "आंँखों में आग सी जलने लगी।\n\n"
             "[chorus]\n"
-            "Hum hain wo aawaz jo na rukegi kabhi,\n"
-            "Unche se unche parvat pe chadhenge abhi.\n"
-            "Koi na rok sake is bhaari shor ko,\n"
-            "Badal denge hum is saari dunya ko!\n\n"
+            "हम हैं वो आवाज़ जो न रुकेगी कभी,\n"
+            "ऊँचे से ऊँचे पर्वत पे चढ़ेंगे अभी।\n"
+            "कोई न रोक सके इस भारी शोर को,\n"
+            "बदल देंगे हम इस सारी दुनिया को!\n\n"
             "[verse]\n"
-            "Bijli ki taarein ab rone lagi,\n"
-            "Toofani aasman ke neeche khadi.\n"
-            "Hum apne hausle ko na haarenge kabhi,\n"
-            "Sabse bada sur chhedenge abhi."
+            "बिजली की तारें अब रोने लगीं,\n"
+            "तूफ़ानी आसमान के नीचे खड़ी।\n"
+            "हम अपने हौसले को न हारेंगे कभी,\n"
+            "सबसे बड़ा सुर छेड़ेंगे अभी।"
         )
         style = (
             f"energetic alternative rock, driving electric guitars, powerful bassline, rock drum kit, 112 BPM, "
-            f"strong passionate native Indian {singer_gender.lower()} rock vocals, Bollywood style rock singer, natural Indian accent, clear Hinglish pronunciation, clean professional studio mix."
+            f"strong passionate native Indian {singer_gender.lower()} rock vocals, Bollywood style rock singer, natural Indian accent, clear native pronunciation, clean professional studio mix."
         )
         
     else:
         lyrics = (
             "[verse]\n"
-            "Apna saamaan uthake hum chal diye,\n"
-            "Thandi baarish ko piche chhor diye.\n"
-            "Naye ishaare ki dhoondh mein hain hum,\n"
-            "Apna ek naya rasta bana liye.\n\n"
+            "अपना सामान उठाके हम चल दिए,\n"
+            "ठंडी बारिश को पीछे छोड़ दिए।\n"
+            "नए इशारे की ढूँढ में हैं हम,\n"
+            "अपना एक नया रास्ता बना लिए।\n\n"
             "[chorus]\n"
-            "Ye shuruaat hai aage ke safar ki,\n"
-            "Jahan le chale hume raahein humari.\n"
-            "Har ek kadam pe hai roshni nayi,\n"
-            "Ujaale ki taraf hum badhte chale.\n\n"
+            "ये शुरुआत है आगे के सफर की,\n"
+            "जहाँ ले चलें हमें राहें हमारी।\n"
+            "हर एक कदम पे है रोशनी नयी,\n"
+            "उजाले की तरफ हम बढ़ते चले।\n\n"
             "[verse]\n"
-            "Meelon chale aur parvat uthe,\n"
-            "Aankhon mein teri sapne saje.\n"
-            "Chalte rahenge hum chahe jo ho,\n"
-            "Apna naya raahi aaj banaye."
+            "मीलों चले और पर्वत उठे,\n"
+            "आँखों में तेरी सपने सजे।\n"
+            "चलते रहेंगे हम चाहे जो हो,\n"
+            "अपना नया राही आज बनाएं।"
         )
         style = (
             f"modern acoustic pop songwriter, gentle steady rhythm, 92 BPM, warm piano, soft acoustic guitar, "
-            f"bright acoustic bass, expressive friendly native Indian {singer_gender.lower()} vocal, Bollywood style singer, natural Indian accent, clear Hinglish pronunciation, clean mix."
+            f"bright acoustic bass, expressive friendly native Indian {singer_gender.lower()} vocal, Bollywood style singer, natural Indian accent, clear native pronunciation, clean mix."
         )
         
     return lyrics, style
@@ -4660,90 +4683,90 @@ def expand_prompt_to_lyrics_and_style_hindi_local(prompt: str, singer_gender: st
     if any(k in p for k in ["emotional", "sad", "touch", "heart", "lullaby", "soft", "peaceful"]):
         lyrics = (
             "[verse]\n"
-            "Chanda mama door ke, taare chamke raat mein,\n"
-            "Sojo mere pyaare ab thandi hawa chal rahi.\n"
-            "Aankhein apni band karo, sapno mein kho jao,\n"
-            "Parion ki kahani mein ab beh jao.\n\n"
+            "चंदा मामा दूर के, तारे चमके रात में,\n"
+            "सो जाओ मेरे प्यारे अब ठंडी हवा चल रही।\n"
+            "आँखें अपनी बंद करो, सपनों में खो जाओ,\n"
+            "परियों की कहानी में अब बह जाओ।\n\n"
             "[chorus]\n"
-            "Sojo mere laale, sojo mere pyaare,\n"
-            "Nindiya aayi re, ankhiyon mein samaayi re.\n"
-            "Godi mein meri tum sada safe rahoge,\n"
-            "Pyaare se chanda mama dhyan rakhenge.\n\n"
+            "सो जाओ मेरे लाडले, सो जाओ मेरे प्यारे,\n"
+            "निंदिया आई रे, अखियों में समाई रे।\n"
+            "गोदी में मेरी तुम सदा सुरक्षित रहोगे,\n"
+            "प्यारे से चंदा मामा ध्यान रखेंगे।\n\n"
             "[verse]\n"
-            "Subah ki dhoop jald hi aayegi,\n"
-            "Saare andhere ko door bhagayegi.\n"
-            "Tab tak ke liye chanda mama rahenge,\n"
-            "Tumhare upar dhyan apna rakhenge."
+            "सुबह की धूप जल्द ही आएगी,\n"
+            "सारे अंधेरे को दूर भगाएगी।\n"
+            "तब तक के लिए चंदा मामा रहेंगे,\n"
+            "तुम्हारे ऊपर ध्यान अपना रखेंगे।"
         )
         style = (
             f"gentle lullaby, warm acoustic guitar, soft emotional piano, delicate glockenspiel, peaceful strings, 80 BPM, "
-            f"heart-touching emotional melody, warm clear friendly native Indian {singer_gender.lower()} singing voice, Bollywood style kids singer, natural Indian accent, clear Hinglish pronunciation, gentle percussion, clean mix."
+            f"heart-touching emotional melody, warm clear friendly native Indian {singer_gender.lower()} singing voice, Bollywood style kids singer, natural Indian accent, clear native pronunciation, gentle percussion, clean mix."
         )
         
     elif any(k in p for k in ["happy", "fun", "playful", "bouncy", "cheerful", "dance", "laugh"]):
         lyrics = (
             "[verse]\n"
-            "Pyaara din aur neela aasmaan,\n"
-            "Titliyan aur chidiya yahaan wahaan.\n"
-            "Koodo rabbit jaise, aasmaan ko chhuo,\n"
-            "Aao saare bacho, milke ab khelo!\n\n"
+            "प्यारा दिन और नीला आसमान,\n"
+            "तितलियाँ और चिड़िया यहाँ वहाँ।\n"
+            "कूदें खरगोश जैसे, आसमान को छुओ,\n"
+            "आओ सारे बच्चों, मिलके अब खेलो!\n\n"
             "[chorus]\n"
-            "Tali bajao aur gol gol ghoomo,\n"
-            "Khushi ki aawaz ko tum ab suno.\n"
-            "Hanso aur joodo khushi se saare,\n"
-            "Touch karlo aasmaan ko hum pyaare!\n\n"
+            "ताली बजाओ और गोल गोल घूमो,\n"
+            "खुशी की आवाज़ को तुम अब सुनो।\n"
+            "हँसो और जुड़ो खुशी से सारे,\n"
+            "छू लो आसमान को हम प्यारे!\n\n"
             "[verse]\n"
-            "Chhota sa puppy punch hilata,\n"
-            "Paper boat pe safar karata.\n"
-            "Gaana gao aur saath mein nacho,\n"
-            "Yahi hai hum sab ki jagah bacho!"
+            "छोटा सा पिल्ला पूँछ हिलाता,\n"
+            "कागज़ की नाव पे सफर कराता।\n"
+            "गाना गाओ और साथ में नाचो,\n"
+            "यही है हम सब की जगह बच्चों!"
         )
         style = (
             f"cheerful kids nursery rhyme, high-energy bouncy happy kids rhythm, 108 BPM, playful animated kids show style, "
             f"ukulele, glockenspiel, hand claps, light acoustic guitar, bright bells, traditional Indian dholak beats, soft tabla, "
-            f"friendly native Indian {singer_gender.lower()} singing voice, Bollywood style kids singer, natural Indian accent, clear Hinglish pronunciation, clean mix."
+            f"friendly native Indian {singer_gender.lower()} singing voice, Bollywood style kids singer, natural Indian accent, clear native pronunciation, clean mix."
         )
         
     elif any(k in p for k in ["educational", "alphabet", "abc", "number", "learn", "school"]):
         lyrics = (
             "[verse]\n"
-            "A B C D E F G,\n"
-            "Aao mere saath seekho tum bhi.\n"
-            "H I J K L M N,\n"
-            "Pen se likho saare letters abhi.\n\n"
+            "ए बी सी डी ई एफ जी,\n"
+            "आओ मेरे साथ सीखो तुम भी।\n"
+            "एच आई जे के एल एम एन,\n"
+            "पेन से लिखो सारे लेटर्स अभी।\n\n"
             "[chorus]\n"
-            "Letters seekhenge ek ek karke,\n"
-            "ABC seekhna hai bada mazedaar!\n"
-            "Zor se gao aur saaf gao,\n"
-            "Seekhte rahenge hum poore saal.\n\n"
+            "लेटर्स सीखेंगे एक एक करके,\n"
+            "एबीसी सीखना है बड़ा मज़ेदार!\n"
+            "ज़ोर से गाओ और साफ़ गाओ,\n"
+            "सीखते रहेंगे हम पूरे साल।\n\n"
             "[verse]\n"
-            "O P Q R S T U,\n"
-            "V W X and Y and Z.\n"
-            "Ab to seekh gaye hum ABC,\n"
-            "Agli baar tum bhi saath gaana ji."
+            "ओ पी क्यू आर एस टी यू,\n"
+            "वी डब्ल्यू एक्स और वाई और ज़ेड।\n"
+            "अब तो सीख गए हम एबीसी,\n"
+            "अगली बार तुम भी साथ गाना जी।"
         )
         style = (
             f"upbeat educational kids song, high-energy bouncy kids rhythm, 105 BPM, cheerful synth melody, "
-            f"clear friendly native Indian {singer_gender.lower()} vocal pronunciation, Bollywood style kids singer, natural Indian accent, clear Hinglish pronunciation, "
+            f"clear friendly native Indian {singer_gender.lower()} vocal pronunciation, Bollywood style kids singer, natural Indian accent, clear native pronunciation, "
             f"traditional Indian dholak beats, glockenspiel, hand claps, bright piano, positive happy mood, clean mix."
         )
         
     else:
         lyrics = (
             "[verse]\n"
-            "Chalo chalo hum chalte hain,\n"
-            "Naye safar pe nikalte hain.\n"
-            "Khelenge aur seekhenge hum,\n"
-            "Khushi khushi din beetenge hum.\n\n"
+            "चलो चलो हम चलते हैं,\n"
+            "नए सफर पे निकलते हैं।\n"
+            "खेलेंगे और सीखेंगे हम,\n"
+            "खुशी खुशी दिन बिताएंगे हम।\n\n"
             "[chorus]\n"
-            "Gao mere saath, ek do teen,\n"
-            "Zindagi hai kitni haseen.\n"
-            "Nachlo ab aur tali bajao,\n"
-            "Dunya ko tum geet sunao!"
+            "गाओ मेरे साथ, एक दो तीन,\n"
+            "ज़िंदगी है कितनी हसीन।\n"
+            "नाचो अब और ताली बजाओ,\n"
+            "दुनिया को तुम गीत सुनाओ!"
         )
         style = (
             f"cheerful kids adventure song, high-energy bouncy kids rhythm, 108 BPM, playful friendly native Indian {singer_gender.lower()} singing voice, Bollywood style kids singer, natural Indian accent, "
-            f"acoustic guitar, traditional Indian dholak beats, soft tabla percussion, glockenspiel, bells, clear Hinglish pronunciation, clean mix."
+            f"acoustic guitar, traditional Indian dholak beats, soft tabla percussion, glockenspiel, bells, clear native pronunciation, clean mix."
         )
         
     return lyrics, style

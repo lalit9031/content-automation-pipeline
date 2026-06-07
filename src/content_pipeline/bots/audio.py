@@ -1312,33 +1312,134 @@ def prepare_singing_lyrics(lyrics: str) -> str:
 
 def apply_studio_stereo_doubling(vocal_segment: AudioSegment) -> AudioSegment:
     """
-    Simulates a studio vocal doubler by splitting a mono track,
-    panning left/right, and introducing a micro-delay.
+    Simulates a professional dual-mic studio tracking setup. Splits a mono 
+    vocal stem, pans channels wide, and adds a micro-delay for immersive stereo width.
     """
-    print("🎛️ Mastering Layer: Applying Stereo Vocal Doubling...")
-    # Pan channels slightly left and right to open the soundstage
-    left_channel = vocal_segment.pan(-0.20)
-    right_channel = vocal_segment.pan(0.20)
+    print("🎛️ Studio Suite: Applying Stereo Vocal Doubling...")
+    # Pan channels left and right to open the audio soundstage
+    left_channel = vocal_segment.pan(-0.22)
+    right_channel = vocal_segment.pan(0.22)
     
-    # Add a tiny 20ms delay to the right channel for human timing variance
+    # Introduce a microscopic 20ms delay to the right channel to simulate human variance
     delayed_right = AudioSegment.silent(duration=20) + right_channel
     
-    # Overlay channels to create wide stereo vocals
+    # Overlay the channels back into a single wide stereo vocal stem
     widened_vocals = left_channel.overlay(delayed_right, position=0)
     return widened_vocals
 
-def apply_ambient_reverb_tail(vocal_segment: AudioSegment, decay_db: float = 12, delay_ms: int = 120) -> AudioSegment:
+def apply_ambient_reverb_space(vocal_segment: AudioSegment, decay_db=14, delay_ms=110) -> AudioSegment:
     """
-    Introduces a smooth, natural acoustic studio hall reflection 
-    by layering a quieted, delayed duplicate of the vocal track.
+    Blends the singer into a natural, warm studio hall reflection space,
+    glueing the vocals seamlessly INSIDE the acoustic backing instruments.
     """
-    print("✨ Mastering Layer: Blending Ambient Reverb Space...")
+    print("✨ Studio Suite: Diffusing Plate Reverb Reflection...")
     reverb_tail = vocal_segment - decay_db
     delayed_tail = AudioSegment.silent(duration=delay_ms) + reverb_tail
     
-    # Layer the original vocal segment with its acoustic decay tail
+    # Layer the clean vocal stem with its natural environmental decay tail
     spatial_vocals = vocal_segment.overlay(delayed_tail, position=0)
     return spatial_vocals
+
+
+def apply_vocal_sidechain_carving(beat_segment: AudioSegment, vocal_segment: AudioSegment) -> AudioSegment:
+    """
+    Dynamically ducks the mid-range frequencies of the backing track 
+    whenever vocal energy is detected, carving an acoustic pocket for the singer.
+    """
+    print("🎛️ Mastering Suite: Executing Dynamic Mid-Side Sidechain Carving...")
+    
+    # Export segments to raw sample arrays
+    sample_rate = beat_segment.frame_rate
+    beat_channels = beat_segment.channels
+    vocal_channels = vocal_segment.channels
+    
+    beat_samples = np.array(beat_segment.get_array_of_samples(), dtype=np.float32)
+    vocal_samples = np.array(vocal_segment.get_array_of_samples(), dtype=np.float32)
+    
+    # Calculate localized root-mean-square (RMS) energy of the vocals
+    try:
+        vocal_envelope = np.abs(signal.hilbert(vocal_samples))
+    except Exception:
+        vocal_envelope = np.abs(vocal_samples)
+        
+    vocal_envelope = signal.medfilt(vocal_envelope, kernel_size=101) # Smooth envelope
+    
+    # Normalize envelope to create a dynamic attenuation curve
+    max_env = np.max(vocal_envelope) if np.max(vocal_envelope) > 0 else 1.0
+    vocal_attenuation = 0.30 * (vocal_envelope / max_env) # Max 3dB mid-duck
+    
+    # Align frame channels
+    vocal_frames = len(vocal_samples) // vocal_channels
+    beat_frames = len(beat_samples) // beat_channels
+    
+    if vocal_channels == 2:
+        frame_attenuation = 0.5 * (vocal_attenuation[0::2] + vocal_attenuation[1::2])
+    else:
+        frame_attenuation = vocal_attenuation
+        
+    if len(frame_attenuation) < beat_frames:
+        pad_width = beat_frames - len(frame_attenuation)
+        frame_attenuation = np.pad(frame_attenuation, (0, pad_width), mode='constant', constant_values=0.0)
+    else:
+        frame_attenuation = frame_attenuation[:beat_frames]
+        
+    if beat_channels == 2:
+        attenuation_curve = 1.0 - np.repeat(frame_attenuation, 2)
+    else:
+        attenuation_curve = 1.0 - frame_attenuation
+    
+    # Apply bandpass filter to isolate the vocal presence pocket (1kHz to 2.5kHz) in the beat
+    nyquist = sample_rate / 2.0
+    b, a = signal.butter(2, [1000.0 / nyquist, 2500.0 / nyquist], btype='band')
+    beat_mids = signal.lfilter(b, a, beat_samples)
+    
+    # Dynamically attenuate only the clashing mid-frequencies based on vocal presence
+    carved_mids = beat_mids * attenuation_curve
+    
+    # Re-combine the carved mids back into the original beat track
+    processed_beat_samples = (beat_samples - beat_mids) + carved_mids
+    processed_beat_samples = np.clip(processed_beat_samples, -32768, 32767)
+    processed_beat_samples = processed_beat_samples.astype(np.int16)
+    
+    return beat_segment._spawn(processed_beat_samples.tobytes())
+
+
+def compile_glued_studio_master(vocal_stereo_stem: AudioSegment, beat_stem: AudioSegment, output_path: str):
+    """
+    Calibrates the final mixing matrix ratios to glue the wide stereo vocals 
+    natively inside the backing score, preventing the voice from floating loosely on top.
+    """
+    import gc
+    
+    print("🎛️ Final Mixdown: Applying Studio Glue Leveling & Limiter Matrix...")
+    
+    # 1. Calibrate professional pop mixing headroom ratios
+    # Tighten the separation from 10dB down to an integrated 5.5dB studio gap
+    calibrated_beat = beat_stem - 4.5
+    calibrated_vocals = vocal_stereo_stem + 1.0
+    
+    # 1.5 Apply dynamic mid-side sidechain carving to the beat based on vocal presence
+    carved_beat = apply_vocal_sidechain_carving(calibrated_beat, calibrated_vocals)
+    
+    # 2. Overlay the spatial vocal tracks cleanly over the background instruments
+    final_mix = carved_beat.overlay(calibrated_vocals, position=0)
+    
+    # 3. Apply a software peak limiter threshold to prevent digital clipping
+    mastered_mix = final_mix.apply_gain(0.0).compress_dynamic_range(
+        threshold=-2.0,
+        attack=2.0,
+        release=50.0,
+        ratio=12.0  # Brickwall limiter protection
+    )
+    
+    # 4. Export the polished track
+    mastered_mix.export(output_path, format="mp3", bitrate="192k")
+    
+    # 5. Local Hardware Garbage Collection: Crucial for local 8GB M1 memory allocation
+    gc.collect()
+        
+    print(f"✨ Master Recording successfully compiled and cached at: {output_path}")
+    return output_path
 
 
 def clean_and_master_pop_vocals(vocal_segment: AudioSegment) -> AudioSegment:
@@ -1714,17 +1815,43 @@ def generate_hindi_song_via_native_audio(
 
     # 3. Load and process vocals with dynamic voice conversion (RVC) and genre-aware resonance filter
     from content_pipeline.bots.singing_synthesis import convert_speech_to_melodic_singing
+    from content_pipeline.bots.melody_generator import generate_synthetic_melody_guide
     model_filename = "bollywood_male" if singer_gender.strip().lower() == "male" else "bollywood_female"
     
-    # Morph spoken TTS stem into a singing voice stem using RVC
-    singing_vocals_file = convert_speech_to_melodic_singing(raw_vocals_file, model_filename)
+    # Check if a vocal reference track is selected
+    use_vocal_ref_as_guide = False
+    ref_full_path = None
+    if selected_ref != "None (Text-only)":
+        ref_full_path = PROJECT_ROOT / "output" / "reference_audio" / selected_ref
+        if not ref_full_path.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio").exists():
+            ref_full_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio") / selected_ref
+        
+        if ref_full_path.exists() and is_vocal_track(selected_ref):
+            use_vocal_ref_as_guide = True
+
+    if use_vocal_ref_as_guide:
+        # Use vocal reference track directly as the pitch guide
+        print(f"🎵 RVC Pitch Guide: Using vocal reference track directly: {ref_full_path}")
+        melody_guide_path = ref_full_path
+        created_temp_melody_guide = False
+    else:
+        # Generate the reference melody guide WAV file based on the duration of raw vocals
+        print("🎵 RVC Pitch Guide: Generating synthetic melody guide fallback...")
+        vocals_temp_segment = AudioSegment.from_file(str(raw_vocals_file))
+        vocals_duration = vocals_temp_segment.duration_seconds
+        melody_guide_path = raw_vocals_file.parent / "temp_melody_guide.wav"
+        generate_synthetic_melody_guide(duration_seconds=vocals_duration, tempo_bpm=65, output_path=str(melody_guide_path))
+        created_temp_melody_guide = True
+
+    # Morph spoken TTS stem into a singing voice stem using RVC guided by the melody guide
+    singing_vocals_file = convert_speech_to_melodic_singing(raw_vocals_file, model_filename, melody_path=melody_guide_path)
     
     # Master the singing vocals using formant-protected resonance and pop mastering EQ
     vocals_clean = process_studio_vocal_resonance(singing_vocals_file, genre_preset=genre, voice_gender=singer_gender)
     
     # Apply spatial mastering suite: stereo doubler and ambient reverb tail
     vocals_doubled = apply_studio_stereo_doubling(vocals_clean)
-    vocals = apply_ambient_reverb_tail(vocals_doubled)
+    vocals = apply_ambient_reverb_space(vocals_doubled)
 
 
     # 4. Determine background beat file (Decoupled Pipeline using Lyria instrumental)
@@ -1850,20 +1977,19 @@ def generate_hindi_song_via_native_audio(
     # Crop beat to match vocals + 3 seconds of buffer
     beat = beat[:int((vocals.duration_seconds + 3) * 1000)]
 
-    # Drop the beat volume by 7dB to ensure dental consonants cut through smoothly
-    softer_beat = beat - 7
+    # Use compile_glued_studio_master to blend, limit, and export the song
+    compile_glued_studio_master(vocals, beat, str(output_path))
 
-    # Overlay the processed vocals onto the background track (with +3dB headroom)
-    final_mix = softer_beat.overlay(vocals + 3, position=0)
-
-    # Export the final product
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    final_mix.export(str(output_path), format="mp3")
-
-    # Clean up temp raw vocals
+    # Clean up temp raw vocals and melody guide
     try:
         if raw_vocals_file.exists():
             os.remove(raw_vocals_file)
+    except Exception:
+        pass
+
+    try:
+        if 'created_temp_melody_guide' in locals() and created_temp_melody_guide and melody_guide_path and melody_guide_path.exists():
+            os.remove(melody_guide_path)
     except Exception:
         pass
 

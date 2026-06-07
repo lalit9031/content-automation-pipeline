@@ -1,54 +1,61 @@
 # Create this module in src/content_pipeline/bots/singing_synthesis.py
 import os
+import subprocess
 import sys
 from pathlib import Path
-from scipy.io import wavfile
 
-# Try importing RVC components, falling back to a mock/bypass interface if dependencies fail to compile
-try:
-    from rvc.modules.vc.modules import VC
-    RVC_AVAILABLE = True
-except ImportError as err:
-    print(f"⚠️ Warning: RVC dependencies could not be imported ({err}). Running in fallback mode.")
-    RVC_AVAILABLE = False
-    VC = None
-
-def convert_speech_to_melodic_singing(speech_stem_path: Path, model_filename: str) -> Path:
+def convert_speech_to_melodic_singing(speech_stem_path: Path, model_filename: str, melody_path: Path = None) -> Path:
     """
-    Acts as the explicit voice processing node. Converts a standard spoken TTS 
-    waveform into a pitch-corrected, high-fidelity singing artist voice stem.
+    Decoupled Worker Node: Programmatically invokes an isolated Python 3.10 
+    environment to run RVC processing, bypassing main environment version blocks.
     """
-    print(f"🎤 Initializing Local RVC Inference Core for: {model_filename}")
-    
     output_singing_path = speech_stem_path.parent / f"mastered_singing_{speech_stem_path.name}"
     
-    if not RVC_AVAILABLE:
-        print("⚠️ RVC-Python is not installed or supported on this environment (requires Python 3.8-3.10 and compiled fairseq).")
-        print("👉 Bypassing RVC conversion step and returning the raw TTS stem.")
-        return speech_stem_path
+    # Define paths for the isolated legacy environment
+    worker_dir = Path("rvc_worker_env")
+    worker_python = worker_dir / "bin" / "python" if os.name != "nt" else worker_dir / "Scripts" / "python.exe"
+    worker_script = Path("src/content_pipeline/bots/rvc_worker_inference.py")
+
+    # 1. Automated Setup: Build the isolated Python 3.10 worker env if it doesn't exist
+    if not worker_dir.exists():
+        print("🏗️ Creating Isolated Python 3.10 Worker Environment for RVC...")
+        try:
+            # Assumes python3.10 is installed on the host system
+            subprocess.run(["python3.10", "-m", "venv", str(worker_dir)], check=True)
+            
+            print("📦 Installing legacy RVC dependencies inside isolated worker...")
+            subprocess.run([str(worker_python), "-m", "pip", "install", "rvc-python==0.1.5", "scipy==1.10.1"], check=True)
+        except Exception as setup_err:
+            print(f"❌ Failed to set up isolated RVC worker environment: {setup_err}")
+            print("👉 Falling back to raw speech stem to preserve pipeline execution.")
+            return speech_stem_path
+
+    # 2. Execution: Run the voice conversion in the safe, isolated legacy sandbox
+    print(f"🎤 Routing audio to Python 3.10 worker node for explicit singing conversion...")
+    try:
+        if not worker_script.exists():
+            raise FileNotFoundError(f"Worker inference script not found at {worker_script}")
+            
+        cmd = [
+            str(worker_python), str(worker_script),
+            "--input", str(speech_stem_path),
+            "--output", str(output_singing_path),
+            "--model", model_filename,
+            "--method", "rmvpe",
+            "--index_rate", "0.35"
+        ]
+        if melody_path:
+            cmd.extend(["--melody", str(melody_path)])
+            
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
         
-    # Ensure model file exists
-    model_path = Path("models/singers") / f"{model_filename}.pth"
-    if not model_path.exists():
-        print(f"⚠️ RVC Model {model_path} not found. Please place your .pth model inside models/singers/.")
-        print("👉 Falling back to direct raw TTS stem.")
+        print("✨ Worker Node processing complete. Returning high-fidelity singing stem.")
+        return output_singing_path
+
+    except Exception as e:
+        if isinstance(e, subprocess.CalledProcessError):
+            print(f"❌ Isolated Worker Node Failed: {e.stderr}")
+        else:
+            print(f"❌ RVC Voice Conversion error: {e}")
+        print("👉 Falling back to raw speech stem to preserve pipeline execution.")
         return speech_stem_path
-        
-    # Initialize the Retrieval-Based Voice Conversion module
-    vc = VC()
-    vc.get_vc(str(model_path))
-    
-    # vc_single processes the audio array, tracking pitch variables dynamically
-    target_sample_rate, audio_data, _, _ = vc.vc_single(
-        speaker_id=1,
-        input_audio_path=speech_stem_path,
-        f0_up_key=0,          # Semitone pitch shift adjustment
-        f0_method="rmvpe",     # RMVPE is the gold-standard algorithm for singing tracking
-        index_rate=0.60,       # Controls target singer accent strength vs clarity
-        filter_radius=3        # Reduces breathiness artifacts
-    )
-    
-    # Save the polished vocal stem
-    wavfile.write(output_singing_path, target_sample_rate, audio_data)
-    
-    return output_singing_path
