@@ -1625,13 +1625,18 @@ def render_frontdoor(settings: Settings) -> None:
         with right_col:
             st.markdown("#### Run settings")
             
+            lang_choice = st.session_state.get("music_studio_language", "English")
+            model_options = ["Lyria 3 Pro Preview (tencent/SongGeneration)"]
+            if lang_choice == "Hindi":
+                model_options = ["Gemini 2.5 Flash + Edge-TTS (Native Accent)"]
+
             st.selectbox(
                 "Model",
-                options=["Lyria 3 Pro Preview (tencent/SongGeneration)"],
+                options=model_options,
                 index=0,
                 disabled=True,
                 key="music_studio_model_select",
-                help="Lyria 3 Pro is optimized for high-fidelity composition and vocal generation."
+                help="Lyria 3 Pro is used for English/Hinglish. Gemini 2.5/Edge-TTS Native Audio is used for Hindi to achieve perfect pronunciation."
             )
             
             music_desc_val = st.session_state.get("music_studio_description", "")
@@ -2473,12 +2478,17 @@ def render_frontdoor(settings: Settings) -> None:
         with right_col:
             st.markdown("### Run settings")
             
+            lang_choice_kids = st.session_state.get("kids_studio_language", "English")
+            model_options_kids = ["Lyria 3 Pro Preview (tencent/SongGeneration)"]
+            if lang_choice_kids == "Hindi":
+                model_options_kids = ["Gemini 2.5 Flash + Edge-TTS (Native Accent)"]
+
             st.selectbox(
                 "Model",
-                options=["Lyria 3 Pro Preview (tencent/SongGeneration)"],
+                options=model_options_kids,
                 index=0,
                 disabled=True,
-                help="Lyria 3 Pro is optimized for high-fidelity composition and vocal generation."
+                help="Lyria 3 Pro is used for English/Hinglish. Gemini 2.5/Edge-TTS Native Audio is used for Hindi to achieve perfect pronunciation."
             )
             
             kids_desc_val = st.session_state.get("kids_song_description", "")
