@@ -4736,12 +4736,54 @@ def expand_prompt_to_lyrics_and_style_hindi_local(prompt: str, singer_gender: st
     return lyrics, style
 
 
+def get_git_info() -> str:
+    try:
+        import subprocess
+        branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"], text=True).strip()
+        commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+        message = subprocess.check_output(["git", "log", "-1", "--pretty=%B"], text=True).strip()
+        return f"Branch: `{branch}`  \nCommit: `{commit[:8]}` ({message.splitlines()[0]})"
+    except Exception as e:
+        return f"Failed to get git info: {e}"
+
+
+def get_package_info() -> str:
+    import sys
+    res = []
+    
+    # Check pydub
+    try:
+        import pydub
+        res.append(f"✅ `pydub` imported successfully (path: `{pydub.__file__}`)")
+    except Exception as e:
+        res.append(f"❌ `pydub` import failed: {e}")
+        
+    # Check audioop
+    try:
+        import audioop
+        res.append(f"✅ `audioop` imported successfully")
+    except Exception as e:
+        res.append(f"❌ `audioop` import failed: {e}")
+        
+    # Check python version
+    res.append(f"🐍 Python version: `{sys.version}`")
+    
+    return "  \n".join(res)
+
+
 def main() -> None:
     _apply_streamlit_secrets()
     settings = Settings.from_environment(PROJECT_ROOT)
     st.set_page_config(page_title="Content Pipeline Studio", page_icon="🎬", layout="wide")
+    
+    # Environment Diagnostics
+    with st.expander("🛠️ System & Environment Diagnostics (Debug Info)", expanded=False):
+        st.markdown(get_git_info())
+        st.markdown(get_package_info())
+        
     render_frontdoor(settings)
 
 
 if __name__ == "__main__":
     main()
+
