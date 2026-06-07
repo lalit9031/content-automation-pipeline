@@ -1242,8 +1242,8 @@ def render_frontdoor(settings: Settings) -> None:
     from content_pipeline.bots.gemini_tts import GeminiAudioLimiter
     
     try:
-        img_status = gemini_image_status(settings)
-        audio_limiter = GeminiAudioLimiter(settings.output_dir / ".runtime" / "gemini_audio_rate_limit.json", daily_budget=15)
+        img_status = gemini_image_status(ui_settings)
+        audio_limiter = GeminiAudioLimiter(ui_settings.output_dir / ".runtime" / "gemini_audio_rate_limit.json", daily_budget=15)
         audio_status = audio_limiter.get_current_status()
         
         rem_img = img_status.get("daily_remaining")
@@ -1278,7 +1278,7 @@ def render_frontdoor(settings: Settings) -> None:
             with col_reset2:
                 if st.button("🔄 Reset Quota", key="btn_reset_tts_quota"):
                     import json
-                    state_path = settings.output_dir / ".runtime" / "gemini_audio_rate_limit.json"
+                    state_path = ui_settings.output_dir / ".runtime" / "gemini_audio_rate_limit.json"
                     try:
                         state_path.parent.mkdir(parents=True, exist_ok=True)
                         state_path.write_text(json.dumps({
@@ -1375,8 +1375,8 @@ def render_frontdoor(settings: Settings) -> None:
         from content_pipeline.bots.gemini_tts import GeminiAudioLimiter
         
         try:
-            img_status = gemini_image_status(settings)
-            audio_limiter = GeminiAudioLimiter(settings.output_dir / ".runtime" / "gemini_audio_rate_limit.json", daily_budget=15)
+            img_status = gemini_image_status(ui_settings)
+            audio_limiter = GeminiAudioLimiter(ui_settings.output_dir / ".runtime" / "gemini_audio_rate_limit.json", daily_budget=15)
             audio_status = audio_limiter.get_current_status()
             
             q_cols = st.columns(2)
@@ -1391,7 +1391,7 @@ def render_frontdoor(settings: Settings) -> None:
                     st.error("⚠️ **Hindi Audio Limit (15) Hit!** Swapped to free Edge TTS.")
                     if st.button("🔄 Reset Quota", key="btn_reset_tts_quota_dashboard"):
                         import json
-                        state_path = settings.output_dir / ".runtime" / "gemini_audio_rate_limit.json"
+                        state_path = ui_settings.output_dir / ".runtime" / "gemini_audio_rate_limit.json"
                         try:
                             state_path.parent.mkdir(parents=True, exist_ok=True)
                             state_path.write_text(json.dumps({
