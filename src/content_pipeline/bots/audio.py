@@ -1310,7 +1310,7 @@ def generate_edge_tts_song_fallback(
     ))
     
     # 3. Load vocals and beat
-    vocals = AudioSegment.from_mp3(str(raw_vocals_file))
+    vocals = AudioSegment.from_file(str(raw_vocals_file))
     
     # Determine the background beat file
     beat_path = None
@@ -1322,25 +1322,12 @@ def generate_edge_tts_song_fallback(
             beat_path = ref_full_path
             
     if not beat_path:
-        # Check if there is any default beat/mp3 in desktop New Audio folder
-        desktop_ref_dir = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio")
-        if desktop_ref_dir.exists():
-            mp3_files = sorted(list(desktop_ref_dir.glob("*.mp3")))
-            # Find first file that is not the generated song
-            for f in mp3_files:
-                if "Generated_Song" not in f.name:
-                    beat_path = f
-                    break
-        if not beat_path:
-            # Fallback to creating a silent/ambient background beat
-            beat_path = temp_dir / "fallback_beat.wav"
-            generate_music_preview(beat_path, "ambient", duration_seconds=int(vocals.duration_seconds + 5))
+        # Fallback to generating a clean, vocal-free ambient synth background track
+        beat_path = temp_dir / "fallback_beat.wav"
+        generate_music_preview(beat_path, "ambient", duration_seconds=int(vocals.duration_seconds + 5))
             
     # Load beat
-    if beat_path.suffix.lower() == ".mp3":
-        beat = AudioSegment.from_mp3(str(beat_path))
-    else:
-        beat = AudioSegment.from_wav(str(beat_path))
+    beat = AudioSegment.from_file(str(beat_path))
         
     # Ensure beat is long enough to fit the vocals
     if beat.duration_seconds < vocals.duration_seconds:
@@ -1528,10 +1515,11 @@ def generate_hindi_song_via_native_audio(
             inst_desc += ", negative_prompt: vocals, singing, backing vocals, english voice, whispering"
             
         # Call prediction with instrumental lyric placeholder
-        inst_lyric = "[instrumental]\n[inst-medium]\n[silence]\n[inst-long]"
+        inst_lyric = "[intro-medium]\n\n[verse]\n[silence]\n\n[outro-medium]"
         
-        # Force Folk genre and lower temperature for traditional Indian feel
-        active_genre = genre if genre and genre != "Auto" else "Folk"
+        # Force a valid genre and lower temperature for traditional Indian feel
+        valid_genres = ['Auto', 'Pop', 'Latin', 'Rock', 'Electronic', 'Metal', 'Country', 'R&B/Soul', 'Ballad', 'Jazz', 'World', 'Hip-Hop', 'Funk', 'Soundtrack']
+        active_genre = genre if genre in valid_genres else "World"
         active_temp = min(temperature, 0.40) # Lower temp to prevent Western deviations
         
         result_path, info = client.predict(
@@ -1567,22 +1555,12 @@ def generate_hindi_song_via_native_audio(
                 beat_path = ref_full_path
 
         if not beat_path:
-            desktop_ref_dir = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio")
-            if desktop_ref_dir.exists():
-                mp3_files = sorted(list(desktop_ref_dir.glob("*.mp3")))
-                for f in mp3_files:
-                    if "Generated_Song" not in f.name and "clean_hindi_vocals" not in f.name and "isolated_indian_accent_track" not in f.name:
-                        beat_path = f
-                        break
-            if not beat_path:
-                beat_path = temp_dir / "fallback_beat.wav"
-                generate_music_preview(beat_path, "ambient", duration_seconds=int(vocals.duration_seconds + 5))
+            # Fallback to generating a clean, vocal-free ambient synth background track
+            beat_path = temp_dir / "fallback_beat.wav"
+            generate_music_preview(beat_path, "ambient", duration_seconds=int(vocals.duration_seconds + 5))
 
     # Load beat
-    if beat_path.suffix.lower() == ".mp3":
-        beat = AudioSegment.from_mp3(str(beat_path))
-    else:
-        beat = AudioSegment.from_wav(str(beat_path))
+    beat = AudioSegment.from_file(str(beat_path))
 
     # Ensure beat is long enough to fit the vocals
     if beat.duration_seconds < vocals.duration_seconds:
