@@ -1291,9 +1291,12 @@ def _load_audio_manifests(output_dir: Path, pattern: str) -> list[dict[str, Any]
 
 
 def prepare_singing_lyrics(lyrics: str) -> str:
-    """Prepare lyrics for singing by performing vowel elongation mapping
-    and prepending/inserting bracketed musical directives for Gemini TTS.
+    """Prepare lyrics for singing. Returns clean correctly spelled lyrics,
+    relying on model-level instructions for natural singing cadence.
     """
+    return lyrics.strip()
+
+def prepare_singing_lyrics_old(lyrics: str) -> str:
     import re
     # 1. First, split the lyrics into lines
     lines = lyrics.splitlines()

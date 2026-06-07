@@ -180,15 +180,18 @@ def generate_gemini_voiceover(
                 prompt_text = text
                 if is_hindi:
                     accent_instructions = (
-                        "You are a native Indian professional playback singer.\n"
-                        "You must speak and chant with a 100% authentic, clear Indian accent.\n"
+                        "You are an expert native Indian classical playback singer performing a sacred hymn.\n"
+                        "Deliver the text as a continuous, flowing melodic chant, NOT as spoken text.\n"
+                        "Sustain your breath and smoothly elongate the vowel sounds natively at the end of each poetic phrase.\n"
+                        "Maintain a deeply resonant, warm chest-voice register that matches a slow, meditative 65 BPM tempo.\n"
+                        "Do not pause mechanically between words; ensure a fluid, legato transition from one syllable to the next.\n"
+                        "Speak and chant with a 100% authentic, clear Indian accent.\n"
                         "Strictly avoid any Western or Americanized vowel sounds.\n"
                         "Pronounce the short 'अ' sound cleanly (e.g., 'जय' must sound like 'J-uh-ye' or a short 'Jai' (जइ), not 'Jye' or 'Jaye').\n"
                         "Pronounce 'ज्ञान' (Gyan) with a rounded, deep vowel sound, never a flat Western 'a' sound (like in 'cat' or 'cab').\n"
                         "Ensure retroflex consonants like 'ट' and 'ड' are sharp and hit hard (curling your tongue backward against the roof of the mouth),\n"
                         "while dental consonants like 'त' and 'द' are completely soft (tongue touching the front teeth).\n"
-                        "Do not over-enunciate the letter 'H' in words like 'Hanuman' or 'Mahavir' with an airy, Western sigh; keep it solid and throat-vocalized.\n"
-                        "Maintain a musical, flowing cadence without robotic clipping.\n\n"
+                        "Do not over-enunciate the letter 'H' in words like 'Hanuman' or 'Mahavir' with an airy, Western sigh; keep it solid and throat-vocalized.\n\n"
                         "Here is the text to speak:\n"
                     )
                     prompt_text = accent_instructions + text
