@@ -1291,6 +1291,93 @@ def _load_audio_manifests(output_dir: Path, pattern: str) -> list[dict[str, Any]
     return manifests
 
 
+def prepare_singing_lyrics(lyrics: str) -> str:
+    """Prepare lyrics for singing by performing vowel elongation mapping
+    and prepending/inserting bracketed musical directives for Gemini TTS.
+    """
+    import re
+    # 1. First, split the lyrics into lines
+    lines = lyrics.splitlines()
+    processed_lines = []
+    
+    # Prepend global singing style block
+    processed_lines.append("[style: traditional north indian classical chant, tempo: slow, mood: highly reverent]")
+    processed_lines.append("")
+    
+    # Dynamic matra elongation mapping helper
+    def elongate_line(line_str: str) -> str:
+        replacements = {
+            'ा': 'ााा',
+            'ी': 'ीीी',
+            'ू': 'ूूू',
+            'ो': 'ोोो',
+            'ु': 'ुु',
+            'े': 'ेेे',
+            'ै': 'ैैै',
+            'ं': 'ंंं',
+        }
+        word_map = {
+            "जय": "जय्य्य",
+            "हनुमान": "हनुमााान",
+            "ज्ञान": "ग्यााान",
+            "गुन": "गुुन",
+            "सागर": "सााागर",
+            "कपीस": "कपीीीस",
+            "लोक": "लोोोक",
+            "उजागर": "उजााागर",
+            "राम": "राााम",
+            "दूत": "दूूूत",
+            "अतुलित": "अतुुलित",
+            "अंजनि": "अंंंजनि",
+            "पुत्र": "पुुत्र",
+            "पवनसुत": "पवनसुुत",
+            "नामा": "नााामााा",
+        }
+        
+        words = line_str.split()
+        processed_words = []
+        for word in words:
+            # Clean word from punctuation for lookup
+            clean_word = re.sub(r'[।॥\s,.]', '', word)
+            if clean_word in word_map:
+                punc = word.replace(clean_word, '')
+                processed_words.append(word_map[clean_word] + punc)
+                continue
+            
+            new_word = word
+            for char, rep in replacements.items():
+                new_word = new_word.replace(char, rep)
+            processed_words.append(new_word)
+        return " ".join(processed_words)
+
+    # 2. Iterate through lines and insert directives
+    directive_index = 0
+    directives = [
+        "[singing voice, chest resonance, sustain vowels]",
+        "[melodic rise, elongate ending]",
+        "[deep breath, smooth transition]"
+    ]
+    
+    for line in lines:
+        line_strip = line.strip()
+        if not line_strip:
+            continue
+        # If the line is already a bracketed tag, skip
+        if line_strip.startswith("[") and line_strip.endswith("]"):
+            continue
+            
+        # Add a dynamic directive before every line (cycling through them)
+        if directive_index % 2 == 0:
+            directive = directives[min(directive_index // 2, len(directives) - 1)]
+            processed_lines.append(directive)
+            
+        elongated = elongate_line(line_strip)
+        processed_lines.append(elongated)
+        directive_index += 1
+        
+    return "\n".join(processed_lines)
+
+
 def generate_edge_tts_song_fallback(
     lyrics: str,
     output_path: Path,
@@ -1316,8 +1403,10 @@ def generate_edge_tts_song_fallback(
     if not is_devanagari:
         devanagari_lyrics = transliterate_to_devanagari(lyrics, settings)
     
-    # Clean up bracketed lyrics tags (like [verse], [chorus]) for TTS narration
-    clean_lyrics = re.sub(r"\[.*?\]", "", devanagari_lyrics).strip()
+    # Prepare singing-optimized lyrics with vowel elongation
+    singing_lyrics = prepare_singing_lyrics(devanagari_lyrics)
+    # For Edge-TTS, we must strip the bracketed directives since it cannot interpret them
+    clean_lyrics = re.sub(r"\[.*?\]", "", singing_lyrics).strip()
     
     # 2. Determine voice based on gender
     # 'hi-IN-MadhurNeural' for male, 'hi-IN-SwaraNeural' for female
@@ -1367,16 +1456,16 @@ def generate_edge_tts_song_fallback(
     # Crop beat to match vocals + 3 seconds of buffer
     beat = beat[:int((vocals.duration_seconds + 3) * 1000)]
     
-    # 4. Deepen voice for warm chest voice (0.94x pitch-shifting resonance filter)
+    # 4. Deepen voice for warm chest voice (0.91x pitch-shifting resonance filter for classical playback singing)
     deeper_vocals = vocals._spawn(vocals.raw_data, overrides={
-        "frame_rate": int(vocals.frame_rate * 0.94)
+        "frame_rate": int(vocals.frame_rate * 0.91)
     }).set_frame_rate(vocals.frame_rate)
     
-    # Drop the beat volume by 6dB so it doesn't wash out the Indian pronunciation
-    softer_beat = beat - 6
+    # Drop the beat volume by 7dB to ensure dental consonants cut through smoothly
+    softer_beat = beat - 7
     
-    # Overlay the processed vocals onto the background track (boosting vocals slightly)
-    final_mix = softer_beat.overlay(deeper_vocals + 2, position=0)
+    # Overlay the processed vocals onto the background track (boosting vocals slightly with +3dB headroom)
+    final_mix = softer_beat.overlay(deeper_vocals + 3, position=0)
     
     # Export the final product
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1434,8 +1523,11 @@ def generate_hindi_song_via_native_audio(
     if not is_devanagari:
         devanagari_lyrics = transliterate_to_devanagari(lyrics, settings)
 
-    # Clean up bracketed lyrics tags (like [verse], [chorus]) for TTS narration
-    clean_lyrics = re.sub(r"\[.*?\]", "", devanagari_lyrics).strip()
+    # Prepare singing-optimized lyrics with vowel elongation
+    singing_lyrics = prepare_singing_lyrics(devanagari_lyrics)
+    clean_lyrics_gemini = singing_lyrics
+    # For Edge-TTS, we must strip the bracketed directives since it cannot interpret them
+    clean_lyrics_edge = re.sub(r"\[.*?\]", "", singing_lyrics).strip()
 
     # 2. Setup paths
     temp_dir = settings.output_dir / ".runtime"
@@ -1467,7 +1559,7 @@ def generate_hindi_song_via_native_audio(
             
             # Write to raw_vocals_file
             generate_gemini_voiceover(
-                text=clean_lyrics,
+                text=clean_lyrics_gemini,
                 output_path=raw_vocals_file,
                 voice_name=voice_to_use,
                 settings=settings
@@ -1485,7 +1577,7 @@ def generate_hindi_song_via_native_audio(
             _run_async(_write_edge_voice_sample(
                 edge_raw_vocals,
                 voice=fallback_voice,
-                text=clean_lyrics,
+                text=clean_lyrics_edge,
                 rate="+0%",
                 pitch="+0Hz"
             ))
@@ -1620,16 +1712,16 @@ def generate_hindi_song_via_native_audio(
     # Crop beat to match vocals + 3 seconds of buffer
     beat = beat[:int((vocals.duration_seconds + 3) * 1000)]
 
-    # 5. Deepen voice for warm chest voice (0.94x pitch-shifting resonance filter)
+    # 5. Deepen voice for warm chest voice (0.91x pitch-shifting resonance filter for classical playback singing)
     deeper_vocals = vocals._spawn(vocals.raw_data, overrides={
-        "frame_rate": int(vocals.frame_rate * 0.94)
+        "frame_rate": int(vocals.frame_rate * 0.91)
     }).set_frame_rate(vocals.frame_rate)
 
-    # Drop the beat volume by 6dB so it doesn't wash out the Indian pronunciation
-    softer_beat = beat - 6
+    # Drop the beat volume by 7dB to ensure dental consonants cut through smoothly
+    softer_beat = beat - 7
 
-    # Overlay the processed vocals onto the background track (boosting vocals slightly)
-    final_mix = softer_beat.overlay(deeper_vocals + 2, position=0)
+    # Overlay the processed vocals onto the background track (boosting vocals slightly with +3dB headroom)
+    final_mix = softer_beat.overlay(deeper_vocals + 3, position=0)
 
     # Export the final product
     output_path.parent.mkdir(parents=True, exist_ok=True)

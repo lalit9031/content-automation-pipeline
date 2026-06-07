@@ -38,6 +38,10 @@ from content_pipeline.config import Settings
 from content_pipeline.pipeline import run_linkedin_mvp
 
 
+def on_music_lyrics_changed():
+    st.session_state["lyrics_manually_edited"] = True
+
+
 def _apply_streamlit_secrets() -> None:
     try:
         secrets = st.secrets
@@ -1504,6 +1508,10 @@ def render_frontdoor(settings: Settings) -> None:
         st.markdown("### Music studio")
         st.markdown("<p style='font-size: 14.5px; color: #94a3b8; margin-top: -10px; margin-bottom: 24px;'>Compose premium, high-fidelity songs in any genre featuring warm singing voices powered by Tencent Lyria 3 Pro.</p>", unsafe_allow_html=True)
         
+        if "lyrics_manually_edited" not in st.session_state:
+            st.session_state["lyrics_manually_edited"] = bool(st.session_state.get("music_studio_lyrics", "").strip())
+        disable_advanced_settings = not st.session_state["lyrics_manually_edited"]
+        
         # Target Language Dropdown
         st.session_state.setdefault("music_studio_language", "English")
         st.selectbox(
@@ -1524,12 +1532,37 @@ def render_frontdoor(settings: Settings) -> None:
                     st.warning("Please enter a song idea first.")
                 else:
                     with st.spinner("Writing lyrics and composing style..."):
-                        lyrics_exp, desc_exp = expand_general_prompt_to_lyrics_and_style_dynamic(settings, one_click_prompt, one_click_gender, st.session_state.get("music_studio_language", "English"))
+                        lang = st.session_state.get("music_studio_language", "English")
+                        lyrics_exp, desc_exp = expand_general_prompt_to_lyrics_and_style_dynamic(settings, one_click_prompt, one_click_gender, lang)
                         st.session_state["music_studio_lyrics"] = lyrics_exp
                         st.session_state["music_studio_description"] = desc_exp
                         # Force refresh fields
                         st.session_state["music_studio_lyrics_input"] = lyrics_exp
                         st.session_state["music_studio_description_input"] = desc_exp
+                        
+                        # Automatically select reference audio based on language
+                        ref_dir = PROJECT_ROOT / "output" / "reference_audio"
+                        if not ref_dir.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio").exists():
+                            ref_dir = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio")
+                        
+                        if lang in ["Hindi", "Hinglish"]:
+                            if ref_dir.exists():
+                                raw_files = sorted([f.name for f in ref_dir.glob("*.mp3")])
+                                ref_files = [f for f in raw_files if any(x in f.lower() for x in ["titli", "barnaby", "hindi", "squirrel"])]
+                                if ref_files:
+                                    st.session_state["music_studio_ref_audio_choice_input"] = ref_files[0]
+                                    st.session_state["music_studio_ref_audio_choice"] = ref_files[0]
+                                else:
+                                    st.session_state["music_studio_ref_audio_choice_input"] = "None (Text-only)"
+                                    st.session_state["music_studio_ref_audio_choice"] = "None (Text-only)"
+                            else:
+                                st.session_state["music_studio_ref_audio_choice_input"] = "None (Text-only)"
+                                st.session_state["music_studio_ref_audio_choice"] = "None (Text-only)"
+                        else:
+                            st.session_state["music_studio_ref_audio_choice_input"] = "None (Text-only)"
+                            st.session_state["music_studio_ref_audio_choice"] = "None (Text-only)"
+                            
+                        st.session_state["lyrics_manually_edited"] = False
                         st.success("Lyrics & Style drafted successfully!")
                         st.rerun()
 
@@ -1542,7 +1575,8 @@ def render_frontdoor(settings: Settings) -> None:
                 "Enter lyrics here (use [verse] and [chorus] tags, avoid [intro]/[outro] tags)",
                 value=music_lyrics_val,
                 height=350,
-                key="music_studio_lyrics_input"
+                key="music_studio_lyrics_input",
+                on_change=on_music_lyrics_changed
             )
             st.session_state["music_studio_lyrics"] = lyrics
 
@@ -1661,7 +1695,8 @@ def render_frontdoor(settings: Settings) -> None:
                 "Soundscape Vibe Preset",
                 options=["Custom"] + list(SOUNDSCAPE_PRESETS.keys()),
                 key="music_studio_vibe_preset",
-                help="Select a musical style preset to automatically populate the Style Description."
+                help="Select a musical style preset to automatically populate the Style Description.",
+                disabled=disable_advanced_settings
             )
             
             if "prev_music_studio_vibe" not in st.session_state:
@@ -1685,7 +1720,8 @@ def render_frontdoor(settings: Settings) -> None:
                 "Style Description",
                 height=120,
                 key="music_studio_description_input",
-                help="Describe instruments, tempo (BPM), vocal qualities, and style of the song."
+                help="Describe instruments, tempo (BPM), vocal qualities, and style of the song.",
+                disabled=disable_advanced_settings
             )
             st.session_state["music_studio_description"] = desc
 
@@ -1714,7 +1750,8 @@ def render_frontdoor(settings: Settings) -> None:
                 options=options,
                 index=default_index,
                 key="music_studio_ref_audio_choice_input",
-                help="Select an existing track to guide the style, melody, and voice of the song."
+                help="Select an existing track to guide the style, melody, and voice of the song.",
+                disabled=disable_advanced_settings
             )
             st.session_state["music_studio_ref_audio_choice"] = selected_ref
 
@@ -1725,7 +1762,8 @@ def render_frontdoor(settings: Settings) -> None:
                 value=float(st.session_state.get("music_studio_cfg_coef", 1.8)),
                 step=0.1,
                 key="music_studio_cfg_coef_input",
-                help="Classifier-Free Guidance. Higher values enforce the style description more strongly."
+                help="Classifier-Free Guidance. Higher values enforce the style description more strongly.",
+                disabled=disable_advanced_settings
             )
             st.session_state["music_studio_cfg_coef"] = cfg
             
@@ -1736,7 +1774,8 @@ def render_frontdoor(settings: Settings) -> None:
                 value=float(st.session_state.get("music_studio_temperature", 0.8)),
                 step=0.05,
                 key="music_studio_temperature_input",
-                help="Controls diversity. Higher values produce more random/creative melodies."
+                help="Controls diversity. Higher values produce more random/creative melodies.",
+                disabled=disable_advanced_settings
             )
             st.session_state["music_studio_temperature"] = temp
             
@@ -1747,7 +1786,8 @@ def render_frontdoor(settings: Settings) -> None:
                 "Genre",
                 options=genre_options,
                 index=genre_index,
-                key="music_studio_genre_input"
+                key="music_studio_genre_input",
+                disabled=disable_advanced_settings
             )
             st.session_state["music_studio_genre"] = genre
 
