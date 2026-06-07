@@ -1256,7 +1256,7 @@ def render_frontdoor(settings: Settings) -> None:
     
     try:
         img_status = gemini_image_status(ui_settings)
-        audio_limiter = GeminiAudioLimiter(ui_settings.output_dir / ".runtime" / "gemini_audio_rate_limit.json", daily_budget=15)
+        audio_limiter = GeminiAudioLimiter(ui_settings.output_dir / ".runtime" / "gemini_audio_rate_limit.json", daily_budget=50)
         audio_status = audio_limiter.get_current_status()
         
         rem_img = img_status.get("daily_remaining")
@@ -1389,7 +1389,7 @@ def render_frontdoor(settings: Settings) -> None:
         
         try:
             img_status = gemini_image_status(ui_settings)
-            audio_limiter = GeminiAudioLimiter(ui_settings.output_dir / ".runtime" / "gemini_audio_rate_limit.json", daily_budget=15)
+            audio_limiter = GeminiAudioLimiter(ui_settings.output_dir / ".runtime" / "gemini_audio_rate_limit.json", daily_budget=50)
             audio_status = audio_limiter.get_current_status()
             
             q_cols = st.columns(2)
