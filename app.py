@@ -1945,6 +1945,13 @@ def render_frontdoor(settings: Settings) -> None:
                     if not sanitized_lyrics.startswith("["):
                         sanitized_lyrics = "[verse]\n" + sanitized_lyrics
 
+                    lang = st.session_state.get("music_studio_language", "English")
+                    if lang in ["Hindi", "Hinglish"]:
+                        st.write("🔮 Applying advanced phonetic transcription layer for perfect Indian accent...")
+                        from content_pipeline.bots.phonetic_mapper import hindi_to_phonetic_hinglish
+                        sanitized_lyrics = hindi_to_phonetic_hinglish(sanitized_lyrics, gemini_api_key=settings.gemini_api_key)
+                        st.info(f"📝 Transcribed Phonetic Lyrics:\n{sanitized_lyrics}")
+
                     st.write("🎵 Dispatching song generation request to Hugging Face...")
                     client = Client("tencent/SongGeneration", httpx_kwargs={"timeout": 600.0})
                     
@@ -2749,6 +2756,13 @@ def render_frontdoor(settings: Settings) -> None:
                     
                     if not sanitized_lyrics.startswith("["):
                         sanitized_lyrics = "[verse]\n" + sanitized_lyrics
+
+                    lang = st.session_state.get("kids_studio_language", "English")
+                    if lang in ["Hindi", "Hinglish"]:
+                        st.write("🔮 Applying advanced phonetic transcription layer for perfect Indian accent...")
+                        from content_pipeline.bots.phonetic_mapper import hindi_to_phonetic_hinglish
+                        sanitized_lyrics = hindi_to_phonetic_hinglish(sanitized_lyrics, gemini_api_key=settings.gemini_api_key)
+                        st.info(f"📝 Transcribed Phonetic Lyrics:\n{sanitized_lyrics}")
 
                     st.write("🎵 Dispatching song generation request to Hugging Face...")
                     client = Client("tencent/SongGeneration", httpx_kwargs={"timeout": 600.0})
@@ -4171,9 +4185,16 @@ def expand_general_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, sin
         
         Requirements:
         1. If the Target Song Language is 'Hindi', write the lyrics in Romanized Hindi/Hinglish (Devanagari is NOT allowed, use Roman characters like 'Hum tum' instead of 'हम tum' for clean phonetics and natural voice output). Explicitly mention 'native Indian {singer_gender.lower()} singing voice with natural Indian accent', 'Bollywood style playback singer (e.g. Arijit Singh/Atif Aslam style male, Shreya Ghoshal style female)', 'expressive emotional delivery with traditional vocal ornamentations (gamaq and murki)', 'clear Hinglish pronunciation', 'traditional Indian instruments (sitar, bansuri flute, dholak, tabla, acoustic guitar)', and 'highly polished T-Series/Saregama style commercial pop mix with grand cinematic reverb and spacious stereo delay' in the style description.
-        2. If the Target Song Language is 'English', write the lyrics in English.
-        3. Structure the lyrics with standard tags like [verse] and [chorus]. Avoid [intro] or [outro] tags. Keep it to 2-3 short verses and 1-2 choruses.
-        4. The 'style' string must be a comma-separated description of instruments, tempo (BPM), vocal qualities, and musical genre. Make it match the song idea.
+        2. SPECIAL DEVOTIONAL EXCEPTION: If the User Song Idea or prompt contains references to Hindu deities, devotional topics, or prayers (such as 'Hanuman', 'Chalisa', 'bhajan', 'aarti', 'spiritual', 'ram', 'krishna', 'shiva', 'ganesha', 'temple', 'prayer', 'devotional'), then override the modern commercial pop styles. Instead, explicitly require:
+           - 'authentic traditional Indian devotional bhajan/kirtan mood'
+           - 'deeply spiritual native Indian {singer_gender.lower()} devotional singer voice'
+           - 'traditional acoustic instrumentation: bansuri flute, harmonium, sitar, dholak, tabla, manjira hand cymbals'
+           - 'peaceful and prayerful tempo (65-75 BPM)'
+           - 'strictly no modern electronic dance drums, no heavy synthesizers, no modern EDM elements'
+           - 'sacred temple hall acoustics with warm ambient reverb'
+        3. If the Target Song Language is 'English', write the lyrics in English.
+        4. Structure the lyrics with standard tags like [verse] and [chorus]. Avoid [intro] or [outro] tags. Keep it to 2-3 short verses and 1-2 choruses.
+        5. The 'style' string must be a comma-separated description of instruments, tempo (BPM), vocal qualities, and musical genre. Make it match the song idea.
         
         Return a raw JSON object matching this schema:
         {{
@@ -4228,9 +4249,16 @@ def expand_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, singer_gend
         
         Requirements:
         1. If the Target Song Language is 'Hindi', write the lyrics in Romanized Hindi/Hinglish (Devanagari is NOT allowed, use Roman characters like 'Mummy papa' instead of 'मम्मी पापा' for clean phonetics and natural voice output). Explicitly mention 'native Indian {singer_gender.lower()} singing voice', 'Bollywood style kids singer', 'natural Indian accent', 'clear Hinglish pronunciation', and use appropriate Indian instruments and child-friendly tones (e.g. glockenspiel, bells, sitar, bansuri flute, dholak, tabla, acoustic guitar) in the style description.
-        2. If the Target Song Language is 'English', write the lyrics in English.
-        3. Structure the lyrics with standard tags like [verse] and [chorus]. Avoid [intro] or [outro] tags. Keep it to 2-3 short verses and 1-2 choruses.
-        4. The 'style' string must be a comma-separated description of instruments, tempo (BPM), vocal qualities, and musical genre suitable for kids/toddlers.
+        2. SPECIAL DEVOTIONAL EXCEPTION: If the User Kids Song Idea or prompt contains references to Hindu deities, devotional topics, or prayers (such as 'Hanuman', 'Chalisa', 'bhajan', 'aarti', 'spiritual', 'ram', 'krishna', 'shiva', 'ganesha', 'temple', 'prayer', 'devotional'), then override standard kids pop. Instead, explicitly require:
+           - 'traditional Indian devotional bhajan style adapted for kids'
+           - 'sweet spiritual native Indian {singer_gender.lower()} singer voice'
+           - 'devotional acoustic instrumentation: bansuri flute, harmonium, sitar, dholak, tabla, soft manjira hand cymbals'
+           - 'peaceful and gentle tempo (70-80 BPM)'
+           - 'strictly no heavy synthesizers, no electronic beat drops'
+           - 'warm sacred ambient reverb'
+        3. If the Target Song Language is 'English', write the lyrics in English.
+        4. Structure the lyrics with standard tags like [verse] and [chorus]. Avoid [intro] or [outro] tags. Keep it to 2-3 short verses and 1-2 choruses.
+        5. The 'style' string must be a comma-separated description of instruments, tempo (BPM), vocal qualities, and musical genre suitable for kids/toddlers.
         
         Return a raw JSON object matching this schema:
         {{
