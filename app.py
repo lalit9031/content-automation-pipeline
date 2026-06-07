@@ -1357,6 +1357,16 @@ def render_frontdoor(settings: Settings) -> None:
         )
 
         st.markdown("---")
+        st.markdown("#### 🔑 Custom Gemini API Configuration")
+        st.info("If the pre-configured keys in the `.env` file are rate-limited or exhausted, enter your own Gemini API key below. It will take absolute highest priority.")
+        st.text_input(
+            "Custom Gemini API Key",
+            type="password",
+            key="custom_gemini_api_key",
+            help="Your personal key starting with AIzaSy... (kept securely in session memory and not written to disk)."
+        )
+
+        st.markdown("---")
         # 4. Load latest / selected day
         btn_cols = st.columns(3)
 
@@ -4515,6 +4525,14 @@ def expand_general_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, sin
         keys = [settings.gemini_api_key]
     if os.environ.get("GEMINI_API_KEY") and os.environ.get("GEMINI_API_KEY") not in keys:
         keys.insert(0, os.environ.get("GEMINI_API_KEY"))
+    
+    # Prioritize Custom User API Key from UI state
+    custom_ui_key = st.session_state.get("custom_gemini_api_key", "").strip()
+    if custom_ui_key:
+        if custom_ui_key in keys:
+            keys.remove(custom_ui_key)
+        keys.insert(0, custom_ui_key)
+
     keys = [k for k in keys if k]
 
     if keys:
@@ -4589,6 +4607,14 @@ def expand_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, singer_gend
         keys = [settings.gemini_api_key]
     if os.environ.get("GEMINI_API_KEY") and os.environ.get("GEMINI_API_KEY") not in keys:
         keys.insert(0, os.environ.get("GEMINI_API_KEY"))
+    
+    # Prioritize Custom User API Key from UI state
+    custom_ui_key = st.session_state.get("custom_gemini_api_key", "").strip()
+    if custom_ui_key:
+        if custom_ui_key in keys:
+            keys.remove(custom_ui_key)
+        keys.insert(0, custom_ui_key)
+
     keys = [k for k in keys if k]
 
     if keys:
