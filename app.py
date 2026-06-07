@@ -1277,7 +1277,6 @@ def render_frontdoor(settings: Settings) -> None:
             col_reset1, col_reset2 = st.columns([8, 2])
             with col_reset2:
                 if st.button("🔄 Reset Quota", key="btn_reset_tts_quota"):
-                    from datetime import date
                     import json
                     state_path = settings.output_dir / ".runtime" / "gemini_audio_rate_limit.json"
                     try:
@@ -1391,7 +1390,6 @@ def render_frontdoor(settings: Settings) -> None:
                 if audio_status.get("limit_reached"):
                     st.error("⚠️ **Hindi Audio Limit (15) Hit!** Swapped to free Edge TTS.")
                     if st.button("🔄 Reset Quota", key="btn_reset_tts_quota_dashboard"):
-                        from datetime import date
                         import json
                         state_path = settings.output_dir / ".runtime" / "gemini_audio_rate_limit.json"
                         try:
