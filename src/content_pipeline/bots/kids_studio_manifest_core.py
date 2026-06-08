@@ -21,9 +21,9 @@ KIDS_STUDIO_MASTER_REGISTRY = {
         "base_tts_voice": "hi-IN-MadhurNeural",
         "pitch_change": -2,                  # Slightly minimized to keep the frequency track stable
         "formant_shift": 0.96,               # Safe throat scaling to prevent gravelly resonance
-        "index_rate": 0.22,                  # DECREASED: Wipes out the metallic vowel locking artifact
-        "filter_radius": 4,
-        "protect": 0.50,                     # High protection gate protects breath blocks
+        "index_rate": 0.28,                  # Calibrated to allow organic word transitions
+        "filter_radius": 3,
+        "protect": 0.40,                     # Clamped to allow smooth word flow without vocal locking
         "rms_mix_rate": 0.35                  # Smooths out low-volume text terminations
     },
     "STORY_FEMALE_KIND": {
@@ -31,9 +31,9 @@ KIDS_STUDIO_MASTER_REGISTRY = {
         "base_tts_voice": "hi-IN-SwaraNeural",
         "pitch_change": 0,                   # Hard-locked to zero to eliminate chipmunk leakage
         "formant_shift": 0.98,               # Gently rounds off treble to remove sharp frequencies
-        "index_rate": 0.22,                  # DECREASED: Wipes out the metallic vowel locking artifact
+        "index_rate": 0.28,                  # Calibrated to allow organic word transitions
         "filter_radius": 3,
-        "protect": 0.50,                     # High protection gate protects breath blocks
+        "protect": 0.40,                     # Clamped to allow smooth word flow without vocal locking
         "rms_mix_rate": 0.35                  # Smooths out low-volume text terminations
     },
     "EN_KIDS_ANA": {
@@ -41,9 +41,9 @@ KIDS_STUDIO_MASTER_REGISTRY = {
         "base_tts_voice": "en-US-AnaNeural",
         "pitch_change": 0,
         "formant_shift": 1.00,
-        "index_rate": 0.22,                  # DECREASED: Wipes out the metallic vowel locking artifact
+        "index_rate": 0.28,                  # Calibrated to allow organic word transitions
         "filter_radius": 3,
-        "protect": 0.50,                     # High protection gate protects breath blocks
+        "protect": 0.40,                     # Clamped to allow smooth word flow without vocal locking
         "rms_mix_rate": 0.35                  # Smooths out low-volume text terminations
     }
 }
@@ -71,21 +71,21 @@ def cleanse_text_for_vocal_engine(raw_text: str, active_mode: str) -> str:
 
 def inject_dynamic_storyteller_pacing(raw_script: str) -> str:
     """
-    Replaces static punctuation with variable, natural breathing gaps.
-    Prevents the text-to-speech engine from sounding like a rigid machine.
+    Ensures natural storyteller phrasing and rhythm.
+    Bypasses aggressive word-splitting ellipsis filters.
     """
-    print("⏳ Audio Core: Injecting dynamic storyteller pacing and sentence breaths...")
-    # Create extra-long dramatic pauses for paragraph/scene shifts
-    paced_text = raw_script.replace("\n", "... [break] ... ")
+    print("⏳ Audio Core: Preserving natural Hindi sentence phrasing and clause cadence...")
+    # Just convert newlines to spaces to maintain natural phrasing flow
+    paced_text = raw_script.replace("\n", " ")
     
-    # Standard sentence pauses
-    paced_text = paced_text.replace("।", "... ")
-    paced_text = paced_text.replace(".", "... ")
-    
-    # Short comma conversational breath pauses
+    # Standardize spacing around commas for natural brief breaths
     paced_text = paced_text.replace(",", ", ")
     
-    return paced_text
+    # Normalize multiple spaces
+    import re
+    paced_text = re.sub(r" +", " ", paced_text)
+    
+    return paced_text.strip()
 
 # ==========================================
 # 3. HIGH-FIDELITY EQUALIZATION AND WARMTH

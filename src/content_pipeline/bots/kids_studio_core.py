@@ -56,9 +56,9 @@ def get_storyteller_production_flags():
     """
     return {
         "f0_method": "rmvpe",
-        "index_rate": 0.30,         # Lowered to make word transitions sound natural and fluid
-        "filter_radius": 4,         # Increased to actively filter out digital jitter and clicking
-        "protect": 0.33,            # Shields voiceless consonants during dramatic pauses
+        "index_rate": 0.28,         # Calibrated to allow organic word transitions
+        "filter_radius": 3,         # Set to 3 to balance jitter reduction and clarity
+        "protect": 0.40,            # Clamped to allow smooth word flow without vocal locking
         "rms_mix_rate": 0.45,       # High blend layer to capture true human volume dynamics and acting
         "formant_shift": 0.96       # CRITICAL FIX: Shifts formants down to add rich, deep chest bass natively
     }

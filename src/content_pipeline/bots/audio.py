@@ -1961,12 +1961,12 @@ def generate_hindi_song_via_native_audio(
                 devanagari_lyrics = transliterate_to_devanagari(lyrics, settings)
                 
         if mode == "Storytelling":
-            from content_pipeline.bots.kids_studio_core import preprocess_storytelling_script
-            devanagari_lyrics = preprocess_storytelling_script(devanagari_lyrics)
+            # For premium Kids Studio narrator profiles, bypass the aggressive '...!' replacements
+            # and only run the clean pacing preprocessor to keep natural phrasing.
             devanagari_lyrics = inject_dynamic_storyteller_pacing(devanagari_lyrics)
             
-        # Preserve [pause] tags as "... " first
-        processed_text = re.sub(r"\[pause\]", "... ", devanagari_lyrics, flags=re.IGNORECASE)
+        # Replace [pause] tags with simple spaces for kids mode to prevent choppy speech
+        processed_text = re.sub(r"\[pause\]", " ", devanagari_lyrics, flags=re.IGNORECASE)
         cleansed_lyrics = cleanse_text_for_vocal_engine(processed_text, singer_key)
         clean_lyrics_gemini = cleansed_lyrics
         clean_lyrics_edge = cleansed_lyrics
@@ -2008,7 +2008,7 @@ def generate_hindi_song_via_native_audio(
     except Exception:
         pass
 
-    if not status["limit_reached"] and not is_kids_mode:
+    if not status["limit_reached"]:
 
         try:
             # Increment and generate
@@ -2152,8 +2152,8 @@ def generate_hindi_song_via_native_audio(
         from content_pipeline.bots.kids_studio_core import configure_absolute_storyteller_vocal_chain
         chain_config = configure_absolute_storyteller_vocal_chain(mode)
         
-        rvc_index_rate = 0.35
-        rvc_protect = 0.33
+        rvc_index_rate = 0.28
+        rvc_protect = 0.40
         rvc_filter_radius = 3
         
         pitch_shift = chain_config["pitch_change"]
