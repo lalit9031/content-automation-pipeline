@@ -1460,12 +1460,10 @@ def compile_glued_studio_master(vocal_stereo_stem: AudioSegment, beat_stem: Audi
     print("🎛️ Final Mixdown: Applying Studio Glue Leveling & Limiter Matrix...")
     
     # 1. Calibrate professional mixing headroom ratios depending on mode
-    if mode == "Storytelling":
-        calibrated_beat = beat_stem - 12.0   # Extremely soft background ambient cushion
-        calibrated_vocals = vocal_stereo_stem + 4.5 # Prominent upfront narration vocals
-    elif mode == "Poem/Rhyme":
-        calibrated_beat = beat_stem - 9.0    # Balanced nursery rhythm backing track
-        calibrated_vocals = vocal_stereo_stem + 4.0 # Boosted upfront nursery vocals
+    if mode in ["Storytelling", "Poem/Rhyme"]:
+        # Balance track purely using level gains: boost dry vocal by +2.0dB and duck background by -6.0dB
+        calibrated_beat = beat_stem - 6.0
+        calibrated_vocals = vocal_stereo_stem + 2.0
     else:
         # Tighten the separation from 10dB down to an integrated 5.5dB studio gap
         calibrated_beat = beat_stem - 4.5
@@ -1477,20 +1475,21 @@ def compile_glued_studio_master(vocal_stereo_stem: AudioSegment, beat_stem: Audi
     # 2. Overlay the spatial vocal tracks cleanly over the background instruments
     final_mix = carved_beat.overlay(calibrated_vocals, position=0)
     
-    # 2.5 Apply a subtle room reverb effect to glue vocals and background music in the same acoustic space
-    if mode in ["Storytelling", "Poem/Rhyme"]:
-        print("✨ DSP Master: Injecting subtle room reverb to glue vocal and instrumental stems...")
-        reverb_tail = final_mix - 20.0
-        delayed_tail = AudioSegment.silent(duration=150) + reverb_tail
-        final_mix = final_mix.overlay(delayed_tail, position=0)
-    
     # 3. Apply a software peak limiter threshold to prevent digital clipping
-    mastered_mix = final_mix.apply_gain(0.0).compress_dynamic_range(
-        threshold=-2.0,
-        attack=2.0,
-        release=50.0,
-        ratio=12.0  # Brickwall limiter protection
-    )
+    if mode in ["Storytelling", "Poem/Rhyme"]:
+        mastered_mix = final_mix.compress_dynamic_range(
+            threshold=-3.0,
+            attack=5.0,
+            release=60.0,
+            ratio=4.0
+        )
+    else:
+        mastered_mix = final_mix.apply_gain(0.0).compress_dynamic_range(
+            threshold=-2.0,
+            attack=2.0,
+            release=50.0,
+            ratio=12.0  # Brickwall limiter protection
+        )
     
     # 4. Export the polished track
     mastered_mix.export(output_path, format="mp3", bitrate="192k")
