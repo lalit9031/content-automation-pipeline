@@ -2556,6 +2556,43 @@ def render_frontdoor(settings: Settings) -> None:
             help="Choose the language for the song generation. This filters the reference audio files and guides the dynamic lyric generator."
         )
 
+        # Determine kids voice options based on the selected language and mode
+        from content_pipeline.bots.kids_studio_manifest_core import KIDS_STUDIO_MASTER_REGISTRY
+        kids_lang = st.session_state.get("kids_studio_language", "English")
+        
+        kids_singer_opts = {}
+        for key, profile in KIDS_STUDIO_MASTER_REGISTRY.items():
+            base_voice = profile.get("base_tts_voice", "")
+            is_en = base_voice.startswith("en-")
+            is_hi = base_voice.startswith("hi-")
+            
+            # Filter based on active mode
+            is_storytelling_profile = "STORY" in key or "EN_KIDS" in key
+            is_rhyme_profile = "RHYME" in key
+            
+            if kids_mode == "Storytelling" and not is_storytelling_profile:
+                continue
+            if kids_mode == "Poem/Rhyme" and not is_rhyme_profile:
+                continue
+                
+            if kids_lang == "English" and is_en:
+                kids_singer_opts[profile["display_name"]] = key
+            elif kids_lang == "Hindi" and is_hi:
+                kids_singer_opts[profile["display_name"]] = key
+            elif kids_lang == "Hinglish":
+                kids_singer_opts[profile["display_name"]] = key
+
+        # Top-Level Kids Voice Profile Selector
+        if kids_singer_opts:
+            selected_display = st.selectbox(
+                "Select Kids Voice Profile",
+                options=list(kids_singer_opts.keys()),
+                key="kids_studio_playback_singer_display",
+                help="Select the specific voice profile to use for generation."
+            )
+            active_singer = kids_singer_opts[selected_display]
+            st.session_state["kids_studio_playback_singer_key"] = active_singer
+
         # Define and manage all backend run settings here silently since right column is hidden
         selected_ref = st.session_state.setdefault("kids_song_ref_audio_choice", "None (Text-only)")
         cfg = float(st.session_state.setdefault("kids_song_cfg_coef", 1.8))
@@ -2568,23 +2605,6 @@ def render_frontdoor(settings: Settings) -> None:
         else:
             default_desc = "cheerful nursery rhyme, magical kids show music, happy bouncy melody, 92 BPM, ukulele, soft piano, glockenspiel, bells."
         desc = st.session_state.setdefault("kids_song_description", default_desc)
-        
-        # Determine kids voice options based on the selected language
-        from content_pipeline.bots.kids_studio_manifest_core import KIDS_STUDIO_MASTER_REGISTRY
-        kids_lang = st.session_state.get("kids_studio_language", "English")
-        
-        kids_singer_opts = {}
-        for key, profile in KIDS_STUDIO_MASTER_REGISTRY.items():
-            base_voice = profile.get("base_tts_voice", "")
-            is_en = base_voice.startswith("en-")
-            is_hi = base_voice.startswith("hi-")
-            
-            if kids_lang == "English" and is_en:
-                kids_singer_opts[profile["display_name"]] = key
-            elif kids_lang == "Hindi" and is_hi:
-                kids_singer_opts[profile["display_name"]] = key
-            elif kids_lang == "Hinglish":
-                kids_singer_opts[profile["display_name"]] = key
 
         expander_title = "⚡ One-Click Story Creator" if kids_mode == "Storytelling" else "⚡ One-Click Song Creator"
         with st.expander(expander_title, expanded=True):
@@ -2595,14 +2615,6 @@ def render_frontdoor(settings: Settings) -> None:
             prompt_label = "Story Idea" if kids_mode == "Storytelling" else "Song Idea"
             prompt_placeholder = "e.g., a story about a wise turtle" if kids_mode == "Storytelling" else "e.g., create an emotional song"
             one_click_prompt = st.text_input(prompt_label, placeholder=prompt_placeholder, key="one_click_song_idea")
-            
-            selected_display = st.selectbox(
-                "Select Kids Voice Profile:",
-                options=list(kids_singer_opts.keys()),
-                key="kids_studio_playback_singer_display"
-            )
-            active_singer = kids_singer_opts[selected_display]
-            st.session_state["kids_studio_playback_singer_key"] = active_singer
             
             # Since all kids models route to female adult singers with pitch shift, gender is Female
             st.session_state["kids_song_singer_gender"] = "Female"
