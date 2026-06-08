@@ -2115,6 +2115,12 @@ def render_frontdoor(settings: Settings) -> None:
                         st.write("🔀 Language: Hindi detected. Bypassing Hugging Face Lyria to use Native Audio Pipeline...")
                         import sys
                         import importlib
+                        if "content_pipeline.bots.singing_synthesis" in sys.modules:
+                            importlib.reload(sys.modules["content_pipeline.bots.singing_synthesis"])
+                        if "content_pipeline.bots.kids_studio_core" in sys.modules:
+                            importlib.reload(sys.modules["content_pipeline.bots.kids_studio_core"])
+                        if "content_pipeline.bots.singer_manifest" in sys.modules:
+                            importlib.reload(sys.modules["content_pipeline.bots.singer_manifest"])
                         if "content_pipeline.bots.audio" in sys.modules:
                             importlib.reload(sys.modules["content_pipeline.bots.audio"])
                         from content_pipeline.bots.audio import generate_hindi_song_via_native_audio
@@ -2981,6 +2987,12 @@ def render_frontdoor(settings: Settings) -> None:
                         st.write("🔀 Bypassing Hugging Face Lyria to use Native Audio Pipeline...")
                         import sys
                         import importlib
+                        if "content_pipeline.bots.singing_synthesis" in sys.modules:
+                            importlib.reload(sys.modules["content_pipeline.bots.singing_synthesis"])
+                        if "content_pipeline.bots.kids_studio_core" in sys.modules:
+                            importlib.reload(sys.modules["content_pipeline.bots.kids_studio_core"])
+                        if "content_pipeline.bots.singer_manifest" in sys.modules:
+                            importlib.reload(sys.modules["content_pipeline.bots.singer_manifest"])
                         if "content_pipeline.bots.audio" in sys.modules:
                             importlib.reload(sys.modules["content_pipeline.bots.audio"])
                         from content_pipeline.bots.audio import generate_hindi_song_via_native_audio
