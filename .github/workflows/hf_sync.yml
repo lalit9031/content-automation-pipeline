@@ -17,5 +17,15 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          git remote add hf https://Lalit9031:${HF_TOKEN}@huggingface.co/spaces/Lalit9031/kids-story-studio
-          git push hf main1:main --force
+          # Set up Git user config
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          
+          # Create an orphaned deployment branch to exclude historical binaries
+          git checkout --orphan deploy-hf
+          git reset
+          git add .
+          git commit -m "deploy: automated clean build"
+          
+          # Push to Hugging Face Space main branch
+          git push https://Lalit9031:${HF_TOKEN}@huggingface.co/spaces/Lalit9031/kids-story-studio deploy-hf:main --force
