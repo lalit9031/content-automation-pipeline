@@ -38,9 +38,12 @@ SINGER_MANIFEST = {
     }
 }
 
-# Alias mapping for typo compatibility
+# Alias mapping for typo compatibility and kids studio voices
 SINGER_ALIASES = {
-    "arijit_singn": "arijit_singh"
+    "arijit_singn": "arijit_singh",
+    "hi_kids_ananya": "shreya_ghoshal",
+    "en_kids_ana": "shreya_ghoshal",
+    "hi_kids_madhur": "arijit_singh"
 }
 
 def verify_and_cache_singer_model(singer_key: str) -> str:

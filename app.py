@@ -2509,15 +2509,35 @@ def render_frontdoor(settings: Settings) -> None:
             """, unsafe_allow_html=True)
 
     elif active_p == "Kids":
-        st.markdown(
-            """
-            <div class="hero" style="background: linear-gradient(135deg, rgba(56,189,248,0.15), rgba(168,85,247,0.15)); border: 1px solid rgba(56,189,248,0.3); margin-bottom: 24px;">
-              <h1 style="font-size: 32px;">🎵 Kids Rhymes & Rhythm Studio (Lyria 3)</h1>
-              <p style="margin-top: 6px; font-size: 14px;">Generate cheerful, high-quality music and nursery rhymes matching your reference tracks using the Tencent SongGeneration model.</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
+        # Creative Mode Dropdown
+        st.session_state.setdefault("kids_studio_mode", "Poem/Rhyme")
+        kids_mode = st.selectbox(
+            "Creative Mode",
+            options=["Poem/Rhyme", "Storytelling"],
+            key="kids_studio_mode",
+            help="Choose whether to generate a rhythmic rhyming nursery poem or an expressive storytelling script."
         )
+
+        if kids_mode == "Storytelling":
+            st.markdown(
+                """
+                <div class="hero" style="background: linear-gradient(135deg, rgba(56,189,248,0.15), rgba(168,85,247,0.15)); border: 1px solid rgba(56,189,248,0.3); margin-bottom: 24px;">
+                  <h1 style="font-size: 32px;">📖 Kids Storytelling Studio (Native Audio)</h1>
+                  <p style="margin-top: 6px; font-size: 14px;">Generate warm, expressive narration and storytelling with zero-drums background score and natural voices.</p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                """
+                <div class="hero" style="background: linear-gradient(135deg, rgba(56,189,248,0.15), rgba(168,85,247,0.15)); border: 1px solid rgba(56,189,248,0.3); margin-bottom: 24px;">
+                  <h1 style="font-size: 32px;">🎵 Kids Rhymes & Rhythm Studio (Lyria 3 / Native Audio)</h1>
+                  <p style="margin-top: 6px; font-size: 14px;">Generate cheerful, high-quality music and nursery rhymes matching your reference tracks using the Tencent SongGeneration model.</p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
         # Target Language Dropdown
         st.session_state.setdefault("kids_studio_language", "English")
@@ -2528,275 +2548,186 @@ def render_frontdoor(settings: Settings) -> None:
             help="Choose the language for the song generation. This filters the reference audio files and guides the dynamic lyric generator."
         )
 
-        left_col, right_col = st.columns([1.1, 0.9])
+        # Define and manage all backend run settings here silently since right column is hidden
+        selected_ref = st.session_state.setdefault("kids_song_ref_audio_choice", "None (Text-only)")
+        cfg = float(st.session_state.setdefault("kids_song_cfg_coef", 1.8))
+        temp = float(st.session_state.setdefault("kids_song_temperature", 0.8))
+        genre = st.session_state.setdefault("kids_song_genre", "Auto")
+        
+        # Set default description based on mode if not already set
+        if kids_mode == "Storytelling":
+            default_desc = "warm theatrical spoken-word audiobook narrator, gentle bedtime story, calm pacing, soft glockenspiel and warm strings, 0 BPM"
+        else:
+            default_desc = "cheerful nursery rhyme, magical kids show music, happy bouncy melody, 92 BPM, ukulele, soft piano, glockenspiel, bells."
+        desc = st.session_state.setdefault("kids_song_description", default_desc)
+        
+        # Determine kids voice options based on the selected language
+        kids_lang = st.session_state.get("kids_studio_language", "English")
+        if kids_lang == "English":
+            kids_singer_opts = {
+                "Teacher Ana (Preschool Voice - English)": "en_kids_ana"
+            }
+        elif kids_lang == "Hindi":
+            kids_singer_opts = {
+                "Baby Ananya (Cute Kid - Hindi)": "hi_kids_ananya",
+                "Baby Madhur (Warm Narrator - Hindi)": "hi_kids_madhur"
+            }
+        else: # Hinglish
+            kids_singer_opts = {
+                "Baby Ananya (Cute Kid - Hindi)": "hi_kids_ananya",
+                "Baby Madhur (Warm Narrator - Hindi)": "hi_kids_madhur",
+                "Teacher Ana (Preschool Voice - English)": "en_kids_ana"
+            }
 
-        with left_col:
-            with st.expander("⚡ One-Click Song Creator", expanded=True):
-                st.markdown("<small style='color: #94a3b8;'>Type a simple idea (e.g., 'create an emotional song') and generate a complete song in one click.</small>", unsafe_allow_html=True)
-                one_click_prompt = st.text_input("Song Idea", placeholder="e.g., create an emotional song", key="one_click_song_idea")
-                kids_lang = st.session_state.get("kids_studio_language", "English")
-                if kids_lang in ["Hindi", "Hinglish"]:
-                    from content_pipeline.bots.singer_manifest import SINGER_MANIFEST
-                    singer_opts = {v["display_name"]: k for k, v in SINGER_MANIFEST.items()}
-                    selected_display = st.selectbox(
-                        "Select Playback Singer Voice Profile:",
-                        options=list(singer_opts.keys()),
-                        key="kids_studio_playback_singer_display"
-                    )
-                    active_singer = singer_opts[selected_display]
-                    st.session_state["kids_studio_playback_singer_key"] = active_singer
-                    
-                    singer_gender = SINGER_MANIFEST[active_singer]["gender"].capitalize()
-                    st.session_state["kids_song_singer_gender"] = singer_gender
-                    one_click_gender = singer_gender
-                else:
-                    one_click_gender = st.selectbox("Singer Voice Gender Selection", ["Female", "Male"], key="one_click_singer_gender")
-                    st.session_state["kids_studio_playback_singer_key"] = "arijit_singh" if one_click_gender == "Male" else "shreya_ghoshal"
-                
-                if st.session_state.get("gemini_api_error"):
-                    st.error("⚠️ **Gemini API Call Failed (Offline Fallback Active)**\n\n"
-                             "The application fell back to the local offline template song because the Gemini API keys failed:\n"
-                             f"```\n{st.session_state['gemini_api_error']}\n```\n"
-                             "Please check your `.env` or system environment keys.")
-
-                if st.button("🚀 Create & Generate Song", type="primary", use_container_width=True):
-                    if not one_click_prompt.strip():
-                        st.warning("Please enter a song idea first.")
-                    else:
-                        lyrics_exp, desc_exp = expand_prompt_to_lyrics_and_style_dynamic(settings, one_click_prompt, one_click_gender, kids_lang)
-                        if kids_lang in ["Hindi", "Hinglish"]:
-                            desc_exp = clean_style_description_for_instrumental(desc_exp)
-                        st.session_state["kids_song_lyrics"] = lyrics_exp
-                        st.session_state["kids_song_description"] = desc_exp
-                        st.session_state["kids_song_singer_gender"] = one_click_gender
-                        st.session_state["trigger_generation_now"] = True
-                        st.rerun()
-
-            st.markdown("### Lyrics Composer")
-            kids_lyrics_val = st.session_state.get("kids_song_lyrics", "")
-            lyrics = st.text_area(
-                "Enter lyrics here (use [verse] and [chorus] tags, avoid [intro]/[outro] tags)",
-                value=kids_lyrics_val,
-                height=350,
-                key="kids_song_lyrics_input"
-            )
-            st.session_state["kids_song_lyrics"] = lyrics
-
-            col1, col2 = st.columns([1, 1])
-            with col1:
-                parse_clicked = st.button("✨ Parse & Autofill settings", use_container_width=True, help="Extracts lyrics, tempo, instruments, vocals, and mood from your prompt to autofill the settings panel.")
-            with col2:
-                if st.button("🗑️ Clear Lyrics", use_container_width=True):
-                    st.session_state["kids_song_lyrics"] = ""
-                    st.rerun()
-
-            if parse_clicked:
-                if lyrics.strip():
-                    sections = parse_prompt_into_sections(lyrics)
-                    if sections:
-                        lyrics_content = sections.get("lyrics", "")
-                        if not lyrics_content:
-                            lyrics_content = lyrics
-                            
-                        style_parts = []
-                        if "style" in sections:
-                            style_parts.append(sections["style"])
-                        if "tempo" in sections:
-                            style_parts.append(f"Tempo: {sections['tempo']}")
-                        if "vocals" in sections:
-                            style_parts.append(f"Vocals: {sections['vocals']}")
-                        if "mood" in sections:
-                            style_parts.append(f"Mood: {sections['mood']}")
-                        if "instruments" in sections:
-                            style_parts.append(f"Instruments: {sections['instruments']}")
-                        if "production" in sections:
-                            style_parts.append(f"Production: {sections['production']}")
-                            
-                        combined_style = ". ".join(style_parts)
-                        
-                        st.session_state["kids_song_lyrics"] = lyrics_content
-                        st.session_state.pop("kids_song_lyrics_input", None)
-                        st.session_state["kids_song_description"] = combined_style
-                        st.session_state.pop("kids_song_description_input", None)
-                        st.success("🎉 Successfully parsed and autofilled settings from prompt!")
-                        st.rerun()
-                    else:
-                        lower_text = lyrics.lower()
-                        is_kids = any(k in lower_text for k in ["abc", "alphabet", "kid", "child", "baby", "nursery", "rhyme", "toddler", "toy"])
-                        if is_kids:
-                            inferred_style = (
-                                "cheerful nursery rhyme, magical kids show music, happy bouncy melody, 92 BPM, "
-                                "warm friendly lead voice, clear pronunciation, ukulele, soft piano, glockenspiel, "
-                                "gentle bells, light percussion, clean mix."
-                            )
-                        else:
-                            inferred_style = (
-                                "catchy melodic pop song, warm vocals, piano, acoustic guitar, soft percussion, "
-                                "balanced audio mix."
-                            )
-                        
-                        st.session_state["kids_song_lyrics"] = lyrics
-                        st.session_state.pop("kids_song_lyrics_input", None)
-                        st.session_state["kids_song_description"] = inferred_style
-                        st.session_state.pop("kids_song_description_input", None)
-                        st.info("ℹ️ Plain prompt detected. Style inferred from song content.")
-                        st.rerun()
-                else:
-                    st.warning("⚠️ Please paste a prompt in the lyrics box first.")
-
+        expander_title = "⚡ One-Click Story Creator" if kids_mode == "Storytelling" else "⚡ One-Click Song Creator"
+        with st.expander(expander_title, expanded=True):
             st.markdown(
-                """
-                <div style="display: flex; gap: 16px; margin-top: 20px;">
-                  <div style="flex: 1; padding: 16px; border-radius: 12px; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(56, 189, 248, 0.25);">
-                    <div style="font-size: 12px; color: #38bdf8; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 6px;">
-                      <span>💡</span> Pro tip: Structure
-                    </div>
-                    <div style="font-size: 13px; color: #e2e8f0; margin-top: 6px; line-height: 1.4;">
-                      Start with a quiet piano intro, build into a loud verse, then explode into the chorus.
-                    </div>
-                  </div>
-                  <div style="flex: 1; padding: 16px; border-radius: 12px; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(168, 85, 247, 0.25);">
-                    <div style="font-size: 12px; color: #a855f7; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 6px;">
-                      <span>🎵</span> Pro tip: Details
-                    </div>
-                    <div style="font-size: 13px; color: #e2e8f0; margin-top: 6px; line-height: 1.4;">
-                      Mix genres for unique sounds, like a cheerful ukulele with bells and a gentle kids' choir.
-                    </div>
-                  </div>
-                </div>
-                """,
+                f"<small style='color: #94a3b8;'>Type a simple idea (e.g., {'a story about a wise turtle' if kids_mode == 'Storytelling' else 'create a song about alphabet'}) and generate in one click.</small>",
                 unsafe_allow_html=True
             )
-
-        with right_col:
-            st.markdown("### Run settings")
+            prompt_label = "Story Idea" if kids_mode == "Storytelling" else "Song Idea"
+            prompt_placeholder = "e.g., a story about a wise turtle" if kids_mode == "Storytelling" else "e.g., create an emotional song"
+            one_click_prompt = st.text_input(prompt_label, placeholder=prompt_placeholder, key="one_click_song_idea")
             
-            lang_choice_kids = st.session_state.get("kids_studio_language", "English")
-            model_options_kids = ["Lyria 3 Pro Preview (tencent/SongGeneration)"]
-            if lang_choice_kids == "Hindi":
-                model_options_kids = ["Gemini 2.5 Flash + Edge-TTS (Native Accent)"]
-
-            st.selectbox(
-                "Model",
-                options=model_options_kids,
-                index=0,
-                disabled=True,
-                help="Lyria 3 Pro is used for English/Hinglish. Gemini 2.5/Edge-TTS Native Audio is used for Hindi to achieve perfect pronunciation."
+            selected_display = st.selectbox(
+                "Select Kids Voice Profile:",
+                options=list(kids_singer_opts.keys()),
+                key="kids_studio_playback_singer_display"
             )
+            active_singer = kids_singer_opts[selected_display]
+            st.session_state["kids_studio_playback_singer_key"] = active_singer
             
-            kids_vibe_presets = {
-                "Custom": "",
-                "Cheerful Nursery (Playful & Bouncy)": (
-                    "cheerful nursery rhyme, magical kids show music, happy bouncy melody, 92 BPM, "
-                    "ukulele, soft piano, glockenspiel, bells."
-                ),
-                "Lullaby (Calm & Dreamy)": (
-                    "soft soothing lullaby, magical bedtime stars melody, calm ambient pace, 60 BPM, "
-                    "sweet music box chime, gentle harp, warm pad strings."
-                ),
-                "Adventure (Energetic & Dynamic)": (
-                    "playful upbeat cartoon theme song, brass horn swells, xylophone, "
-                    "fast dynamic percussion, happy adventurous pacing, 115 BPM."
-                )
-            }
+            # Since all kids models route to female adult singers with pitch shift, gender is Female
+            st.session_state["kids_song_singer_gender"] = "Female"
+            one_click_gender = "Female"
             
-            selected_vibe_kids = st.selectbox(
-                "Soundscape Vibe Preset",
-                options=list(kids_vibe_presets.keys()),
-                key="kids_studio_vibe_preset",
-                help="Select a musical style preset to automatically populate the Style Description."
-            )
-            
-            if "prev_kids_studio_vibe" not in st.session_state:
-                st.session_state["prev_kids_studio_vibe"] = selected_vibe_kids
-                
-            if st.session_state["prev_kids_studio_vibe"] != selected_vibe_kids:
-                st.session_state["prev_kids_studio_vibe"] = selected_vibe_kids
-                if selected_vibe_kids != "Custom":
-                    st.session_state["kids_song_description_input"] = kids_vibe_presets[selected_vibe_kids]
-                    kids_preset_genres = {
-                        "Cheerful Nursery (Playful & Bouncy)": "Auto",
-                        "Lullaby (Calm & Dreamy)": "Ballad",
-                        "Adventure (Energetic & Dynamic)": "Soundtrack"
-                    }
-                    st.session_state["kids_song_genre_input"] = kids_preset_genres[selected_vibe_kids]
-            
-            if "kids_song_description_input" not in st.session_state:
-                st.session_state["kids_song_description_input"] = st.session_state.get("kids_song_description", "")
-                
-            desc = st.text_area(
-                "Style Description",
-                height=120,
-                key="kids_song_description_input",
-                help="Describe instruments, tempo (BPM), vocal qualities, and style of the song."
-            )
-            st.session_state["kids_song_description"] = desc
+            if st.session_state.get("gemini_api_error"):
+                st.error("⚠️ **Gemini API Call Failed (Offline Fallback Active)**\n\n"
+                         "The application fell back to the local offline template because the Gemini API keys failed:\n"
+                         f"```\n{st.session_state['gemini_api_error']}\n```\n"
+                         "Please check your `.env` or system environment keys.")
 
-            ref_dir = PROJECT_ROOT / "output" / "reference_audio"
-            if not ref_dir.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio").exists():
-                ref_dir = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio")
-            else:
-                ref_dir.mkdir(parents=True, exist_ok=True)
-            ref_files = []
-            if ref_dir.exists():
-                raw_files = sorted([f.name for f in ref_dir.glob("*.mp3")])
-                lang = st.session_state.get("kids_studio_language", "English")
-                if lang in ["Hindi", "Hinglish"]:
-                    ref_files = [f for f in raw_files if any(x in f.lower() for x in ["titli", "barnaby", "hindi", "squirrel"])]
+            btn_label = "🚀 Create & Generate Story" if kids_mode == "Storytelling" else "🚀 Create & Generate Song"
+            if st.button(btn_label, type="primary", use_container_width=True):
+                if not one_click_prompt.strip():
+                    st.warning(f"Please enter a {prompt_label.lower()} first.")
                 else:
-                    ref_files = [f for f in raw_files if not any(x in f.lower() for x in ["titli", "barnaby", "squirrel"])]
-            
-            options = ["None (Text-only)"] + ref_files
-            default_index = 0
-            default_val = st.session_state.get("kids_song_ref_audio_choice", "None (Text-only)")
-            if default_val in options:
-                default_index = options.index(default_val)
-            
-            selected_ref = st.selectbox(
-                "Style Reference Audio",
-                options=options,
-                index=default_index,
-                key="kids_song_ref_audio_choice_input",
-                help="Select an existing track to guide the style, melody, and voice of the song."
-            )
-            st.session_state["kids_song_ref_audio_choice"] = selected_ref
+                    lyrics_exp, desc_exp = expand_prompt_to_lyrics_and_style_dynamic(
+                        settings, one_click_prompt, one_click_gender, kids_lang, mode=kids_mode
+                    )
+                    if kids_lang in ["Hindi", "Hinglish"] and kids_mode != "Storytelling":
+                        desc_exp = clean_style_description_for_instrumental(desc_exp)
+                    st.session_state["kids_song_lyrics"] = lyrics_exp
+                    st.session_state["kids_song_description"] = desc_exp
+                    st.session_state["kids_song_singer_gender"] = one_click_gender
+                    st.session_state["trigger_generation_now"] = True
+                    st.rerun()
 
-            cfg = st.slider(
-                "CFG Scale",
-                min_value=1.0,
-                max_value=5.0,
-                value=float(st.session_state.get("kids_song_cfg_coef", 1.8)),
-                step=0.1,
-                key="kids_song_cfg_coef_input",
-                help="Classifier-Free Guidance. Higher values enforce the style description more strongly."
-            )
-            st.session_state["kids_song_cfg_coef"] = cfg
-            
-            temp = st.slider(
-                "Temperature",
-                min_value=0.0,
-                max_value=1.0,
-                value=float(st.session_state.get("kids_song_temperature", 0.8)),
-                step=0.05,
-                key="kids_song_temperature_input",
-                help="Controls diversity. Higher values produce more random/creative melodies."
-            )
-            st.session_state["kids_song_temperature"] = temp
-            
-            genre_options = ['Auto', 'Pop', 'Latin', 'Rock', 'Electronic', 'Metal', 'Country', 'R&B/Soul', 'Ballad', 'Jazz', 'World', 'Hip-Hop', 'Funk', 'Soundtrack', 'Folk', 'Traditional']
-            curr_genre = st.session_state.get("kids_song_genre", "Auto")
-            genre_index = genre_options.index(curr_genre) if curr_genre in genre_options else 0
-            genre = st.selectbox(
-                "Genre",
-                options=genre_options,
-                index=genre_index,
-                key="kids_song_genre_input"
-            )
-            st.session_state["kids_song_genre"] = genre
+        composer_title = "Story Composer / Script" if kids_mode == "Storytelling" else "Lyrics Composer"
+        st.markdown(f"### {composer_title}")
+        kids_lyrics_val = st.session_state.get("kids_song_lyrics", "")
+        textarea_label = (
+            "Enter storytelling script here (use [pause] tags for natural pauses)"
+            if kids_mode == "Storytelling"
+            else "Enter lyrics here (use [verse] and [chorus] tags, avoid [intro]/[outro] tags)"
+        )
+        lyrics = st.text_area(
+            textarea_label,
+            value=kids_lyrics_val,
+            height=350,
+            key="kids_song_lyrics_input"
+        )
+        st.session_state["kids_song_lyrics"] = lyrics
 
-            # Bind singer voice gender directly from the top-level selection (⚡ One-Click Song Creator)
-            singer_gender = st.session_state.get("one_click_singer_gender", "Male")
-            st.session_state["kids_song_singer_gender"] = singer_gender
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            if kids_mode == "Storytelling":
+                parse_clicked = False  # Bypassed for storytelling
+            else:
+                parse_clicked = st.button("✨ Parse & Autofill settings", use_container_width=True, help="Extracts lyrics, tempo, instruments, vocals, and mood from your prompt to autofill settings.")
+        with col2:
+            clear_label = "🗑️ Clear Script" if kids_mode == "Storytelling" else "🗑️ Clear Lyrics"
+            if st.button(clear_label, use_container_width=True):
+                st.session_state["kids_song_lyrics"] = ""
+                st.rerun()
+
+        if parse_clicked:
+            if lyrics.strip():
+                sections = parse_prompt_into_sections(lyrics)
+                if sections:
+                    lyrics_content = sections.get("lyrics", "")
+                    if not lyrics_content:
+                        lyrics_content = lyrics
+                        
+                    style_parts = []
+                    if "style" in sections:
+                        style_parts.append(sections["style"])
+                    if "tempo" in sections:
+                        style_parts.append(f"Tempo: {sections['tempo']}")
+                    if "vocals" in sections:
+                        style_parts.append(f"Vocals: {sections['vocals']}")
+                    if "mood" in sections:
+                        style_parts.append(f"Mood: {sections['mood']}")
+                    if "instruments" in sections:
+                        style_parts.append(f"Instruments: {sections['instruments']}")
+                    if "production" in sections:
+                        style_parts.append(f"Production: {sections['production']}")
+                        
+                    combined_style = ". ".join(style_parts)
+                    
+                    st.session_state["kids_song_lyrics"] = lyrics_content
+                    st.session_state.pop("kids_song_lyrics_input", None)
+                    st.session_state["kids_song_description"] = combined_style
+                    st.session_state.pop("kids_song_description_input", None)
+                    st.success("🎉 Successfully parsed and autofilled settings from prompt!")
+                    st.rerun()
+                else:
+                    lower_text = lyrics.lower()
+                    is_kids = any(k in lower_text for k in ["abc", "alphabet", "kid", "child", "baby", "nursery", "rhyme", "toddler", "toy"])
+                    if is_kids:
+                        inferred_style = (
+                            "cheerful nursery rhyme, magical kids show music, happy bouncy melody, 92 BPM, "
+                            "warm friendly lead voice, clear pronunciation, ukulele, soft piano, glockenspiel, "
+                            "gentle bells, light percussion, clean mix."
+                        )
+                    else:
+                        inferred_style = (
+                            "catchy melodic pop song, warm vocals, piano, acoustic guitar, soft percussion, "
+                            "balanced audio mix."
+                        )
+                    
+                    st.session_state["kids_song_lyrics"] = lyrics
+                    st.session_state.pop("kids_song_lyrics_input", None)
+                    st.session_state["kids_song_description"] = inferred_style
+                    st.session_state.pop("kids_song_description_input", None)
+                    st.info("ℹ️ Plain prompt detected. Style inferred from song content.")
+                    st.rerun()
+            else:
+                st.warning("⚠️ Please paste a prompt in the lyrics box first.")
+
+        st.markdown(
+            """
+            <div style="display: flex; gap: 16px; margin-top: 20px;">
+              <div style="flex: 1; padding: 16px; border-radius: 12px; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(56, 189, 248, 0.25);">
+                <div style="font-size: 12px; color: #38bdf8; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 6px;">
+                  <span>💡</span> Pro tip: Structure
+                </div>
+                <div style="font-size: 13px; color: #e2e8f0; margin-top: 6px; line-height: 1.4;">
+                  For stories, use [pause] tags where you want natural storytelling pauses. For rhymes, structure with [verse] and [chorus].
+                </div>
+              </div>
+              <div style="flex: 1; padding: 16px; border-radius: 12px; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(168, 85, 247, 0.25);">
+                <div style="font-size: 12px; color: #a855f7; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 6px;">
+                  <span>🎵</span> Pro tip: Settings
+                </div>
+                <div style="font-size: 13px; color: #e2e8f0; margin-top: 6px; line-height: 1.4;">
+                  The studio manages parameters dynamically in the background, matching child-safe acoustics and vocal properties.
+                </div>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
         st.markdown("---")
         st.markdown("### Playback & Generation")
@@ -2995,52 +2926,59 @@ def render_frontdoor(settings: Settings) -> None:
                     st.session_state.pop("kids_song_description_input", None)
 
                     # 2. Split lines, skip empty lines, and sanitize tags
-                    sanitized_lines = []
-                    lines = [line.strip() for line in lyrics_to_process.splitlines()]
-                    
-                    filtered_lines = [line for line in lines if line]
-                    
-                    if filtered_lines:
-                        first_line = filtered_lines[0]
-                        if not (first_line.startswith("[") and first_line.endswith("]")):
-                            sanitized_lines.append("[verse]")
+                    kids_mode = st.session_state.get("kids_studio_mode", "Poem/Rhyme")
+                    if kids_mode == "Storytelling":
+                        sanitized_lines = []
+                        for line in [l.strip() for l in lyrics_to_process.splitlines() if l.strip()]:
+                            sanitized_lines.append(line.replace(";", ","))
+                        sanitized_lyrics = "\n".join(sanitized_lines).strip()
+                    else:
+                        sanitized_lines = []
+                        lines = [line.strip() for line in lyrics_to_process.splitlines()]
                         
-                        for line in filtered_lines:
-                            line_safe = line.replace(";", ",")
+                        filtered_lines = [line for line in lines if line]
+                        
+                        if filtered_lines:
+                            first_line = filtered_lines[0]
+                            if not (first_line.startswith("[") and first_line.endswith("]")):
+                                sanitized_lines.append("[verse]")
                             
-                            if line_safe.startswith("[") and line_safe.endswith("]"):
-                                tag_content = line_safe[1:-1].lower()
-                                if "chorus" in tag_content:
-                                    sanitized_lines.append("[chorus]")
-                                elif "bridge" in tag_content:
-                                    sanitized_lines.append("[bridge]")
-                                elif "intro" in tag_content:
-                                    sanitized_lines.append("[verse]")
-                                elif "outro" in tag_content:
-                                    sanitized_lines.append("[verse]")
-                                elif "inst" in tag_content:
-                                    sanitized_lines.append("[verse]")
-                                elif "silence" in tag_content:
-                                    sanitized_lines.append("[silence]")
-                                else:
-                                    sanitized_lines.append("[verse]")
-                            else:
-                                sanitized_lines.append(line_safe)
+                            for line in filtered_lines:
+                                line_safe = line.replace(";", ",")
                                 
-                    sanitized_lyrics = "\n".join(sanitized_lines).strip()
-                    
-                    if not sanitized_lyrics.startswith("["):
-                        sanitized_lyrics = "[verse]\n" + sanitized_lyrics
+                                if line_safe.startswith("[") and line_safe.endswith("]"):
+                                    tag_content = line_safe[1:-1].lower()
+                                    if "chorus" in tag_content:
+                                        sanitized_lines.append("[chorus]")
+                                    elif "bridge" in tag_content:
+                                        sanitized_lines.append("[bridge]")
+                                    elif "intro" in tag_content:
+                                        sanitized_lines.append("[verse]")
+                                    elif "outro" in tag_content:
+                                        sanitized_lines.append("[verse]")
+                                    elif "inst" in tag_content:
+                                        sanitized_lines.append("[verse]")
+                                    elif "silence" in tag_content:
+                                        sanitized_lines.append("[silence]")
+                                    else:
+                                        sanitized_lines.append("[verse]")
+                                else:
+                                    sanitized_lines.append(line_safe)
+                                    
+                        sanitized_lyrics = "\n".join(sanitized_lines).strip()
+                        
+                        if not sanitized_lyrics.startswith("["):
+                            sanitized_lyrics = "[verse]\n" + sanitized_lyrics
 
                     lang = st.session_state.get("kids_studio_language", "English")
-                    if lang == "Hindi":
-                        if not any("\u0900" <= char <= "\u097f" for char in sanitized_lyrics):
+                    if lang == "Hindi" or kids_mode == "Storytelling":
+                        if lang == "Hindi" and not any("\u0900" <= char <= "\u097f" for char in sanitized_lyrics):
                             st.write("🔮 Converting Romanized lyrics to native Devanagari script for perfect Indian accent...")
                             from content_pipeline.bots.gemini_tts import transliterate_to_devanagari
                             sanitized_lyrics = transliterate_to_devanagari(sanitized_lyrics, settings)
                             st.info(f"📝 Transliterated Devanagari Lyrics:\n{sanitized_lyrics}")
                         
-                        st.write("🔀 Language: Hindi detected. Bypassing Hugging Face Lyria to use Native Audio Pipeline...")
+                        st.write("🔀 Bypassing Hugging Face Lyria to use Native Audio Pipeline...")
                         import sys
                         import importlib
                         if "content_pipeline.bots.audio" in sys.modules:
@@ -3052,7 +2990,7 @@ def render_frontdoor(settings: Settings) -> None:
                             out_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio/LittleBubbles_Generated_Song.mp3")
                         out_path.parent.mkdir(parents=True, exist_ok=True)
                         
-                        singer_gender = st.session_state.get("kids_song_singer_gender", "Male")
+                        singer_gender = st.session_state.get("kids_song_singer_gender", "Female")
                         selected_ref = st.session_state.get("kids_song_ref_audio_choice", "None (Text-only)")
                         
                         generate_hindi_song_via_native_audio(
@@ -3065,10 +3003,11 @@ def render_frontdoor(settings: Settings) -> None:
                             temperature=temp,
                             cfg_coef=cfg,
                             style_description=desc,
-                            singer_key=st.session_state.get("kids_studio_playback_singer_key", "arijit_singh")
+                            singer_key=st.session_state.get("kids_studio_playback_singer_key", "hi_kids_ananya"),
+                            mode=kids_mode
                         )
                         st.session_state["kids_song_generated_mp3"] = str(out_path)
-                        st.success("🎉 Hindi Kids Rhyme generated successfully using Native Audio Pipeline!")
+                        st.success(f"🎉 Kids {kids_mode} generated successfully using Native Audio Pipeline!")
                         st.rerun()
                     elif lang == "Hinglish":
                         st.write("🔮 Applying advanced phonetic transcription layer for perfect Indian accent...")
@@ -4300,7 +4239,19 @@ def parse_prompt_into_sections(prompt_text: str) -> dict[str, str]:
     return sections
 
 
-def expand_prompt_to_lyrics_and_style(prompt: str, singer_gender: str) -> tuple[str, str]:
+def expand_prompt_to_lyrics_and_style(prompt: str, singer_gender: str, mode: str = "Poem/Rhyme") -> tuple[str, str]:
+    if mode == "Storytelling":
+        lyrics = (
+            "[pause] Once upon a time, in a beautiful green forest, there lived a very wise turtle. "
+            "[pause] In the same forest, there was also a rabbit who was very proud of his speed. "
+            "[pause] One day, they decided to have a race. "
+            "[pause] The rabbit ran very fast and fell asleep halfway. "
+            "[pause] The turtle walked slowly and steadily, and in the end, he won the race. "
+            "[pause] The moral of the story is that slow and steady wins the race."
+        )
+        style = "warm theatrical spoken-word audiobook narrator, gentle bedtime story, calm pacing, soft glockenspiel and warm strings, 0 BPM"
+        return lyrics, style
+
     import re
     p = prompt.lower()
     
@@ -4596,7 +4547,7 @@ def expand_general_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, sin
         return expand_general_prompt_to_lyrics_and_style(prompt, singer_gender)
 
 
-def expand_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, singer_gender: str, language: str) -> tuple[str, str]:
+def expand_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, singer_gender: str, language: str, mode: str = "Poem/Rhyme") -> tuple[str, str]:
     import os
     import json
     if "gemini_api_error" in st.session_state:
@@ -4618,34 +4569,56 @@ def expand_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, singer_gend
     keys = [k for k in keys if k]
 
     if keys:
-        system_instruction = (
-            "You are a children's song and nursery rhyme composer. Expand the kids' song idea into complete lyrics and style description. "
-            "The output must be JSON with keys 'lyrics' and 'style'."
-        )
-        user_prompt = f"""
-        User Kids Song Idea: "{prompt}"
-        Singer Voice Gender Selection: "{singer_gender}"
-        Target Song Language: "{language}"
-        
-        Requirements:
-        1. If the Target Song Language is 'Hindi', write the lyrics in standard Devanagari script (Hindi characters) like 'जय हनुमान ज्ञान गुन सागर' rather than Romanized/Hinglish (e.g. 'Jai Hanuman'). This forces the neural network to activate its native Indian mouth-shape and dental consonant engines for a perfect native accent. Explicitly mention 'native Indian {singer_gender.lower()} singing voice', 'Bollywood style kids singer', 'natural Indian accent', 'clear native pronunciation', and use appropriate Indian instruments and child-friendly tones (e.g. glockenspiel, bells, sitar, bansuri flute, dholak, tabla, acoustic guitar) in the style description.
-        2. SPECIAL DEVOTIONAL EXCEPTION: If the User Kids Song Idea or prompt contains references to Hindu deities, devotional topics, or prayers (such as 'Hanuman', 'Chalisa', 'bhajan', 'aarti', 'spiritual', 'ram', 'krishna', 'shiva', 'ganesha', 'temple', 'prayer', 'devotional'), then override standard kids pop. Instead, explicitly require:
-           - 'traditional Indian devotional bhajan style adapted for kids'
-           - 'sweet spiritual native Indian {singer_gender.lower()} singer voice'
-           - 'devotional acoustic instrumentation: bansuri flute, harmonium, sitar, dholak, tabla, soft manjira hand cymbals'
-           - 'peaceful and gentle tempo (70-80 BPM)'
-           - 'strictly no heavy synthesizers, no electronic beat drops'
-           - 'warm sacred ambient reverb'
-        3. If the Target Song Language is 'English', write the lyrics in English.
-        4. Structure the lyrics with standard tags like [verse] and [chorus]. Avoid [intro] or [outro] tags. Keep it to 2-3 short verses and 1-2 choruses.
-        5. The 'style' string must be a comma-separated description of instruments, tempo (BPM), vocal qualities, and musical genre suitable for kids/toddlers.
-        
-        Return a raw JSON object matching this schema:
-        {{
-            "lyrics": "verse and chorus text",
-            "style": "comma-separated musical style description"
-        }}
-        """
+        if mode == "Storytelling":
+            system_instruction = (
+                "You are an elite children's audiobook narrator and storyteller. Expand the kids' story idea into a complete, warm, expressive storytelling script and style description. "
+                "The output must be JSON with keys 'lyrics' (containing the story script) and 'style'."
+            )
+            user_prompt = f"""
+            User Kids Story Idea: "{prompt}"
+            Narrator Voice Gender Selection: "{singer_gender}"
+            Target Story Language: "{language}"
+            
+            Requirements:
+            1. If the Target Story Language is 'Hindi', write the script in standard Devanagari script (Hindi characters) like 'एक समय की बात है' rather than Romanized/Hinglish (e.g. 'Ek samay ki baat hai').
+            2. Utilize [pause] tags for natural dramatic pauses in the script. Structure it like an audiobook narration.
+            3. The 'style' string must be a comma-separated description of storytelling background, pacing, vocal qualities, and mood suitable for kids/toddlers.
+            
+            Return a raw JSON object matching this schema:
+            {{
+                "lyrics": "story script with [pause] tags",
+                "style": "comma-separated style description"
+            }}
+            """
+        else:
+            system_instruction = (
+                "You are a children's song and nursery rhyme composer. Expand the kids' song idea into complete lyrics and style description. "
+                "The output must be JSON with keys 'lyrics' and 'style'."
+            )
+            user_prompt = f"""
+            User Kids Song Idea: "{prompt}"
+            Singer Voice Gender Selection: "{singer_gender}"
+            Target Song Language: "{language}"
+            
+            Requirements:
+            1. If the Target Song Language is 'Hindi', write the lyrics in standard Devanagari script (Hindi characters) like 'जय हनुमान ज्ञान गुन सागर' rather than Romanized/Hinglish (e.g. 'Jai Hanuman'). This forces the network to use native accent filters. Explicitly require 'native Indian {singer_gender.lower()} singing voice', 'Bollywood style kids singer', 'natural Indian accent', 'clear native pronunciation', and appropriate kids instruments (glockenspiel, bells, sitar, bansuri flute, dholak, tabla, acoustic guitar).
+            2. SPECIAL DEVOTIONAL EXCEPTION: If the User Kids Song Idea or prompt contains references to Hindu deities, devotional topics, or prayers (such as 'Hanuman', 'Chalisa', 'bhajan', 'aarti', 'spiritual', 'ram', 'krishna', 'shiva', 'ganesha', 'temple', 'prayer', 'devotional'), then override standard kids pop. Instead, explicitly require:
+               - 'traditional Indian devotional bhajan style adapted for kids'
+               - 'sweet spiritual native Indian {singer_gender.lower()} singer voice'
+               - 'devotional acoustic instrumentation: bansuri flute, harmonium, sitar, dholak, tabla, soft manjira hand cymbals'
+               - 'peaceful and gentle tempo (70-80 BPM)'
+               - 'strictly no heavy synthesizers, no electronic beat drops'
+               - 'warm sacred ambient reverb'
+            3. If the Target Song Language is 'English', write the lyrics in English.
+            4. Structure the lyrics with standard tags like [verse] and [chorus]. Avoid [intro] or [outro] tags. Keep it to 2-3 short verses and 1-2 choruses.
+            5. The 'style' string must be a comma-separated description of instruments, tempo (BPM), vocal qualities, and musical genre suitable for kids/toddlers.
+            
+            Return a raw JSON object matching this schema:
+            {{
+                "lyrics": "verse and chorus text",
+                "style": "comma-separated musical style description"
+            }}
+            """
         errors = []
         for key in keys:
             try:
@@ -4673,9 +4646,9 @@ def expand_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, singer_gend
         st.session_state["gemini_api_error"] = "No Gemini API keys found in Settings or Environment."
         
     if language == "Hindi":
-        return expand_prompt_to_lyrics_and_style_hindi_local(prompt, singer_gender)
+        return expand_prompt_to_lyrics_and_style_hindi_local(prompt, singer_gender, mode=mode)
     else:
-        return expand_prompt_to_lyrics_and_style(prompt, singer_gender)
+        return expand_prompt_to_lyrics_and_style(prompt, singer_gender, mode=mode)
 
 
 def expand_general_prompt_to_lyrics_and_style_hindi_local(prompt: str, singer_gender: str) -> tuple[str, str]:
@@ -4777,7 +4750,19 @@ def expand_general_prompt_to_lyrics_and_style_hindi_local(prompt: str, singer_ge
     return lyrics, style
 
 
-def expand_prompt_to_lyrics_and_style_hindi_local(prompt: str, singer_gender: str) -> tuple[str, str]:
+def expand_prompt_to_lyrics_and_style_hindi_local(prompt: str, singer_gender: str, mode: str = "Poem/Rhyme") -> tuple[str, str]:
+    if mode == "Storytelling":
+        lyrics = (
+            "[pause] एक समय की बात है, एक जंगल में एक बहुत ही बुद्धिमान कछुआ रहता था। "
+            "[pause] उसी जंगल में एक खरगोश भी रहता था, जिसे अपनी गति पर बहुत घमंड था। "
+            "[pause] एक दिन दोनों ने दौड़ लगाने का फैसला किया। "
+            "[pause] खरगोश तेजी से भागा और आधा रास्ता तय करके सो गया। "
+            "[pause] कछुआ धीरे-धीरे बिना रुके चलता रहा और अंत में दौड़ जीत गया। "
+            "[pause] इस कहानी से हमें सीख मिलती है कि धीरे और लगातार चलने वाले ही हमेशा जीतते हैं।"
+        )
+        style = "warm theatrical spoken-word audiobook narrator, gentle bedtime story, calm pacing, soft glockenspiel and warm strings, 0 BPM"
+        return lyrics, style
+
     import re
     p = prompt.lower()
     

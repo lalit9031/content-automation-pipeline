@@ -1743,6 +1743,10 @@ def generate_edge_tts_song_fallback(
         voice = chain_config["base_tts_voice"]
         if singer_key == "en_kids_ana":
             voice = "en-US-AnaNeural"
+        elif singer_key == "hi_kids_madhur":
+            voice = "hi-IN-MadhurNeural"
+        elif singer_key == "hi_kids_ananya":
+            voice = "hi-IN-SwaraNeural"
     else:
         if singer_key == "hi_kids_ananya":
             voice = "hi-IN-SwaraNeural"
@@ -1985,6 +1989,10 @@ def generate_hindi_song_via_native_audio(
             fallback_voice = chain_config["base_tts_voice"]
             if singer_key == "en_kids_ana":
                 fallback_voice = "en-US-AnaNeural"
+            elif singer_key == "hi_kids_madhur":
+                fallback_voice = "hi-IN-MadhurNeural"
+            elif singer_key == "hi_kids_ananya":
+                fallback_voice = "hi-IN-SwaraNeural"
         else:
             fallback_voice = "hi-IN-MadhurNeural" if gender_lower == "male" else "hi-IN-SwaraNeural"
             if singer_key == "hi_kids_ananya":
