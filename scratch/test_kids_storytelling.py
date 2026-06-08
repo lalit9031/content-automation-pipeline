@@ -1,12 +1,15 @@
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from content_pipeline.config import Settings
+# Add project root to path
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.append(str(PROJECT_ROOT))
+
 from content_pipeline.bots.audio import generate_hindi_song_via_native_audio
 
 def main():
-    settings = Settings.from_environment()
+    print("🚀 Starting test for Hindi Kids Storytelling Mode...")
+    
     lyrics = (
         "[pause] एक समय की बात है, एक जंगल में एक बहुत ही बुद्धिमान कछुआ रहता था। "
         "[pause] उसी जंगल में एक खरगोश भी रहता था, जिसे अपनी गति पर बहुत घमंड था। "
@@ -15,24 +18,23 @@ def main():
         "[pause] कछुआ धीरे-धीरे बिना रुके चलता रहा और अंत में दौड़ जीत गया। "
         "[pause] इस कहानी से हमें सीख मिलती है कि धीरे और लगातार चलने वाले ही हमेशा जीतते हैं।"
     )
-    output_path = Path(__file__).resolve().parent / "test_hindi_song_native.mp3"
-    print("🤖 Generating Hindi storytelling audio using unified native audio router...")
     
+    output_dir = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio")
+    output_path = output_dir / "LittleBubbles_Story_Final.mp3"
+    
+    print(f"Generating audio in Storytelling mode at: {output_path}")
+    
+    # Let's run with hi_kids_ananya vocal profile
     res = generate_hindi_song_via_native_audio(
         lyrics=lyrics,
         output_path=output_path,
         singer_gender="Female",
         selected_ref="None (Text-only)",
-        hf_token=settings.hf_token,
         singer_key="hi_kids_ananya",
         mode="Storytelling"
     )
     
-    print(f"✅ Unified native audio routing test completed! Result path: {res}")
-    if res.exists():
-        print(f"🔥 Success! Output file size: {res.stat().st_size} bytes")
-    else:
-        print("❌ Error: Output file was not generated.")
+    print(f"🎉 Success! Audio generated successfully at: {res}")
 
 if __name__ == "__main__":
     main()

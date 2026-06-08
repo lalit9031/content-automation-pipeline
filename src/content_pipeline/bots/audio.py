@@ -53,6 +53,7 @@ MUSIC_PRESETS: dict[str, tuple[list[float], float]] = {
     "warm": ([164.81, 220.0, 261.63], 0.12),
     "uplift": ([220.0, 329.63, 392.0], 0.16),
     "ambient": ([130.81, 196.0, 261.63], 0.10),
+    "nursery": ([523.25, 659.25, 783.99, 1046.50], 0.15),
 }
 
 
@@ -969,23 +970,68 @@ def generate_voice_preview(
 
 
 def generate_music_preview(output_path: Path, mood: str, *, duration_seconds: int = 8) -> Path:
-    frequencies, amplitude = MUSIC_PRESETS.get(mood, MUSIC_PRESETS["cinematic"])
     duration_seconds = max(4, min(int(duration_seconds), 15))
     sample_rate = 44100
     total_samples = duration_seconds * sample_rate
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    is_nursery = (mood == "nursery")
+    
     with wave.open(str(output_path), "wb") as wav_file:
         wav_file.setnchannels(1)
         wav_file.setsampwidth(2)
         wav_file.setframerate(sample_rate)
         frames = bytearray()
+        
+        frequencies, amplitude = MUSIC_PRESETS.get(mood, MUSIC_PRESETS["cinematic"])
+        
         for index in range(total_samples):
             t = index / sample_rate
             fade_in = min(1.0, t / 0.75)
             fade_out = min(1.0, max(0.0, (duration_seconds - t) / 0.75))
-            envelope = fade_in * fade_out
-            sample = sum(math.sin(2 * math.pi * frequency * t) for frequency in frequencies) / len(frequencies)
-            sample *= amplitude * envelope
+            global_envelope = fade_in * fade_out
+            
+            if is_nursery:
+                # Trigger a note every 1.5 seconds to simulate a warm music box melody
+                note_period = 1.5
+                note_index = int(t / note_period)
+                time_in_note = t % note_period
+                
+                # Nursery melody notes - warm octave lower C4-E4-G4-C5
+                progression = [
+                    [261.63, 329.63, 392.00, 261.63],    # C major notes
+                    [349.23, 440.00, 523.25, 349.23],    # F major notes
+                    [392.00, 493.88, 587.33, 392.00],    # G major notes
+                    [523.25, 392.00, 329.63, 261.63]     # C major resolve
+                ]
+                
+                prog_index = (note_index // 4) % len(progression)
+                step_index = note_index % 4
+                freq = progression[prog_index][step_index]
+                
+                # Soft bell strike with gentle decay (no harsh high overtones)
+                fundamental = math.sin(2 * math.pi * freq * t) * math.exp(-3.0 * time_in_note)
+                # Extremely soft overtone to avoid sharpness
+                overtone = math.sin(2 * math.pi * (2.0 * freq) * t) * math.exp(-8.0 * time_in_note) * 0.1
+                bell_sample = fundamental + overtone
+                
+                # Deep, warm bass pad (similar to storytelling, but follows chord progression)
+                # C2/F2/G2 sub-bass support
+                pad_freqs = [65.41, 130.81, 196.00]
+                if prog_index == 1: # F major pad
+                    pad_freqs = [87.31, 130.81, 174.61]
+                elif prog_index == 2: # G major pad
+                    pad_freqs = [98.00, 146.83, 196.00]
+                    
+                pad_sample = sum(math.sin(2 * math.pi * pf * t) for pf in pad_freqs) / len(pad_freqs)
+                
+                # Blend: 30% soft warm chime + 70% deep bassy pad (feels warm and soft to the ear)
+                sample = (bell_sample * 0.30 + pad_sample * 0.70)
+                sample *= amplitude * global_envelope
+            else:
+                sample = sum(math.sin(2 * math.pi * frequency * t) for frequency in frequencies) / len(frequencies)
+                sample *= amplitude * global_envelope
+                
             frames.extend(struct.pack("<h", int(sample * 32767)))
         wav_file.writeframes(bytes(frames))
     return output_path
@@ -1404,7 +1450,7 @@ def apply_vocal_sidechain_carving(beat_segment: AudioSegment, vocal_segment: Aud
     return beat_segment._spawn(processed_beat_samples.tobytes())
 
 
-def compile_glued_studio_master(vocal_stereo_stem: AudioSegment, beat_stem: AudioSegment, output_path: str):
+def compile_glued_studio_master(vocal_stereo_stem: AudioSegment, beat_stem: AudioSegment, output_path: str, mode: str = "Poem/Rhyme"):
     """
     Calibrates the final mixing matrix ratios to glue the wide stereo vocals 
     natively inside the backing score, preventing the voice from floating loosely on top.
@@ -1413,10 +1459,14 @@ def compile_glued_studio_master(vocal_stereo_stem: AudioSegment, beat_stem: Audi
     
     print("🎛️ Final Mixdown: Applying Studio Glue Leveling & Limiter Matrix...")
     
-    # 1. Calibrate professional pop mixing headroom ratios
-    # Tighten the separation from 10dB down to an integrated 5.5dB studio gap
-    calibrated_beat = beat_stem - 4.5
-    calibrated_vocals = vocal_stereo_stem + 1.0
+    # 1. Calibrate professional mixing headroom ratios depending on mode
+    if mode == "Storytelling":
+        calibrated_beat = beat_stem - 12.0   # Extremely soft background ambient cushion
+        calibrated_vocals = vocal_stereo_stem + 4.5 # Prominent upfront narration vocals
+    else:
+        # Tighten the separation from 10dB down to an integrated 5.5dB studio gap
+        calibrated_beat = beat_stem - 4.5
+        calibrated_vocals = vocal_stereo_stem + 1.0
     
     # 1.5 Apply dynamic mid-side sidechain carving to the beat based on vocal presence
     carved_beat = apply_vocal_sidechain_carving(calibrated_beat, calibrated_vocals)
@@ -1480,6 +1530,60 @@ def clean_and_master_pop_vocals(vocal_segment: AudioSegment) -> AudioSegment:
     )
     
     return compressed_vocals
+
+
+def apply_studio_warmth_eq(audio_samples: np.ndarray, sr: int) -> np.ndarray:
+    """
+    Applies a studio-grade low-shelf boost to add bass warmth to the vocals
+    and a high-cut attenuation to eliminate the sharp, piercing treble frequencies.
+    """
+    print("🎛️ EQ Master: Injecting chest resonance and smoothing high-end sharpness...")
+    import math
+    import scipy.signal as signal
+    
+    # Custom low-shelf design to boost the bass (frequencies under 200Hz)
+    def design_biquad_lowshelf(f0, sr, db_gain):
+        A = math.pow(10.0, db_gain / 40.0)
+        omega = 2.0 * math.pi * f0 / sr
+        alpha = math.sin(omega) / 2.0 * math.sqrt(2.0)
+        cos_w = math.cos(omega)
+        two_sqrt_A_alpha = 2.0 * math.sqrt(A) * alpha
+
+        b0 = A * ((A + 1) - (A - 1) * cos_w + two_sqrt_A_alpha)
+        b1 = 2 * A * ((A - 1) - (A + 1) * cos_w)
+        b2 = A * ((A + 1) - (A - 1) * cos_w - two_sqrt_A_alpha)
+        
+        a0 = (A + 1) + (A - 1) * cos_w + two_sqrt_A_alpha
+        a1 = -2 * ((A - 1) + (A + 1) * cos_w)
+        a2 = (A + 1) + (A - 1) * cos_w - two_sqrt_A_alpha
+        return [b0/a0, b1/a0, b2/a0], [1.0, a1/a0, a2/a0]
+
+    # Custom high-shelf design to smooth out sharpness (frequencies above 4500Hz)
+    def design_biquad_highshelf(f0, sr, db_gain):
+        A = math.pow(10.0, db_gain / 40.0)
+        omega = 2.0 * math.pi * f0 / sr
+        alpha = math.sin(omega) / 2.0 * math.sqrt(2.0)
+        cos_w = math.cos(omega)
+        two_sqrt_A_alpha = 2.0 * math.sqrt(A) * alpha
+
+        b0 = A * ((A + 1) + (A - 1) * cos_w + two_sqrt_A_alpha)
+        b1 = -2 * A * ((A - 1) + (A + 1) * cos_w)
+        b2 = A * ((A + 1) + (A - 1) * cos_w - two_sqrt_A_alpha)
+        
+        a0 = (A + 1) - (A - 1) * cos_w + two_sqrt_A_alpha
+        a1 = 2 * ((A - 1) - (A + 1) * cos_w)
+        a2 = (A + 1) - (A - 1) * cos_w - two_sqrt_A_alpha
+        return [b0/a0, b1/a0, b2/a0], [1.0, a1/a0, a2/a0]
+
+    # +3.5 dB boost at 200 Hz for warm lows
+    b_bass, a_bass = design_biquad_lowshelf(200.0, sr, 3.5)
+    warmed_audio = signal.lfilter(b_bass, a_bass, audio_samples)
+    
+    # -4.0 dB attenuation at 4500 Hz for smooth highs
+    b_treble, a_treble = design_biquad_highshelf(4500.0, sr, -4.0)
+    smoothed_audio = signal.lfilter(b_treble, a_treble, warmed_audio)
+    
+    return smoothed_audio
 
 
 def process_studio_vocal_resonance(raw_vocal_path: Path, genre_preset: str, voice_gender: str) -> AudioSegment:
@@ -1593,6 +1697,8 @@ def generate_edge_tts_song_fallback(
     output_path: Path,
     singer_gender: str = "Male",
     selected_ref: str = "None (Text-only)",
+    singer_key: str = "arijit_singh",
+    mode: str = "Poem/Rhyme",
 ) -> Path:
     """Fallback generator for song creation using Edge-TTS + Background Beat mix.
     Used when Hugging Face song generation fails or rate-limits.
@@ -1610,19 +1716,41 @@ def generate_edge_tts_song_fallback(
     # 1. Ensure lyrics are in standard Devanagari script for perfect native accent
     is_devanagari = any("\u0900" <= char <= "\u097f" for char in lyrics)
     devanagari_lyrics = lyrics
-    if not is_devanagari:
+    if not is_devanagari and not singer_key.startswith("en_"):
         devanagari_lyrics = transliterate_to_devanagari(lyrics, settings)
     
-    # Prepare singing-optimized lyrics with vowel elongation
-    singing_lyrics = prepare_singing_lyrics(devanagari_lyrics)
-    # For Edge-TTS, we must strip the bracketed directives since it cannot interpret them
-    clean_lyrics = re.sub(r"\[.*?\]", "", singing_lyrics).strip()
+    if mode == "Storytelling":
+        from content_pipeline.bots.kids_studio_core import preprocess_storytelling_script
+        devanagari_lyrics = preprocess_storytelling_script(devanagari_lyrics)
+        # For spoken storytelling, replace [pause] with punctuation or ellipsis to force natural pauses
+        clean_lyrics = re.sub(r"\[pause\]", "... ", devanagari_lyrics, flags=re.IGNORECASE)
+        # Strip all other bracketed tags
+        clean_lyrics = re.sub(r"\[.*?\]", "", clean_lyrics).strip()
+    else:
+        # Prepare singing-optimized lyrics with vowel elongation
+        singing_lyrics = prepare_singing_lyrics(devanagari_lyrics)
+        # For Edge-TTS, we must strip the bracketed directives since it cannot interpret them
+        clean_lyrics = re.sub(r"\[.*?\]", "", singing_lyrics).strip()
     
-    # 2. Determine voice based on gender
-    # 'hi-IN-MadhurNeural' for male, 'hi-IN-SwaraNeural' for female
-    voice = "hi-IN-MadhurNeural"
-    if singer_gender.strip().lower() == "female":
-        voice = "hi-IN-SwaraNeural"
+    is_kids_mode = mode in ["Storytelling", "Poem/Rhyme"]
+    # 2. Determine voice based on singer_key or gender
+    if is_kids_mode:
+        from content_pipeline.bots.kids_studio_core import configure_absolute_storyteller_vocal_chain
+        chain_config = configure_absolute_storyteller_vocal_chain(mode)
+        voice = chain_config["base_tts_voice"]
+        if singer_key == "en_kids_ana":
+            voice = "en-US-AnaNeural"
+    else:
+        if singer_key == "hi_kids_ananya":
+            voice = "hi-IN-SwaraNeural"
+        elif singer_key == "en_kids_ana":
+            voice = "en-US-AnaNeural"
+        elif singer_key == "hi_kids_madhur":
+            voice = "hi-IN-MadhurNeural"
+        else:
+            voice = "hi-IN-MadhurNeural"
+            if singer_gender.strip().lower() == "female":
+                voice = "hi-IN-SwaraNeural"
         
     temp_dir = settings.output_dir / ".runtime"
     temp_dir.mkdir(parents=True, exist_ok=True)
@@ -1650,9 +1778,13 @@ def generate_edge_tts_song_fallback(
             beat_path = ref_full_path
             
     if not beat_path:
-        # Fallback to generating a clean, vocal-free ambient synth background track
         beat_path = temp_dir / "fallback_beat.wav"
-        generate_music_preview(beat_path, "ambient", duration_seconds=int(vocals.duration_seconds + 5))
+        if mode == "Storytelling":
+            # Generate drumless 0 BPM ambient pad matching vocal duration
+            generate_storytelling_ambient_pad(beat_path, duration_seconds=int(vocals.duration_seconds + 5))
+        else:
+            fallback_preset = "nursery" if mode == "Poem/Rhyme" else "ambient"
+            generate_music_preview(beat_path, fallback_preset, duration_seconds=int(vocals.duration_seconds + 5))
             
     # Load beat
     beat = AudioSegment.from_file(str(beat_path))
@@ -1666,16 +1798,33 @@ def generate_edge_tts_song_fallback(
     # Crop beat to match vocals + 3 seconds of buffer
     beat = beat[:int((vocals.duration_seconds + 3) * 1000)]
     
-    # 4. Deepen voice for warm chest voice (0.95x pitch-shifting resonance filter for classical playback singing)
-    deeper_vocals = vocals._spawn(vocals.raw_data, overrides={
-        "frame_rate": int(vocals.frame_rate * 0.95)
+    # 4. Deepen/Brighten voice depending on whether it is a kids profile
+    if is_kids_mode:
+        if mode == "Storytelling":
+            pitch_shift_factor = 0.95  # Deepen slightly for storytelling warmth
+        else:
+            pitch_shift_factor = 1.05  # Brightening pitch override for Poem/Rhyme
+    else:
+        is_kids_voice = (singer_key in ["hi_kids_ananya", "en_kids_ana", "hi_kids_madhur"])
+        if is_kids_voice:
+            pitch_shift_factor = 1.05
+        else:
+            pitch_shift_factor = 0.95  # Deepen voice for Bollywood chest resonance
+        
+    processed_vocals = vocals._spawn(vocals.raw_data, overrides={
+        "frame_rate": int(vocals.frame_rate * pitch_shift_factor)
     }).set_frame_rate(vocals.frame_rate)
     
-    # Drop the beat volume by 7dB to ensure dental consonants cut through smoothly
-    softer_beat = beat - 7
+    # Drop the beat volume to ensure dental consonants cut through smoothly
+    if mode == "Storytelling":
+        softer_beat = beat - 12.0
+        vocals_boosted = processed_vocals + 4.5
+    else:
+        softer_beat = beat - 7.0
+        vocals_boosted = processed_vocals + 3.0
     
-    # Overlay the processed vocals onto the background track (boosting vocals slightly with +3dB headroom)
-    final_mix = softer_beat.overlay(deeper_vocals + 3, position=0)
+    # Overlay the processed vocals onto the background track
+    final_mix = softer_beat.overlay(vocals_boosted, position=0)
     
     # Export the final product
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1702,6 +1851,7 @@ def generate_hindi_song_via_native_audio(
     cfg_coef: float = 1.8,
     style_description: str = "",
     singer_key: str = "arijit_singh",
+    mode: str = "Poem/Rhyme",
 ) -> Path:
     """Unified Hindi Song Generator:
     Bypasses Hugging Face Space for vocals, but dynamically generates
@@ -1747,11 +1897,21 @@ def generate_hindi_song_via_native_audio(
     if not is_devanagari:
         devanagari_lyrics = transliterate_to_devanagari(lyrics, settings)
 
-    # Prepare singing-optimized lyrics with vowel elongation
-    singing_lyrics = prepare_singing_lyrics(devanagari_lyrics)
-    clean_lyrics_gemini = singing_lyrics
-    # For Edge-TTS, we must strip the bracketed directives since it cannot interpret them
-    clean_lyrics_edge = re.sub(r"\[.*?\]", "", singing_lyrics).strip()
+    if mode == "Storytelling":
+        from content_pipeline.bots.kids_studio_core import preprocess_storytelling_script
+        devanagari_lyrics = preprocess_storytelling_script(devanagari_lyrics)
+        clean_lyrics_gemini = devanagari_lyrics
+        # For Edge-TTS, we must strip the bracketed directives and replace [pause] with "... " to inject pauses
+        clean_lyrics_edge = re.sub(r"\[pause\]", "... ", devanagari_lyrics, flags=re.IGNORECASE)
+        clean_lyrics_edge = re.sub(r"\[.*?\]", "", clean_lyrics_edge).strip()
+    else:
+        # Prepare singing-optimized lyrics with vowel elongation
+        singing_lyrics = prepare_singing_lyrics(devanagari_lyrics)
+        clean_lyrics_gemini = singing_lyrics
+        # For Edge-TTS, we must strip the bracketed directives since it cannot interpret them
+        clean_lyrics_edge = re.sub(r"\[.*?\]", "", singing_lyrics).strip()
+
+    is_kids_mode = mode in ["Storytelling", "Poem/Rhyme"]
 
     # 2. Setup paths
     temp_dir = settings.output_dir / ".runtime"
@@ -1766,13 +1926,14 @@ def generate_hindi_song_via_native_audio(
     limiter = GeminiAudioLimiter(state_path, daily_budget=50)
     status = limiter.get_current_status()
 
-    if not status["limit_reached"]:
-        st_write_func = None
-        try:
-            import streamlit as st
-            st_write_func = st.write
-        except Exception:
-            pass
+    st_write_func = None
+    try:
+        import streamlit as st
+        st_write_func = st.write
+    except Exception:
+        pass
+
+    if not status["limit_reached"] and not is_kids_mode:
 
         try:
             # Increment and generate
@@ -1788,13 +1949,18 @@ def generate_hindi_song_via_native_audio(
                     except Exception:
                         pass
             
-            # Overhaul Prompt Directives: Command a professional Bollywood studio playback singer style
-            # utilizing a 'fluid, continuous legato melody', explicitly banning 'word-by-word reading'
-            # and 'ghost backing voices or tracking whispers.'
-            song_instruction = (
-                "You are a professional Bollywood studio playback singer performing in a clear, expressive pop style.\n"
-                "Deliver the text as a fluid, continuous legato melody. Strictly avoid word-by-word reading, mechanical prose cadences, and any background tracking voices, echo effects, or harmonic duplication whispers."
-            )
+            if mode == "Storytelling":
+                song_instruction = (
+                    "You are an elite children's audio-book narrator and storyteller for YouTube animation channels. "
+                    "Deliver the text with warm, expressive, and friendly spoken tones. "
+                    "Adjust your pitch and expression dynamically based on the narrator and character tags. "
+                    "Pause briefly at [pause] tags. Strictly do not sing or hum."
+                )
+            else:
+                song_instruction = (
+                    "You are a professional Bollywood studio playback singer performing in a clear, expressive pop style.\n"
+                    "Deliver the text as a fluid, continuous legato melody. Strictly avoid word-by-word reading, mechanical prose cadences, and any background tracking voices, echo effects, or harmonic duplication whispers."
+                )
             
             # Write to raw_vocals_file
             generate_gemini_voiceover(
@@ -1810,7 +1976,21 @@ def generate_hindi_song_via_native_audio(
 
     if not generated_ok:
         # Budget Exhausted / Fallback: Use Edge TTS Hindi
-        fallback_voice = "hi-IN-MadhurNeural" if gender_lower == "male" else "hi-IN-SwaraNeural"
+        if is_kids_mode:
+            from content_pipeline.bots.kids_studio_core import configure_absolute_storyteller_vocal_chain
+            chain_config = configure_absolute_storyteller_vocal_chain(mode)
+            fallback_voice = chain_config["base_tts_voice"]
+            if singer_key == "en_kids_ana":
+                fallback_voice = "en-US-AnaNeural"
+        else:
+            fallback_voice = "hi-IN-MadhurNeural" if gender_lower == "male" else "hi-IN-SwaraNeural"
+            if singer_key == "hi_kids_ananya":
+                fallback_voice = "hi-IN-SwaraNeural"
+            elif singer_key == "en_kids_ana":
+                fallback_voice = "en-US-AnaNeural"
+            elif singer_key == "hi_kids_madhur":
+                fallback_voice = "hi-IN-MadhurNeural"
+            
         edge_raw_vocals = temp_dir / "edge_raw_vocals_song.mp3"
         try:
             _run_async(_write_edge_voice_sample(
@@ -1820,15 +2000,20 @@ def generate_hindi_song_via_native_audio(
                 rate="+0%",
                 pitch="+0Hz"
             ))
-            raw_vocals_file = edge_raw_vocals
+            # Convert edge mp3 to wav format
+            edge_wav = temp_dir / "edge_raw_vocals_song.wav"
+            AudioSegment.from_file(str(edge_raw_vocals)).export(str(edge_wav), format="wav")
+            raw_vocals_file = edge_wav
             generated_ok = True
         except Exception as edge_err:
             raise RuntimeError(f"Both Gemini TTS and Edge-TTS failed for Hindi song generation. Edge err: {edge_err}")
 
     # 3. Load and process vocals with dynamic voice conversion (RVC) and genre-aware resonance filter
-    from content_pipeline.bots.singing_synthesis import convert_speech_to_melodic_singing
+    from content_pipeline.bots.singing_synthesis import orchestrate_dynamic_vocal_pipeline, convert_speech_to_melodic_singing
     from content_pipeline.bots.melody_generator import generate_synthetic_melody_guide
-    model_filename = singer_key
+    
+    # Get configuration from orchestrator
+    model_filename, pitch_shift = orchestrate_dynamic_vocal_pipeline(singer_key)
     
     # Check if a vocal reference track is selected
     use_vocal_ref_as_guide = False
@@ -1841,7 +2026,13 @@ def generate_hindi_song_via_native_audio(
         if ref_full_path.exists() and is_vocal_track(selected_ref):
             use_vocal_ref_as_guide = True
 
-    if use_vocal_ref_as_guide:
+    melody_guide_path = None
+    created_temp_melody_guide = False
+
+    if mode in ["Storytelling", "Poem/Rhyme"]:
+        # Kids Studio Storytelling and Poem/Rhyme: Bypassing melody guide to preserve natural voiceover pitch
+        print(f"🎵 RVC Pitch Guide: {mode} mode. Bypassing melody guide to preserve natural voiceover pitch.")
+    elif use_vocal_ref_as_guide:
         # Use vocal reference track directly as the pitch guide
         print(f"🎵 RVC Pitch Guide: Using vocal reference track directly: {ref_full_path}")
         melody_guide_path = ref_full_path
@@ -1855,127 +2046,198 @@ def generate_hindi_song_via_native_audio(
         generate_synthetic_melody_guide(duration_seconds=vocals_duration, tempo_bpm=65, output_path=str(melody_guide_path))
         created_temp_melody_guide = True
 
+    if mode == "Storytelling":
+        from content_pipeline.bots.kids_studio_core import get_storyteller_production_flags, configure_absolute_storyteller_vocal_chain
+        flags = get_storyteller_production_flags()
+        chain_config = configure_absolute_storyteller_vocal_chain(mode)
+        
+        rvc_index_rate = flags["index_rate"]
+        rvc_protect = flags["protect"]
+        rvc_filter_radius = flags["filter_radius"]
+        
+        pitch_shift = chain_config["pitch_change"]
+        rvc_formant_shift = chain_config["formant_shift"]
+        rvc_rms_mix_rate = chain_config["rms_mix_rate"]
+    elif mode == "Poem/Rhyme":
+        from content_pipeline.bots.kids_studio_core import configure_absolute_storyteller_vocal_chain
+        chain_config = configure_absolute_storyteller_vocal_chain(mode)
+        
+        rvc_index_rate = 0.35
+        rvc_protect = 0.33
+        rvc_filter_radius = 3
+        
+        pitch_shift = chain_config["pitch_change"]
+        rvc_formant_shift = chain_config["formant_shift"]
+        rvc_rms_mix_rate = chain_config["rms_mix_rate"]
+    else:
+        rvc_index_rate = 0.35
+        rvc_protect = 0.33
+        rvc_rms_mix_rate = 0.25
+        rvc_filter_radius = 3
+        rvc_formant_shift = 1.0
+
     # Morph spoken TTS stem into a singing voice stem using RVC guided by the melody guide
-    singing_vocals_file = convert_speech_to_melodic_singing(raw_vocals_file, model_filename, melody_path=melody_guide_path)
+    singing_vocals_file = convert_speech_to_melodic_singing(
+        raw_vocals_file, 
+        model_filename, 
+        melody_path=melody_guide_path,
+        pitch_shift=pitch_shift,
+        index_rate=rvc_index_rate,
+        protect=rvc_protect,
+        rms_mix_rate=rvc_rms_mix_rate,
+        filter_radius=rvc_filter_radius,
+        formant_shift=rvc_formant_shift
+    )
     
     # Master the singing vocals using formant-protected resonance and pop mastering EQ
     vocals_clean = process_studio_vocal_resonance(singing_vocals_file, genre_preset=genre, voice_gender=singer_gender)
     
-    # Apply spatial mastering suite: stereo doubler and ambient reverb tail
-    vocals_doubled = apply_studio_stereo_doubling(vocals_clean)
-    vocals = apply_ambient_reverb_space(vocals_doubled)
+    if mode == "Storytelling":
+        # Apply the low-shelf warmth boost and high-cut smoothing filter to add chest resonance
+        sample_rate = vocals_clean.frame_rate
+        samples = np.array(vocals_clean.get_array_of_samples(), dtype=np.float32)
+        eq_samples = apply_studio_warmth_eq(samples, sample_rate)
+        eq_samples = eq_samples.clip(-32768, 32767).astype(np.int16)
+        vocals_clean = vocals_clean._spawn(eq_samples.tobytes())
+        
+        # Apply extra tight dynamic range compression to bring vocals upfront and closer to the mic
+        from pydub.effects import compress_dynamic_range
+        vocals_clean = compress_dynamic_range(
+            vocals_clean,
+            threshold=-18.0,
+            attack=5.0,
+            release=80.0,
+            ratio=4.0
+        )
+
+    if mode in ["Storytelling", "Poem/Rhyme"]:
+        # Keep storytelling and nursery vocals dry and centered to avoid a 'big empty room' echo sound
+        vocals = vocals_clean
+    else:
+        # Apply spatial mastering suite: stereo doubler and ambient reverb tail
+        vocals_doubled = apply_studio_stereo_doubling(vocals_clean)
+        vocals = apply_ambient_reverb_space(vocals_doubled)
 
 
     # 4. Determine background beat file (Decoupled Pipeline using Lyria instrumental)
     beat_path = None
 
-    # Try generating dynamic instrumental backing track using Lyria
-    try:
-        from gradio_client import Client, handle_file
-        
-        # Determine prompt_audio_param for style references
-        prompt_audio_param = None
-        if selected_ref != "None (Text-only)" and not is_vocal_track(selected_ref):
-            ref_full_path = PROJECT_ROOT / "output" / "reference_audio" / selected_ref
-            if not ref_full_path.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio").exists():
-                ref_full_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio") / selected_ref
+    if mode == "Storytelling":
+        print("🎵 Storytelling Background: Using soft drumless ambient string pad...")
+    else:
+        # Try generating dynamic instrumental backing track using Lyria
+        try:
+            from gradio_client import Client, handle_file
             
-            if ref_full_path.exists():
-                # Crop reference audio to 15 seconds for Lyria style reference input
-                cropped_ref_path = temp_dir / "hindi_ref_cropped.mp3"
-                start_time = "0"
-                if ref_full_path.name == "बार्नबी गिलहरी की व्यर्थ खोज.mp3":
-                    start_time = "4.5"
-                    
-                import subprocess
-                cmd = [
-                    "ffmpeg", "-y", "-i", str(ref_full_path),
-                    "-ss", start_time, "-t", "15",
-                    "-codec:a", "libmp3lame", "-b:a", "128k",
-                    str(cropped_ref_path)
-                ]
-                subprocess.run(cmd, capture_output=True)
-                if cropped_ref_path.exists():
-                    prompt_audio_param = handle_file(str(cropped_ref_path))
+            # Determine prompt_audio_param for style references
+            prompt_audio_param = None
+            if selected_ref != "None (Text-only)" and not is_vocal_track(selected_ref):
+                ref_full_path = PROJECT_ROOT / "output" / "reference_audio" / selected_ref
+                if not ref_full_path.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio").exists():
+                    ref_full_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio") / selected_ref
+                
+                if ref_full_path.exists():
+                    # Crop reference audio to 15 seconds for Lyria style reference input
+                    cropped_ref_path = temp_dir / "hindi_ref_cropped.mp3"
+                    start_time = "0"
+                    if ref_full_path.name == "बार्नबी गिलहरी की व्यर्थ खोज.mp3":
+                        start_time = "4.5"
+                        
+                    import subprocess
+                    cmd = [
+                        "ffmpeg", "-y", "-i", str(ref_full_path),
+                        "-ss", start_time, "-t", "15",
+                        "-codec:a", "libmp3lame", "-b:a", "128k",
+                        str(cropped_ref_path)
+                    ]
+                    subprocess.run(cmd, capture_output=True)
+                    if cropped_ref_path.exists():
+                        prompt_audio_param = handle_file(str(cropped_ref_path))
 
-        if st_write_func:
-            st_write_func("🎵 Generating dynamic instrumental backing track using Hugging Face Lyria (vocals disabled)...")
-        else:
-            print("Generating dynamic instrumental backing track using Hugging Face Lyria...")
-
-        client = Client("tencent/SongGeneration", token=hf_token, httpx_kwargs={"timeout": 600.0})
-        
-        # Enforce positive instrumental description, avoiding negation words that trigger vocals
-        raw_desc = style_description or "traditional north indian music, pure instrumental, solo sitar and bansuri flute melody, acoustic tabla rhythm, studio recording"
-        
-        # Split by clause/sentence boundaries to filter out vocal references without losing instrumental details
-        clauses = re.split(r'([.,!?])', raw_desc)
-        filtered_clauses = []
-        vocal_terms_regex = re.compile(
-            r"\b(vocals?|singing|voices?|singers?|vocalists?|lyrics?|chanting|backing vocals)\b", 
-            re.IGNORECASE
-        )
-        for i in range(0, len(clauses), 2):
-            clause = clauses[i]
-            punct = clauses[i+1] if i+1 < len(clauses) else ""
-            if not vocal_terms_regex.search(clause):
-                filtered_clauses.append(clause + punct)
-        inst_desc = "".join(filtered_clauses).strip()
-        # Clean up double punctuation resulting from filtering
-        inst_desc = re.sub(r'\s*,\s*,', ',', inst_desc)
-        inst_desc = re.sub(r'\s*\.\s*\.', '.', inst_desc)
-        inst_desc = re.sub(r',\s*\.', '.', inst_desc)
-        inst_desc = re.sub(r'\.\s*,', '.', inst_desc)
-        inst_desc = re.sub(r'\s+', ' ', inst_desc).strip()
-        
-        # Ensure we have "Pure instrumental" at the start
-        if "instrumental" not in inst_desc.lower():
-            inst_desc = "Pure instrumental. " + inst_desc
-            
-        # Call prediction with instrumental lyric placeholder
-        inst_lyric = "[intro-medium]\n\n[verse]\n[silence]\n\n[outro-medium]"
-        
-        # Force a valid genre and lower temperature for traditional Indian feel
-        valid_genres = ['Auto', 'Pop', 'Latin', 'Rock', 'Electronic', 'Metal', 'Country', 'R&B/Soul', 'Ballad', 'Jazz', 'World', 'Hip-Hop', 'Funk', 'Soundtrack']
-        active_genre = genre if genre in valid_genres else "World"
-        active_temp = min(temperature, 0.40) # Lower temp to prevent Western deviations
-        
-        result_path, info = client.predict(
-            lyric=inst_lyric,
-            description=inst_desc,
-            prompt_audio=prompt_audio_param,
-            genre=active_genre,
-            cfg_coef=cfg_coef,
-            temperature=active_temp,
-            api_name="/generate_song"
-        )
-        
-        if result_path and str(result_path).strip().lower() != "none" and Path(result_path).exists():
-            beat_path = Path(result_path)
             if st_write_func:
-                st_write_func("✅ Dynamic instrumental backing track generated successfully.")
-        else:
-            raise ValueError("Lyria did not return a valid audio path for the backing track.")
+                st_write_func("🎵 Generating dynamic instrumental backing track using Hugging Face Lyria (vocals disabled)...")
+            else:
+                print("Generating dynamic instrumental backing track using Hugging Face Lyria...")
+
+            client = Client("tencent/SongGeneration", token=hf_token, httpx_kwargs={"timeout": 600.0})
             
-    except Exception as lyria_err:
-        if st_write_func:
-            st_write_func(f"⚠️ Lyria instrumental generation failed: {lyria_err}. Falling back to default beats/ambient...")
-        else:
-            print(f"Lyria instrumental generation failed: {lyria_err}")
+            # Enforce positive instrumental description, avoiding negation words that trigger vocals
+            raw_desc = style_description or "traditional north indian music, pure instrumental, solo sitar and bansuri flute melody, acoustic tabla rhythm, studio recording"
+            
+            # Split by clause/sentence boundaries to filter out vocal references without losing instrumental details
+            clauses = re.split(r'([.,!?])', raw_desc)
+            filtered_clauses = []
+            vocal_terms_regex = re.compile(
+                r"\b(vocals?|singing|voices?|singers?|vocalists?|lyrics?|chanting|backing vocals)\b", 
+                re.IGNORECASE
+            )
+            for i in range(0, len(clauses), 2):
+                clause = clauses[i]
+                punct = clauses[i+1] if i+1 < len(clauses) else ""
+                if not vocal_terms_regex.search(clause):
+                    filtered_clauses.append(clause + punct)
+            inst_desc = "".join(filtered_clauses).strip()
+            # Clean up double punctuation resulting from filtering
+            inst_desc = re.sub(r'\s*,\s*,', ',', inst_desc)
+            inst_desc = re.sub(r'\s*\.\s*\.', '.', inst_desc)
+            inst_desc = re.sub(r',\s*\.', '.', inst_desc)
+            inst_desc = re.sub(r'\.\s*,', '.', inst_desc)
+            inst_desc = re.sub(r'\s+', ' ', inst_desc).strip()
+            
+            # Ensure we have "Pure instrumental" at the start
+            if "instrumental" not in inst_desc.lower():
+                inst_desc = "Pure instrumental. " + inst_desc
+                
+            # Call prediction with instrumental lyric placeholder
+            inst_lyric = "[intro-medium]\n\n[verse]\n[silence]\n\n[outro-medium]"
+            
+            # Force a valid genre and lower temperature for traditional Indian feel
+            valid_genres = ['Auto', 'Pop', 'Latin', 'Rock', 'Electronic', 'Metal', 'Country', 'R&B/Soul', 'Ballad', 'Jazz', 'World', 'Hip-Hop', 'Funk', 'Soundtrack']
+            active_genre = genre if genre in valid_genres else "World"
+            active_temp = min(temperature, 0.40) # Lower temp to prevent Western deviations
+            
+            result_path, info = client.predict(
+                lyric=inst_lyric,
+                description=inst_desc,
+                prompt_audio=prompt_audio_param,
+                genre=active_genre,
+                cfg_coef=cfg_coef,
+                temperature=active_temp,
+                api_name="/generate_song"
+            )
+            
+            if result_path and str(result_path).strip().lower() != "none" and Path(result_path).exists():
+                beat_path = Path(result_path)
+                if st_write_func:
+                    st_write_func("✅ Dynamic instrumental backing track generated successfully.")
+            else:
+                raise ValueError("Lyria did not return a valid audio path for the backing track.")
+                
+        except Exception as lyria_err:
+            if st_write_func:
+                st_write_func(f"⚠️ Lyria instrumental generation failed: {lyria_err}. Falling back to default beats/ambient...")
+            else:
+                print(f"Lyria instrumental generation failed: {lyria_err}")
 
     # Fallback to local files if Lyria fails or is bypassed
     if not beat_path:
-        if selected_ref != "None (Text-only)":
-            ref_full_path = PROJECT_ROOT / "output" / "reference_audio" / selected_ref
-            if not ref_full_path.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio").exists():
-                ref_full_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio") / selected_ref
-            if ref_full_path.exists() and not is_vocal_track(selected_ref):
-                beat_path = ref_full_path
-
-        if not beat_path:
-            # Fallback to generating a clean, vocal-free ambient synth background track
+        if mode == "Storytelling":
+            # Generate drumless 0 BPM ambient pad matching vocal duration
             beat_path = temp_dir / "fallback_beat.wav"
-            generate_music_preview(beat_path, "ambient", duration_seconds=int(vocals.duration_seconds + 5))
+            generate_storytelling_ambient_pad(beat_path, duration_seconds=int(vocals.duration_seconds + 5))
+        else:
+            if selected_ref != "None (Text-only)":
+                ref_full_path = PROJECT_ROOT / "output" / "reference_audio" / selected_ref
+                if not ref_full_path.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio").exists():
+                    ref_full_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio") / selected_ref
+                if ref_full_path.exists() and not is_vocal_track(selected_ref):
+                    beat_path = ref_full_path
+
+            if not beat_path:
+                # Fallback to generating a clean, vocal-free ambient synth background track
+                beat_path = temp_dir / "fallback_beat.wav"
+                fallback_preset = "nursery" if mode == "Poem/Rhyme" else "ambient"
+                generate_music_preview(beat_path, fallback_preset, duration_seconds=int(vocals.duration_seconds + 5))
 
     # Load beat
     beat = AudioSegment.from_file(str(beat_path))
@@ -1990,7 +2252,7 @@ def generate_hindi_song_via_native_audio(
     beat = beat[:int((vocals.duration_seconds + 3) * 1000)]
 
     # Use compile_glued_studio_master to blend, limit, and export the song
-    compile_glued_studio_master(vocals, beat, str(output_path))
+    compile_glued_studio_master(vocals, beat, str(output_path), mode=mode)
 
     # Clean up temp raw vocals and melody guide
     try:
@@ -2005,6 +2267,37 @@ def generate_hindi_song_via_native_audio(
     except Exception:
         pass
 
+    return output_path
+
+
+def generate_storytelling_ambient_pad(output_path: Path, duration_seconds: int = 8) -> Path:
+    """Generates a drumless, low-volume C-major ambient pad for storytelling narration background score."""
+    import wave
+    import struct
+    import math
+    
+    # C-major triad frequencies: C3, E3, G3, C4
+    frequencies = [130.81, 164.81, 196.00, 261.63]
+    amplitude = 0.08  # Low volume
+    sample_rate = 44100
+    total_samples = duration_seconds * sample_rate
+    
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with wave.open(str(output_path), "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(sample_rate)
+        frames = bytearray()
+        for index in range(total_samples):
+            t = index / sample_rate
+            # Smooth fade in and fade out over 1.5 seconds
+            fade_in = min(1.0, t / 1.5)
+            fade_out = min(1.0, max(0.0, (duration_seconds - t) / 1.5))
+            envelope = fade_in * fade_out
+            sample = sum(math.sin(2 * math.pi * frequency * t) for frequency in frequencies) / len(frequencies)
+            sample *= amplitude * envelope
+            frames.extend(struct.pack("<h", int(sample * 32767)))
+        wav_file.writeframes(bytes(frames))
     return output_path
 
 
