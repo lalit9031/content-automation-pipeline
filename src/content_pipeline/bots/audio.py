@@ -1477,6 +1477,13 @@ def compile_glued_studio_master(vocal_stereo_stem: AudioSegment, beat_stem: Audi
     # 2. Overlay the spatial vocal tracks cleanly over the background instruments
     final_mix = carved_beat.overlay(calibrated_vocals, position=0)
     
+    # 2.5 Apply a subtle room reverb effect to glue vocals and background music in the same acoustic space
+    if mode in ["Storytelling", "Poem/Rhyme"]:
+        print("✨ DSP Master: Injecting subtle room reverb to glue vocal and instrumental stems...")
+        reverb_tail = final_mix - 20.0
+        delayed_tail = AudioSegment.silent(duration=150) + reverb_tail
+        final_mix = final_mix.overlay(delayed_tail, position=0)
+    
     # 3. Apply a software peak limiter threshold to prevent digital clipping
     mastered_mix = final_mix.apply_gain(0.0).compress_dynamic_range(
         threshold=-2.0,
@@ -1717,7 +1724,7 @@ def generate_edge_tts_song_fallback(
     PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
     
     # 1. Ensure lyrics are in standard Devanagari script for perfect native accent
-    from content_pipeline.bots.kids_studio_manifest_core import KIDS_STUDIO_MASTER_REGISTRY, cleanse_text_for_vocal_engine
+    from content_pipeline.bots.kids_studio_manifest_core import KIDS_STUDIO_MASTER_REGISTRY, cleanse_text_for_vocal_engine, inject_dynamic_storyteller_pacing
     is_devanagari = any("\u0900" <= char <= "\u097f" for char in lyrics)
     devanagari_lyrics = lyrics
     
@@ -1736,6 +1743,7 @@ def generate_edge_tts_song_fallback(
         if mode == "Storytelling":
             from content_pipeline.bots.kids_studio_core import preprocess_storytelling_script
             devanagari_lyrics = preprocess_storytelling_script(devanagari_lyrics)
+            devanagari_lyrics = inject_dynamic_storyteller_pacing(devanagari_lyrics)
             
         # Preserve [pause] tags as "... " first
         processed_text = re.sub(r"\[pause\]", "... ", devanagari_lyrics, flags=re.IGNORECASE)
@@ -1936,7 +1944,7 @@ def generate_hindi_song_via_native_audio(
     PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 
     # 1. Ensure lyrics are in standard Devanagari script for perfect native accent
-    from content_pipeline.bots.kids_studio_manifest_core import KIDS_STUDIO_MASTER_REGISTRY, cleanse_text_for_vocal_engine
+    from content_pipeline.bots.kids_studio_manifest_core import KIDS_STUDIO_MASTER_REGISTRY, cleanse_text_for_vocal_engine, inject_dynamic_storyteller_pacing
 
     is_devanagari = any("\u0900" <= char <= "\u097f" for char in lyrics)
     devanagari_lyrics = lyrics
@@ -1956,6 +1964,7 @@ def generate_hindi_song_via_native_audio(
         if mode == "Storytelling":
             from content_pipeline.bots.kids_studio_core import preprocess_storytelling_script
             devanagari_lyrics = preprocess_storytelling_script(devanagari_lyrics)
+            devanagari_lyrics = inject_dynamic_storyteller_pacing(devanagari_lyrics)
             
         # Preserve [pause] tags as "... " first
         processed_text = re.sub(r"\[pause\]", "... ", devanagari_lyrics, flags=re.IGNORECASE)

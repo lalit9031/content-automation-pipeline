@@ -21,33 +21,30 @@ KIDS_STUDIO_MASTER_REGISTRY = {
         "base_tts_voice": "hi-IN-MadhurNeural",
         "pitch_change": -2,                  # Slightly minimized to keep the frequency track stable
         "formant_shift": 0.96,               # Safe throat scaling to prevent gravelly resonance
-        "index_rate": 0.25,                  # Keeps transitions smooth and liquid
+        "index_rate": 0.22,                  # DECREASED: Wipes out the metallic vowel locking artifact
         "filter_radius": 4,
-        "protect": 0.50,                     # CRITICAL FIX: Stops the model from distorting breath pauses
-        "rms_mix_rate": 0.40,
-        "bg_music_prompt": "slow atmospheric cinematic storytelling ambient pad, 0 BPM, warm strings, extremely low volume background score"
+        "protect": 0.50,                     # High protection gate protects breath blocks
+        "rms_mix_rate": 0.35                  # Smooths out low-volume text terminations
     },
     "STORY_FEMALE_KIND": {
         "display_name": "Premium Female Storyteller (Koo Koo TV Style)",
         "base_tts_voice": "hi-IN-SwaraNeural",
         "pitch_change": 0,                   # Hard-locked to zero to eliminate chipmunk leakage
         "formant_shift": 0.98,               # Gently rounds off treble to remove sharp frequencies
-        "index_rate": 0.25,                  # Keeps transitions smooth and liquid
+        "index_rate": 0.22,                  # DECREASED: Wipes out the metallic vowel locking artifact
         "filter_radius": 3,
-        "protect": 0.50,                     # CRITICAL FIX: Stops the model from distorting breath pauses
-        "rms_mix_rate": 0.40,
-        "bg_music_prompt": "gentle classical acoustic guitar strumming, very soft bansuri flute accents, 80 BPM, soothing child learning background"
+        "protect": 0.50,                     # High protection gate protects breath blocks
+        "rms_mix_rate": 0.35                  # Smooths out low-volume text terminations
     },
     "EN_KIDS_ANA": {
         "display_name": "Teacher Ana (Preschool Voice - English)",
         "base_tts_voice": "en-US-AnaNeural",
         "pitch_change": 0,
         "formant_shift": 1.00,
-        "index_rate": 0.25,                  # Keeps transitions smooth and liquid
+        "index_rate": 0.22,                  # DECREASED: Wipes out the metallic vowel locking artifact
         "filter_radius": 3,
-        "protect": 0.50,                     # CRITICAL FIX: Stops the model from distorting breath pauses
-        "rms_mix_rate": 0.30,
-        "bg_music_prompt": "upbeat educational classroom synth, 90 BPM, bright bells and glockenspiel"
+        "protect": 0.50,                     # High protection gate protects breath blocks
+        "rms_mix_rate": 0.35                  # Smooths out low-volume text terminations
     }
 }
 
@@ -71,6 +68,24 @@ def cleanse_text_for_vocal_engine(raw_text: str, active_mode: str) -> str:
         clean_text = re.compile(re.escape(word), re.IGNORECASE).sub('', clean_text)
         
     return re.sub(r' +', ' ', clean_text).strip()
+
+def inject_dynamic_storyteller_pacing(raw_script: str) -> str:
+    """
+    Replaces static punctuation with variable, natural breathing gaps.
+    Prevents the text-to-speech engine from sounding like a rigid machine.
+    """
+    print("⏳ Audio Core: Injecting dynamic storyteller pacing and sentence breaths...")
+    # Create extra-long dramatic pauses for paragraph/scene shifts
+    paced_text = raw_script.replace("\n", "... [break] ... ")
+    
+    # Standard sentence pauses
+    paced_text = paced_text.replace("।", "... ")
+    paced_text = paced_text.replace(".", "... ")
+    
+    # Short comma conversational breath pauses
+    paced_text = paced_text.replace(",", ", ")
+    
+    return paced_text
 
 # ==========================================
 # 3. HIGH-FIDELITY EQUALIZATION AND WARMTH
