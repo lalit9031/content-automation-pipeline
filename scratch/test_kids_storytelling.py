@@ -24,13 +24,13 @@ def main():
     
     print(f"Generating audio in Storytelling mode at: {output_path}")
     
-    # Let's run with hi_kids_ananya vocal profile
+    # Let's run with hi_kids_madhur vocal profile
     res = generate_hindi_song_via_native_audio(
         lyrics=lyrics,
         output_path=output_path,
-        singer_gender="Female",
+        singer_gender="Male",
         selected_ref="None (Text-only)",
-        singer_key="hi_kids_ananya",
+        singer_key="hi_kids_madhur",
         mode="Storytelling"
     )
     
