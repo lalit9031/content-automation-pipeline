@@ -1717,27 +1717,50 @@ def generate_edge_tts_song_fallback(
     PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
     
     # 1. Ensure lyrics are in standard Devanagari script for perfect native accent
+    from content_pipeline.bots.kids_studio_manifest_core import KIDS_STUDIO_MASTER_REGISTRY, cleanse_text_for_vocal_engine
     is_devanagari = any("\u0900" <= char <= "\u097f" for char in lyrics)
     devanagari_lyrics = lyrics
-    if not is_devanagari and not singer_key.startswith("en_"):
-        devanagari_lyrics = transliterate_to_devanagari(lyrics, settings)
     
-    if mode == "Storytelling":
-        from content_pipeline.bots.kids_studio_core import preprocess_storytelling_script
-        devanagari_lyrics = preprocess_storytelling_script(devanagari_lyrics)
-        # For spoken storytelling, replace [pause] with punctuation or ellipsis to force natural pauses
-        clean_lyrics = re.sub(r"\[pause\]", "... ", devanagari_lyrics, flags=re.IGNORECASE)
-        # Strip all other bracketed tags
-        clean_lyrics = re.sub(r"\[.*?\]", "", clean_lyrics).strip()
+    is_kids_mode = mode in ["Storytelling", "Poem/Rhyme"] or (singer_key in KIDS_STUDIO_MASTER_REGISTRY)
+    
+    if singer_key in KIDS_STUDIO_MASTER_REGISTRY:
+        profile = KIDS_STUDIO_MASTER_REGISTRY[singer_key]
+        base_voice = profile.get("base_tts_voice", "")
+        # Don't transliterate if it's English voice
+        if singer_key == "EN_KIDS_ANA" or base_voice.startswith("en-"):
+            devanagari_lyrics = lyrics
+        else:
+            if not is_devanagari:
+                devanagari_lyrics = transliterate_to_devanagari(lyrics, settings)
+                
+        if mode == "Storytelling":
+            from content_pipeline.bots.kids_studio_core import preprocess_storytelling_script
+            devanagari_lyrics = preprocess_storytelling_script(devanagari_lyrics)
+            
+        # Preserve [pause] tags as "... " first
+        processed_text = re.sub(r"\[pause\]", "... ", devanagari_lyrics, flags=re.IGNORECASE)
+        clean_lyrics = cleanse_text_for_vocal_engine(processed_text, singer_key)
     else:
-        # Prepare singing-optimized lyrics with vowel elongation
-        singing_lyrics = prepare_singing_lyrics(devanagari_lyrics)
-        # For Edge-TTS, we must strip the bracketed directives since it cannot interpret them
-        clean_lyrics = re.sub(r"\[.*?\]", "", singing_lyrics).strip()
+        if not is_devanagari and not singer_key.startswith("en_"):
+            devanagari_lyrics = transliterate_to_devanagari(lyrics, settings)
+        
+        if mode == "Storytelling":
+            from content_pipeline.bots.kids_studio_core import preprocess_storytelling_script
+            devanagari_lyrics = preprocess_storytelling_script(devanagari_lyrics)
+            # For spoken storytelling, replace [pause] with punctuation or ellipsis to force natural pauses
+            clean_lyrics = re.sub(r"\[pause\]", "... ", devanagari_lyrics, flags=re.IGNORECASE)
+            # Strip all other bracketed tags
+            clean_lyrics = re.sub(r"\[.*?\]", "", clean_lyrics).strip()
+        else:
+            # Prepare singing-optimized lyrics with vowel elongation
+            singing_lyrics = prepare_singing_lyrics(devanagari_lyrics)
+            # For Edge-TTS, we must strip the bracketed directives since it cannot interpret them
+            clean_lyrics = re.sub(r"\[.*?\]", "", singing_lyrics).strip()
     
-    is_kids_mode = mode in ["Storytelling", "Poem/Rhyme"]
     # 2. Determine voice based on singer_key or gender
-    if is_kids_mode:
+    if singer_key in KIDS_STUDIO_MASTER_REGISTRY:
+        voice = KIDS_STUDIO_MASTER_REGISTRY[singer_key].get("base_tts_voice", "hi-IN-SwaraNeural")
+    elif is_kids_mode:
         from content_pipeline.bots.kids_studio_core import configure_absolute_storyteller_vocal_chain
         chain_config = configure_absolute_storyteller_vocal_chain(mode)
         voice = chain_config["base_tts_voice"]
@@ -1806,7 +1829,10 @@ def generate_edge_tts_song_fallback(
     beat = beat[:int((vocals.duration_seconds + 3) * 1000)]
     
     # 4. Deepen/Brighten voice depending on whether it is a kids profile
-    if is_kids_mode:
+    if singer_key in KIDS_STUDIO_MASTER_REGISTRY:
+        pitch_change = KIDS_STUDIO_MASTER_REGISTRY[singer_key].get("pitch_change", 0)
+        pitch_shift_factor = 2 ** (pitch_change / 12.0)
+    elif is_kids_mode:
         if mode == "Storytelling":
             pitch_shift_factor = 0.95  # Deepen slightly for storytelling warmth
         else:
@@ -1822,10 +1848,21 @@ def generate_edge_tts_song_fallback(
         "frame_rate": int(vocals.frame_rate * pitch_shift_factor)
     }).set_frame_rate(vocals.frame_rate)
     
+    if singer_key in KIDS_STUDIO_MASTER_REGISTRY:
+        from content_pipeline.bots.kids_studio_manifest_core import apply_vocal_equalization
+        sample_rate = processed_vocals.frame_rate
+        samples = np.array(processed_vocals.get_array_of_samples(), dtype=np.float32)
+        eq_samples = apply_vocal_equalization(samples, sample_rate, singer_key)
+        eq_samples = eq_samples.clip(-32768, 32767).astype(np.int16)
+        processed_vocals = processed_vocals._spawn(eq_samples.tobytes())
+    
     # Drop the beat volume to ensure dental consonants cut through smoothly
     if mode == "Storytelling":
         softer_beat = beat - 12.0
         vocals_boosted = processed_vocals + 4.5
+    elif mode == "Poem/Rhyme":
+        softer_beat = beat - 9.0
+        vocals_boosted = processed_vocals + 4.0
     else:
         softer_beat = beat - 7.0
         vocals_boosted = processed_vocals + 3.0
@@ -1878,8 +1915,8 @@ def generate_hindi_song_via_native_audio(
     settings = Settings.from_environment()
     
     # Resolve gender and config from the artist manifest
-    from content_pipeline.bots.singer_manifest import SINGER_MANIFEST
-    resolved_singer_key = singer_key
+    from content_pipeline.bots.singer_manifest import SINGER_MANIFEST, SINGER_ALIASES
+    resolved_singer_key = SINGER_ALIASES.get(singer_key, singer_key)
     if resolved_singer_key == "arijit_singn":
         resolved_singer_key = "arijit_singh"
         
@@ -1899,26 +1936,49 @@ def generate_hindi_song_via_native_audio(
     PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 
     # 1. Ensure lyrics are in standard Devanagari script for perfect native accent
+    from content_pipeline.bots.kids_studio_manifest_core import KIDS_STUDIO_MASTER_REGISTRY, cleanse_text_for_vocal_engine
+
     is_devanagari = any("\u0900" <= char <= "\u097f" for char in lyrics)
     devanagari_lyrics = lyrics
-    if not is_devanagari:
-        devanagari_lyrics = transliterate_to_devanagari(lyrics, settings)
+    
+    is_kids_mode = mode in ["Storytelling", "Poem/Rhyme"] or (singer_key in KIDS_STUDIO_MASTER_REGISTRY)
 
-    if mode == "Storytelling":
-        from content_pipeline.bots.kids_studio_core import preprocess_storytelling_script
-        devanagari_lyrics = preprocess_storytelling_script(devanagari_lyrics)
-        clean_lyrics_gemini = devanagari_lyrics
-        # For Edge-TTS, we must strip the bracketed directives and replace [pause] with "... " to inject pauses
-        clean_lyrics_edge = re.sub(r"\[pause\]", "... ", devanagari_lyrics, flags=re.IGNORECASE)
-        clean_lyrics_edge = re.sub(r"\[.*?\]", "", clean_lyrics_edge).strip()
+    if singer_key in KIDS_STUDIO_MASTER_REGISTRY:
+        profile = KIDS_STUDIO_MASTER_REGISTRY[singer_key]
+        base_voice = profile.get("base_tts_voice", "")
+        # Don't transliterate if it's English voice
+        if singer_key == "EN_KIDS_ANA" or base_voice.startswith("en-"):
+            devanagari_lyrics = lyrics
+        else:
+            if not is_devanagari:
+                devanagari_lyrics = transliterate_to_devanagari(lyrics, settings)
+                
+        if mode == "Storytelling":
+            from content_pipeline.bots.kids_studio_core import preprocess_storytelling_script
+            devanagari_lyrics = preprocess_storytelling_script(devanagari_lyrics)
+            
+        # Preserve [pause] tags as "... " first
+        processed_text = re.sub(r"\[pause\]", "... ", devanagari_lyrics, flags=re.IGNORECASE)
+        cleansed_lyrics = cleanse_text_for_vocal_engine(processed_text, singer_key)
+        clean_lyrics_gemini = cleansed_lyrics
+        clean_lyrics_edge = cleansed_lyrics
     else:
-        # Prepare singing-optimized lyrics with vowel elongation
-        singing_lyrics = prepare_singing_lyrics(devanagari_lyrics)
-        clean_lyrics_gemini = singing_lyrics
-        # For Edge-TTS, we must strip the bracketed directives since it cannot interpret them
-        clean_lyrics_edge = re.sub(r"\[.*?\]", "", singing_lyrics).strip()
+        if not is_devanagari:
+            devanagari_lyrics = transliterate_to_devanagari(lyrics, settings)
 
-    is_kids_mode = mode in ["Storytelling", "Poem/Rhyme"]
+        if mode == "Storytelling":
+            from content_pipeline.bots.kids_studio_core import preprocess_storytelling_script
+            devanagari_lyrics = preprocess_storytelling_script(devanagari_lyrics)
+            clean_lyrics_gemini = devanagari_lyrics
+            # For Edge-TTS, we must strip the bracketed directives and replace [pause] with "... " to inject pauses
+            clean_lyrics_edge = re.sub(r"\[pause\]", "... ", devanagari_lyrics, flags=re.IGNORECASE)
+            clean_lyrics_edge = re.sub(r"\[.*?\]", "", clean_lyrics_edge).strip()
+        else:
+            # Prepare singing-optimized lyrics with vowel elongation
+            singing_lyrics = prepare_singing_lyrics(devanagari_lyrics)
+            clean_lyrics_gemini = singing_lyrics
+            # For Edge-TTS, we must strip the bracketed directives since it cannot interpret them
+            clean_lyrics_edge = re.sub(r"\[.*?\]", "", singing_lyrics).strip()
 
     # 2. Setup paths
     temp_dir = settings.output_dir / ".runtime"
@@ -1983,7 +2043,9 @@ def generate_hindi_song_via_native_audio(
 
     if not generated_ok:
         # Budget Exhausted / Fallback: Use Edge TTS Hindi
-        if is_kids_mode:
+        if singer_key in KIDS_STUDIO_MASTER_REGISTRY:
+            fallback_voice = KIDS_STUDIO_MASTER_REGISTRY[singer_key].get("base_tts_voice", "hi-IN-SwaraNeural")
+        elif is_kids_mode:
             from content_pipeline.bots.kids_studio_core import configure_absolute_storyteller_vocal_chain
             chain_config = configure_absolute_storyteller_vocal_chain(mode)
             fallback_voice = chain_config["base_tts_voice"]
@@ -2057,7 +2119,16 @@ def generate_hindi_song_via_native_audio(
         generate_synthetic_melody_guide(duration_seconds=vocals_duration, tempo_bpm=65, output_path=str(melody_guide_path))
         created_temp_melody_guide = True
 
-    if mode == "Storytelling":
+    if singer_key in KIDS_STUDIO_MASTER_REGISTRY:
+        profile = KIDS_STUDIO_MASTER_REGISTRY[singer_key]
+        pitch_shift = profile.get("pitch_change", 0)
+        rvc_formant_shift = profile.get("formant_shift", 1.0)
+        rvc_index_rate = profile.get("index_rate", 0.35)
+        rvc_filter_radius = profile.get("filter_radius", 3)
+        rvc_rms_mix_rate = profile.get("rms_mix_rate", 0.25)
+        rvc_protect = profile.get("protect", 0.33)
+        style_description = profile.get("bg_music_prompt", style_description)
+    elif mode == "Storytelling":
         from content_pipeline.bots.kids_studio_core import get_storyteller_production_flags, configure_absolute_storyteller_vocal_chain
         flags = get_storyteller_production_flags()
         chain_config = configure_absolute_storyteller_vocal_chain(mode)
@@ -2103,7 +2174,14 @@ def generate_hindi_song_via_native_audio(
     # Master the singing vocals using formant-protected resonance and pop mastering EQ
     vocals_clean = process_studio_vocal_resonance(singing_vocals_file, genre_preset=genre, voice_gender=singer_gender)
     
-    if mode in ["Storytelling", "Poem/Rhyme"]:
+    if singer_key in KIDS_STUDIO_MASTER_REGISTRY:
+        from content_pipeline.bots.kids_studio_manifest_core import apply_vocal_equalization
+        sample_rate = vocals_clean.frame_rate
+        samples = np.array(vocals_clean.get_array_of_samples(), dtype=np.float32)
+        eq_samples = apply_vocal_equalization(samples, sample_rate, singer_key)
+        eq_samples = eq_samples.clip(-32768, 32767).astype(np.int16)
+        vocals_clean = vocals_clean._spawn(eq_samples.tobytes())
+    elif mode in ["Storytelling", "Poem/Rhyme"]:
         # Apply the low-shelf warmth boost and high-cut smoothing filter to add chest resonance
         sample_rate = vocals_clean.frame_rate
         samples = np.array(vocals_clean.get_array_of_samples(), dtype=np.float32)

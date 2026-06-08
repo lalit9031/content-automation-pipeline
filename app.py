@@ -2117,6 +2117,8 @@ def render_frontdoor(settings: Settings) -> None:
                         import importlib
                         if "content_pipeline.bots.singing_synthesis" in sys.modules:
                             importlib.reload(sys.modules["content_pipeline.bots.singing_synthesis"])
+                        if "content_pipeline.bots.kids_studio_manifest_core" in sys.modules:
+                            importlib.reload(sys.modules["content_pipeline.bots.kids_studio_manifest_core"])
                         if "content_pipeline.bots.kids_studio_core" in sys.modules:
                             importlib.reload(sys.modules["content_pipeline.bots.kids_studio_core"])
                         if "content_pipeline.bots.singer_manifest" in sys.modules:
@@ -2568,22 +2570,21 @@ def render_frontdoor(settings: Settings) -> None:
         desc = st.session_state.setdefault("kids_song_description", default_desc)
         
         # Determine kids voice options based on the selected language
+        from content_pipeline.bots.kids_studio_manifest_core import KIDS_STUDIO_MASTER_REGISTRY
         kids_lang = st.session_state.get("kids_studio_language", "English")
-        if kids_lang == "English":
-            kids_singer_opts = {
-                "Teacher Ana (Preschool Voice - English)": "en_kids_ana"
-            }
-        elif kids_lang == "Hindi":
-            kids_singer_opts = {
-                "Baby Ananya (Cute Kid - Hindi)": "hi_kids_ananya",
-                "Baby Madhur (Warm Narrator - Hindi)": "hi_kids_madhur"
-            }
-        else: # Hinglish
-            kids_singer_opts = {
-                "Baby Ananya (Cute Kid - Hindi)": "hi_kids_ananya",
-                "Baby Madhur (Warm Narrator - Hindi)": "hi_kids_madhur",
-                "Teacher Ana (Preschool Voice - English)": "en_kids_ana"
-            }
+        
+        kids_singer_opts = {}
+        for key, profile in KIDS_STUDIO_MASTER_REGISTRY.items():
+            base_voice = profile.get("base_tts_voice", "")
+            is_en = base_voice.startswith("en-")
+            is_hi = base_voice.startswith("hi-")
+            
+            if kids_lang == "English" and is_en:
+                kids_singer_opts[profile["display_name"]] = key
+            elif kids_lang == "Hindi" and is_hi:
+                kids_singer_opts[profile["display_name"]] = key
+            elif kids_lang == "Hinglish":
+                kids_singer_opts[profile["display_name"]] = key
 
         expander_title = "⚡ One-Click Story Creator" if kids_mode == "Storytelling" else "⚡ One-Click Song Creator"
         with st.expander(expander_title, expanded=True):
@@ -2989,6 +2990,8 @@ def render_frontdoor(settings: Settings) -> None:
                         import importlib
                         if "content_pipeline.bots.singing_synthesis" in sys.modules:
                             importlib.reload(sys.modules["content_pipeline.bots.singing_synthesis"])
+                        if "content_pipeline.bots.kids_studio_manifest_core" in sys.modules:
+                            importlib.reload(sys.modules["content_pipeline.bots.kids_studio_manifest_core"])
                         if "content_pipeline.bots.kids_studio_core" in sys.modules:
                             importlib.reload(sys.modules["content_pipeline.bots.kids_studio_core"])
                         if "content_pipeline.bots.singer_manifest" in sys.modules:

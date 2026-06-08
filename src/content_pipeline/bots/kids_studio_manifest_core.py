@@ -1,0 +1,122 @@
+import re
+import numpy as np
+import scipy.signal as signal
+
+# ==========================================
+# 1. THE ABSOLUTE AUDIO CONFIGURATION MATRIX
+# ==========================================
+KIDS_STUDIO_MASTER_REGISTRY = {
+    "KIDS_RHYME_MOUSE": {
+        "display_name": "Squeaky Cartoon Mouse (LittleBubbles Style)",
+        "base_tts_voice": "hi-IN-SwaraNeural",
+        "pitch_change": 12,                  # Full octave jump for cartoon effect
+        "formant_shift": 1.00,               # High-clarity compressed formant range
+        "index_rate": 0.40,
+        "filter_radius": 3,
+        "rms_mix_rate": 0.25,
+        "bg_music_prompt": "upbeat electronic kindergarten dance track, 115 BPM, 4/4 clapping rhythm, cheerful arcade synths, bright happy major key"
+    },
+    "STORY_MALE_PREMIUM": {
+        "display_name": "Premium Male Narrator (Wise Baritone Style)",
+        "base_tts_voice": "hi-IN-MadhurNeural",
+        "pitch_change": -3,                  # Drops voice register into chest resonance
+        "formant_shift": 0.94,               # Widens vocal tract to add deep bass warmth
+        "index_rate": 0.30,                  # Fluid, slow audiobook pacing
+        "filter_radius": 4,                  # Filters out high-pitched metallic artifacts
+        "rms_mix_rate": 0.45,
+        "bg_music_prompt": "slow atmospheric cinematic storytelling ambient pad, 0 BPM, warm strings, extremely low volume background score"
+    },
+    "STORY_FEMALE_KIND": {
+        "display_name": "Premium Female Storyteller (Koo Koo TV Style)",
+        "base_tts_voice": "hi-IN-SwaraNeural",
+        "pitch_change": 0,                   # Hard-locked to zero to eliminate chipmunk leakage
+        "formant_shift": 0.98,               # Gently rounds off treble to remove sharp frequencies
+        "index_rate": 0.35,                  # Warm, natural motherly cadence
+        "filter_radius": 3,
+        "rms_mix_rate": 0.40,
+        "bg_music_prompt": "gentle classical acoustic guitar strumming, very soft bansuri flute accents, 80 BPM, soothing child learning background"
+    },
+    "EN_KIDS_ANA": {
+        "display_name": "Teacher Ana (Preschool Voice - English)",
+        "base_tts_voice": "en-US-AnaNeural",
+        "pitch_change": 0,
+        "formant_shift": 1.00,
+        "index_rate": 0.35,
+        "filter_radius": 3,
+        "rms_mix_rate": 0.30,
+        "bg_music_prompt": "upbeat educational classroom synth, 90 BPM, bright bells and glockenspiel"
+    }
+}
+
+# ==========================================
+# 2. AUTOMATED LYRIC CLEANING & FILTER CORE
+# ==========================================
+def cleanse_text_for_vocal_engine(raw_text: str, active_mode: str) -> str:
+    """
+    Scrubs parenthetical action tokens for storytelling while preserving 
+    clean text arrays so the voice engine never reads meta-tags out loud.
+    """
+    print(f"🧹 Audio Core: Cleansing text stream for active mode: [{active_mode}]")
+    
+    # Strip any text hidden inside square brackets [like this] or parentheses (like this)
+    clean_text = re.sub(r'\[.*?\]', '', raw_text)
+    clean_text = re.sub(r'\(.*?\)', '', clean_text)
+    
+    # Remove loose metadata trigger words that confuse the text-to-speech reader
+    clutter_words = ["sad face", "tasty", "juicy", "stretch", "snuggle", "wink", "water water", "clap clap"]
+    for word in clutter_words:
+        clean_text = re.compile(re.escape(word), re.IGNORECASE).sub('', clean_text)
+        
+    return re.sub(r' +', ' ', clean_text).strip()
+
+# ==========================================
+# 3. HIGH-FIDELITY EQUALIZATION AND WARMTH
+# ==========================================
+def apply_vocal_equalization(audio_samples: np.ndarray, sr: int, active_mode: str) -> np.ndarray:
+    """
+    Applies real-time DSP filters based on target profiles to inject bass warmth 
+    to storytellers or maintain clean sharpness for cartoon characters.
+    Uses custom biquad lowshelf and highshelf structures to prevent scipy crashes.
+    """
+    if active_mode in ["STORY_MALE_PREMIUM", "STORY_FEMALE_KIND"]:
+        print(f"🎛️ DSP Master: Applying lowshelf warmth and smoothing sibilance for [{active_mode}].")
+        import math
+        
+        # Biquad Low-Shelf Boost (+3.5 dB at 200 Hz)
+        def design_biquad_lowshelf(f0, sr, db_gain):
+            A = math.pow(10.0, db_gain / 40.0)
+            omega = 2.0 * math.pi * f0 / sr
+            alpha = math.sin(omega) / 2.0 * math.sqrt(2.0)
+            cos_w = math.cos(omega)
+            two_sqrt_A_alpha = 2.0 * math.sqrt(A) * alpha
+            b0 = A * ((A + 1) - (A - 1) * cos_w + two_sqrt_A_alpha)
+            b1 = 2 * A * ((A - 1) - (A + 1) * cos_w)
+            b2 = A * ((A + 1) - (A - 1) * cos_w - two_sqrt_A_alpha)
+            a0 = (A + 1) + (A - 1) * cos_w + two_sqrt_A_alpha
+            a1 = -2 * ((A - 1) + (A + 1) * cos_w)
+            a2 = (A + 1) + (A - 1) * cos_w - two_sqrt_A_alpha
+            return [b0/a0, b1/a0, b2/a0], [1.0, a1/a0, a2/a0]
+
+        # Biquad High-Shelf Cut (-4.0 dB at 4500 Hz)
+        def design_biquad_highshelf(f0, sr, db_gain):
+            A = math.pow(10.0, db_gain / 40.0)
+            omega = 2.0 * math.pi * f0 / sr
+            alpha = math.sin(omega) / 2.0 * math.sqrt(2.0)
+            cos_w = math.cos(omega)
+            two_sqrt_A_alpha = 2.0 * math.sqrt(A) * alpha
+            b0 = A * ((A + 1) + (A - 1) * cos_w + two_sqrt_A_alpha)
+            b1 = -2 * A * ((A - 1) + (A + 1) * cos_w)
+            b2 = A * ((A + 1) - (A - 1) * cos_w - two_sqrt_A_alpha)
+            a0 = (A + 1) - (A - 1) * cos_w + two_sqrt_A_alpha
+            a1 = 2 * ((A - 1) - (A + 1) * cos_w)
+            a2 = (A + 1) - (A - 1) * cos_w - two_sqrt_A_alpha
+            return [b0/a0, b1/a0, b2/a0], [1.0, a1/a0, a2/a0]
+
+        b_bass, a_bass = design_biquad_lowshelf(200.0, sr, 3.5)
+        warmed_audio = signal.lfilter(b_bass, a_bass, audio_samples)
+        
+        b_treble, a_treble = design_biquad_highshelf(4500.0, sr, -4.0)
+        return signal.lfilter(b_treble, a_treble, warmed_audio)
+        
+    print(f"⚡ DSP Master: Bypassing equalizer filters for [{active_mode}] to maintain high-frequency clarity.")
+    return audio_samples

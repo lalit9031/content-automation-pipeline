@@ -238,39 +238,77 @@ def generate_gemini_voiceover(
 import logging
 logger = logging.getLogger(__name__)
 
+def call_huggingface_llm(system_instruction: str, user_prompt: str, hf_token: str, json_mode: bool = False) -> str:
+    """Queries Hugging Face's serverless Inference Providers Router using Llama 3.1 8B Instruct.
+    Returns the generated string response, or raises an exception on failure.
+    """
+    import requests
+    url = "https://router.huggingface.co/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {hf_token}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": "meta-llama/Llama-3.1-8B-Instruct",
+        "messages": [
+            {"role": "system", "content": system_instruction},
+            {"role": "user", "content": user_prompt}
+        ]
+    }
+    if json_mode:
+        payload["response_format"] = {"type": "json_object"}
+        
+    response = requests.post(url, headers=headers, json=payload, timeout=60)
+    response.raise_for_status()
+    res_data = response.json()
+    return res_data["choices"][0]["message"]["content"].strip()
+
+
 def transliterate_to_devanagari(text: str, settings: Settings) -> str:
-    """Transliterates Romanized Hinglish/Hindi text into standard Devanagari script using Gemini 2.5 Flash."""
+    """Transliterates Romanized Hinglish/Hindi text into standard Devanagari script using Gemini 2.5 Flash,
+    with an automatic fallback to Hugging Face Serverless (Llama 3.1 8B Instruct) when out of limit.
+    """
     keys = list(settings.gemini_api_keys)
     if not keys and settings.gemini_api_key:
         keys = [settings.gemini_api_key]
     if os.environ.get("GEMINI_API_KEY") and os.environ.get("GEMINI_API_KEY") not in keys:
         keys.insert(0, os.environ.get("GEMINI_API_KEY"))
     keys = [k for k in keys if k]
-    if not keys:
-        logger.warning("No Gemini API key available for transliteration.")
-        return text
 
-    prompt = (
+    system_instruction = (
         "You are a professional Hindi translator.\n"
         "Convert the following Romanized Hindi/Hinglish text into standard native Devanagari script.\n"
-        "Maintain all punctuation and bracketed emotion/formatting tags (like [excitedly], [very slow]) exactly as they are.\n"
-        "Output ONLY the final Devanagari text. Do not add any explanation, notes, or markdown formatting.\n\n"
-        f"Text to convert:\n{text}"
+        "Do NOT translate, modify, convert, or transliterate any characters or text inside square brackets (e.g. [excitedly], [very slow], [softly])—keep those brackets and the English/ASCII characters inside them exactly as they are.\n"
+        "Maintain all other punctuation exactly as they are.\n"
+        "Output ONLY the final Devanagari text. Do not add any explanation, notes, or markdown formatting."
     )
+    prompt = f"Text to convert:\n{text}"
 
-    for key in keys:
+    # Try Gemini API keys first
+    if keys:
+        for key in keys:
+            try:
+                client = genai.Client(api_key=key)
+                response = client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=f"{system_instruction}\n\n{prompt}"
+                )
+                res_text = response.text.strip()
+                if res_text:
+                    return res_text
+            except Exception as e:
+                logger.warning(f"Gemini transliteration attempt failed: {e}")
+
+    # Fallback: Try Hugging Face Inference Providers API
+    if settings.hf_token:
         try:
-            client = genai.Client(api_key=key)
-            response = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=prompt
-            )
-            res_text = response.text.strip()
+            logger.info("Falling back to Hugging Face Llama 3.1 for Devanagari transliteration...")
+            res_text = call_huggingface_llm(system_instruction, prompt, settings.hf_token)
             if res_text:
                 return res_text
         except Exception as e:
-            logger.warning(f"Gemini transliteration attempt failed: {e}")
-            
+            logger.warning(f"Hugging Face transliteration fallback failed: {e}")
+
     return text
 
 
