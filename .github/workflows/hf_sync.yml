@@ -17,5 +17,5 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          git remote add hf https://lalit9031:${HF_TOKEN}@huggingface.co/spaces/lalit9031/kids-story-studio
+          git remote add hf https://Lalit9031:${HF_TOKEN}@huggingface.co/spaces/Lalit9031/kids-story-studio
           git push hf main1:main --force
