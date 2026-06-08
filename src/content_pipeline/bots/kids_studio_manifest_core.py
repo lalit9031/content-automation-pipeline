@@ -19,11 +19,12 @@ KIDS_STUDIO_MASTER_REGISTRY = {
     "STORY_MALE_PREMIUM": {
         "display_name": "Premium Male Narrator (Wise Baritone Style)",
         "base_tts_voice": "hi-IN-MadhurNeural",
-        "pitch_change": -3,                  # Drops voice register into chest resonance
-        "formant_shift": 0.94,               # Widens vocal tract to add deep bass warmth
-        "index_rate": 0.30,                  # Fluid, slow audiobook pacing
-        "filter_radius": 4,                  # Filters out high-pitched metallic artifacts
-        "rms_mix_rate": 0.45,
+        "pitch_change": -2,                  # Slightly minimized to keep the frequency track stable
+        "formant_shift": 0.96,               # Safe throat scaling to prevent gravelly resonance
+        "index_rate": 0.25,                  # Keeps transitions smooth and liquid
+        "filter_radius": 4,
+        "protect": 0.50,                     # CRITICAL FIX: Stops the model from distorting breath pauses
+        "rms_mix_rate": 0.40,
         "bg_music_prompt": "slow atmospheric cinematic storytelling ambient pad, 0 BPM, warm strings, extremely low volume background score"
     },
     "STORY_FEMALE_KIND": {
@@ -31,8 +32,9 @@ KIDS_STUDIO_MASTER_REGISTRY = {
         "base_tts_voice": "hi-IN-SwaraNeural",
         "pitch_change": 0,                   # Hard-locked to zero to eliminate chipmunk leakage
         "formant_shift": 0.98,               # Gently rounds off treble to remove sharp frequencies
-        "index_rate": 0.35,                  # Warm, natural motherly cadence
+        "index_rate": 0.25,                  # Keeps transitions smooth and liquid
         "filter_radius": 3,
+        "protect": 0.50,                     # CRITICAL FIX: Stops the model from distorting breath pauses
         "rms_mix_rate": 0.40,
         "bg_music_prompt": "gentle classical acoustic guitar strumming, very soft bansuri flute accents, 80 BPM, soothing child learning background"
     },
@@ -41,8 +43,9 @@ KIDS_STUDIO_MASTER_REGISTRY = {
         "base_tts_voice": "en-US-AnaNeural",
         "pitch_change": 0,
         "formant_shift": 1.00,
-        "index_rate": 0.35,
+        "index_rate": 0.25,                  # Keeps transitions smooth and liquid
         "filter_radius": 3,
+        "protect": 0.50,                     # CRITICAL FIX: Stops the model from distorting breath pauses
         "rms_mix_rate": 0.30,
         "bg_music_prompt": "upbeat educational classroom synth, 90 BPM, bright bells and glockenspiel"
     }
@@ -74,15 +77,20 @@ def cleanse_text_for_vocal_engine(raw_text: str, active_mode: str) -> str:
 # ==========================================
 def apply_vocal_equalization(audio_samples: np.ndarray, sr: int, active_mode: str) -> np.ndarray:
     """
-    Applies real-time DSP filters based on target profiles to inject bass warmth 
-    to storytellers or maintain clean sharpness for cartoon characters.
+    Cleans out sub-bass mud causing the raspy cough distortion, maintains warm 
+    mid-bass chest resonance, and tames piercing high-end sharpness.
     Uses custom biquad lowshelf and highshelf structures to prevent scipy crashes.
     """
-    if active_mode in ["STORY_MALE_PREMIUM", "STORY_FEMALE_KIND"]:
-        print(f"🎛️ DSP Master: Applying lowshelf warmth and smoothing sibilance for [{active_mode}].")
+    if active_mode in ["STORY_MALE_PREMIUM", "STORY_FEMALE_KIND", "EN_KIDS_ANA"]:
+        print(f"🎛️ DSP Master: Running throat-clearing filter and stabilizing phase layers for [{active_mode}].")
         import math
         
-        # Biquad Low-Shelf Boost (+3.5 dB at 200 Hz)
+        # 1. HIGH-PASS FILTER: Cut out everything below 75Hz to stop sub-bass rumble distortion
+        b_hpf, a_hpf = signal.butter(N=2, Wn=75.0 / (sr / 2.0), btype='highpass')
+        clean_base = signal.lfilter(b_hpf, a_hpf, audio_samples)
+        
+        # 2. LOW-SHELF BOOST: Add warm chest resonance strictly around 150Hz-200Hz
+        # Biquad Low-Shelf Boost (+3.5 dB at 180 Hz)
         def design_biquad_lowshelf(f0, sr, db_gain):
             A = math.pow(10.0, db_gain / 40.0)
             omega = 2.0 * math.pi * f0 / sr
@@ -97,7 +105,8 @@ def apply_vocal_equalization(audio_samples: np.ndarray, sr: int, active_mode: st
             a2 = (A + 1) + (A - 1) * cos_w - two_sqrt_A_alpha
             return [b0/a0, b1/a0, b2/a0], [1.0, a1/a0, a2/a0]
 
-        # Biquad High-Shelf Cut (-4.0 dB at 4500 Hz)
+        # 3. HIGH-SHELF CUT: Smooth out sharp, biting sibilance frequencies above 4.8kHz
+        # Biquad High-Shelf Cut (-4.0 dB at 4800 Hz)
         def design_biquad_highshelf(f0, sr, db_gain):
             A = math.pow(10.0, db_gain / 40.0)
             omega = 2.0 * math.pi * f0 / sr
@@ -112,10 +121,10 @@ def apply_vocal_equalization(audio_samples: np.ndarray, sr: int, active_mode: st
             a2 = (A + 1) - (A - 1) * cos_w - two_sqrt_A_alpha
             return [b0/a0, b1/a0, b2/a0], [1.0, a1/a0, a2/a0]
 
-        b_bass, a_bass = design_biquad_lowshelf(200.0, sr, 3.5)
-        warmed_audio = signal.lfilter(b_bass, a_bass, audio_samples)
+        b_bass, a_bass = design_biquad_lowshelf(180.0, sr, 3.5)
+        warmed_audio = signal.lfilter(b_bass, a_bass, clean_base)
         
-        b_treble, a_treble = design_biquad_highshelf(4500.0, sr, -4.0)
+        b_treble, a_treble = design_biquad_highshelf(4800.0, sr, -4.0)
         return signal.lfilter(b_treble, a_treble, warmed_audio)
         
     print(f"⚡ DSP Master: Bypassing equalizer filters for [{active_mode}] to maintain high-frequency clarity.")

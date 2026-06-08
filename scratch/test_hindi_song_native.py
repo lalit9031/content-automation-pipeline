@@ -24,7 +24,7 @@ def main():
         singer_gender="Female",
         selected_ref="None (Text-only)",
         hf_token=settings.hf_token,
-        singer_key="hi_kids_ananya",
+        singer_key="STORY_FEMALE_KIND",
         mode="Storytelling"
     )
     
