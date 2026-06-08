@@ -69,7 +69,7 @@ def configure_absolute_storyteller_vocal_chain(mode: str):
     Forcibly overrides and isolates the vocal pitch architecture.
     Completely blocks high-pitched cartoon leakage from entering storytelling audio.
     """
-    if mode == "Storytelling":
+    if mode in ["Storytelling", "Poem/Rhyme"]:
         print("🛑 Target Check: Locking down warm Narrator settings. Purging chipmunk registers.")
         return {
             "base_tts_voice": "hi-IN-MadhurNeural", # Switches to a warm, deep base voice foundation
@@ -78,7 +78,7 @@ def configure_absolute_storyteller_vocal_chain(mode: str):
             "rms_mix_rate": 0.45
         }
     else:
-        # Cartoon/Mouse Rhyme Mode only
+        # Default fallback
         return {
             "base_tts_voice": "hi-IN-SwaraNeural",
             "pitch_change": 10, 

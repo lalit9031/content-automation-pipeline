@@ -1463,6 +1463,9 @@ def compile_glued_studio_master(vocal_stereo_stem: AudioSegment, beat_stem: Audi
     if mode == "Storytelling":
         calibrated_beat = beat_stem - 12.0   # Extremely soft background ambient cushion
         calibrated_vocals = vocal_stereo_stem + 4.5 # Prominent upfront narration vocals
+    elif mode == "Poem/Rhyme":
+        calibrated_beat = beat_stem - 9.0    # Balanced nursery rhythm backing track
+        calibrated_vocals = vocal_stereo_stem + 4.0 # Boosted upfront nursery vocals
     else:
         # Tighten the separation from 10dB down to an integrated 5.5dB studio gap
         calibrated_beat = beat_stem - 4.5
@@ -2092,7 +2095,7 @@ def generate_hindi_song_via_native_audio(
     # Master the singing vocals using formant-protected resonance and pop mastering EQ
     vocals_clean = process_studio_vocal_resonance(singing_vocals_file, genre_preset=genre, voice_gender=singer_gender)
     
-    if mode == "Storytelling":
+    if mode in ["Storytelling", "Poem/Rhyme"]:
         # Apply the low-shelf warmth boost and high-cut smoothing filter to add chest resonance
         sample_rate = vocals_clean.frame_rate
         samples = np.array(vocals_clean.get_array_of_samples(), dtype=np.float32)
