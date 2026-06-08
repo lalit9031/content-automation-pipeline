@@ -2179,8 +2179,13 @@ def generate_hindi_song_via_native_audio(
         formant_shift=rvc_formant_shift
     )
     
-    # Master the singing vocals using formant-protected resonance and pop mastering EQ
-    vocals_clean = process_studio_vocal_resonance(singing_vocals_file, genre_preset=genre, voice_gender=singer_gender)
+    # Master the singing vocals: bypass pop vocal resonance/notch filters for Kids Studio
+    # to preserve raw body and presence, otherwise use standard pop vocal resonance.
+    if is_kids_mode:
+        print("🎛️ DSP Master: Bypassing pop vocal resonance/notch filters for Kids Studio to preserve raw body and presence.")
+        vocals_clean = AudioSegment.from_file(str(singing_vocals_file))
+    else:
+        vocals_clean = process_studio_vocal_resonance(singing_vocals_file, genre_preset=genre, voice_gender=singer_gender)
     
     if singer_key in KIDS_STUDIO_MASTER_REGISTRY:
         from content_pipeline.bots.kids_studio_manifest_core import apply_vocal_equalization
@@ -2197,6 +2202,7 @@ def generate_hindi_song_via_native_audio(
         eq_samples = eq_samples.clip(-32768, 32767).astype(np.int16)
         vocals_clean = vocals_clean._spawn(eq_samples.tobytes())
         
+    if is_kids_mode:
         # Apply extra tight dynamic range compression to bring vocals upfront and closer to the mic
         from pydub.effects import compress_dynamic_range
         vocals_clean = compress_dynamic_range(
@@ -2207,7 +2213,7 @@ def generate_hindi_song_via_native_audio(
             ratio=4.0
         )
 
-    if mode in ["Storytelling", "Poem/Rhyme"]:
+    if is_kids_mode:
         # Keep storytelling and nursery vocals dry and centered to avoid a 'big empty room' echo sound
         vocals = vocals_clean
     else:
@@ -2349,7 +2355,10 @@ def generate_hindi_song_via_native_audio(
     beat = beat[:int((vocals.duration_seconds + 3) * 1000)]
 
     # Use compile_glued_studio_master to blend, limit, and export the song
-    compile_glued_studio_master(vocals, beat, str(output_path), mode=mode)
+    passed_mode = mode
+    if is_kids_mode and mode not in ["Storytelling", "Poem/Rhyme"]:
+        passed_mode = "Poem/Rhyme"
+    compile_glued_studio_master(vocals, beat, str(output_path), mode=passed_mode)
 
     # Clean up temp raw vocals and melody guide
     try:
