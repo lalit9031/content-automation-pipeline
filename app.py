@@ -2592,6 +2592,15 @@ def render_frontdoor(settings: Settings) -> None:
             )
             active_singer = kids_singer_opts[selected_display]
             st.session_state["kids_studio_playback_singer_key"] = active_singer
+            
+            # Resolve gender dynamically from the selected voice profile manifest
+            from content_pipeline.bots.singer_manifest import SINGER_MANIFEST, SINGER_ALIASES
+            resolved_key = SINGER_ALIASES.get(active_singer, active_singer)
+            resolved_gender = "Female"
+            if resolved_key in SINGER_MANIFEST:
+                resolved_gender = SINGER_MANIFEST[resolved_key]["gender"].capitalize()
+            
+            st.session_state["kids_song_singer_gender"] = resolved_gender
 
         # Define and manage all backend run settings here silently since right column is hidden
         selected_ref = st.session_state.setdefault("kids_song_ref_audio_choice", "None (Text-only)")
@@ -2616,9 +2625,8 @@ def render_frontdoor(settings: Settings) -> None:
             prompt_placeholder = "e.g., a story about a wise turtle" if kids_mode == "Storytelling" else "e.g., create an emotional song"
             one_click_prompt = st.text_input(prompt_label, placeholder=prompt_placeholder, key="one_click_song_idea")
             
-            # Since all kids models route to female adult singers with pitch shift, gender is Female
-            st.session_state["kids_song_singer_gender"] = "Female"
-            one_click_gender = "Female"
+            # Resolve gender dynamically based on current selected profile
+            one_click_gender = st.session_state.get("kids_song_singer_gender", "Female")
             
             if st.session_state.get("gemini_api_error"):
                 st.error("⚠️ **Gemini API Call Failed (Offline Fallback Active)**\n\n"
