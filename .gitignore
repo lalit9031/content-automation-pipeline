@@ -10,3 +10,11 @@ credentials/
 .secrets/
 scripts/client_secret_*.json
 .DS_Store
+
+# Temporary scratch space and testing
+scratch/
+test_*.png
+
+# Large media assets not supported on basic Git pushes (e.g. Hugging Face)
+assets/brand/talking_avatar.gif
+assets/brand/tech_with_lalit_logo.png
