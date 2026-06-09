@@ -761,6 +761,219 @@ def render_preview_panel(overview: dict[str, object], day_root: Path) -> None:
             )
 
 
+def generate_manifest_from_scratch(topic: str, video_id: str, settings) -> dict:
+    """Uses Gemini to generate a brand new 4-scene manifest from a story topic."""
+    # Find all API keys
+    keys = list(settings.gemini_api_keys) if hasattr(settings, "gemini_api_keys") else []
+    if not keys and settings.gemini_api_key:
+        keys = [settings.gemini_api_key]
+    if os.environ.get("GEMINI_API_KEY") and os.environ.get("GEMINI_API_KEY") not in keys:
+        keys.insert(0, os.environ.get("GEMINI_API_KEY"))
+    
+    custom_ui_key = st.session_state.get("custom_gemini_api_key", "").strip()
+    if custom_ui_key:
+        if custom_ui_key in keys:
+            keys.remove(custom_ui_key)
+        keys.insert(0, custom_ui_key)
+        
+    keys = [k for k in keys if k]
+    if not keys:
+        raise ValueError("No Gemini API keys found in Settings or Environment.")
+        
+    prompt = f"""
+    Create a highly engaging 4-scene kids animation script/manifest based on the topic: "{topic}".
+    The output must strictly conform to the following schema structure:
+    {{
+      "video_id": "{video_id}",
+      "canvas_dimensions": [1280, 720],
+      "fps": 24,
+      "global_bgm": "assets/character/bg_music.mp3",
+      "voice_presets": {{
+          "Narrator": "Rasalgethi",
+          "Character1_Name": "Charon",
+          "Character2_Name": "Puck"
+      }},
+      "timeline_scenes": [
+        {{
+          "scene_sequence": 1,
+          "background_asset": "assets/environments/thirsty_crow_garden.png",
+          "camera_effect": "zoom_in",
+          "dialogue": [
+            {{ "speaker": "Narrator", "text": "एक कौआ बहुत प्यासा था..." }}
+          ],
+          "scene_characters": [
+            {{
+              "folder_name": "thirsty_crow",
+              "scale_factor": 250,
+              "motion_path": {{
+                "enabled": false,
+                "start_position": [500, 300],
+                "start_scale": 1.0
+              }},
+              "states": [
+                {{ "time_range": [0.0, 100.0], "animation_state": "idle" }}
+              ]
+            }}
+          ]
+        }}
+      ]
+    }}
+    
+    Rules:
+    1. Structure must have exactly 4 scenes.
+    2. Write the dialogues/text in Hindi (since this is a kids Hindi animation studio) using Devanagari script.
+    3. Specify characters and coordinate placements that match the scene action.
+    4. For "background_asset", specify a descriptive path under "assets/environments/" like "assets/environments/[topic_slug]_bg.png".
+    5. For characters, specify folder names under "assets/sprites/" like "thirsty_crow".
+    6. Return ONLY the valid JSON block conforming exactly to this structure. No markdown formatting.
+    """
+    
+    for key in keys:
+        try:
+            from google import genai
+            from google.genai import types
+            client = genai.Client(api_key=key)
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json"
+                )
+            )
+            data = json.loads(response.text)
+            if "timeline_scenes" in data:
+                return data
+        except Exception as e:
+            pass
+            
+    raise RuntimeError("Gemini failed to generate manifest from topic.")
+
+
+def apply_manifest_suggestions(manifest_data: dict, user_suggestion: str, settings) -> dict:
+    """Uses Gemini to rewrite the scene manifest JSON based on user suggestions."""
+    # Find all API keys
+    keys = list(settings.gemini_api_keys) if hasattr(settings, "gemini_api_keys") else []
+    if not keys and settings.gemini_api_key:
+        keys = [settings.gemini_api_key]
+    if os.environ.get("GEMINI_API_KEY") and os.environ.get("GEMINI_API_KEY") not in keys:
+        keys.insert(0, os.environ.get("GEMINI_API_KEY"))
+    
+    custom_ui_key = st.session_state.get("custom_gemini_api_key", "").strip()
+    if custom_ui_key:
+        if custom_ui_key in keys:
+            keys.remove(custom_ui_key)
+        keys.insert(0, custom_ui_key)
+        
+    keys = [k for k in keys if k]
+    if not keys:
+        raise ValueError("No Gemini API keys found in Settings or Environment.")
+        
+    prompt = f"""
+    You are an expert AI video director. Your job is to modify the following 2D Animation Scene Manifest based on the user's suggestion.
+    
+    User's suggestion: "{user_suggestion}"
+    
+    Current Scene Manifest JSON:
+    {json.dumps(manifest_data, indent=2, ensure_ascii=False)}
+    
+    Rules for output:
+    1. Maintain the exact JSON schema.
+    2. Update dialogues, visual backgrounds, speaker names, voice assignments, and character specifications (like scales, coordinates, folder names) to align with the user's suggestion.
+    3. If the user wants a new background (e.g. snowy mountains), change the "background_asset" value to a matching PNG name under "assets/environments/" (e.g., "assets/environments/snowy_mountains.png").
+    4. If the user wants new characters (e.g. a cute rabbit), update the "folder_name" of that character inside "scene_characters" (e.g., "cute_rabbit") and ensure they are added to the dialogue and character lists.
+    5. Return ONLY a valid JSON block conforming exactly to the manifest schema. Do not enclose it in markdown blocks or anything.
+    """
+    
+    for key in keys:
+        try:
+            from google import genai
+            from google.genai import types
+            client = genai.Client(api_key=key)
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json"
+                )
+            )
+            data = json.loads(response.text)
+            if "timeline_scenes" in data:
+                return data
+        except Exception as e:
+            pass
+            
+    raise RuntimeError("Gemini failed to process manifest update suggestions.")
+
+
+def generate_missing_assets(manifest_data: dict, orchestrator_path: Path, settings) -> list[str]:
+    """Generates any missing background or character images referenced in the manifest."""
+    import shutil
+    generated_assets = []
+    
+    # 1. Backgrounds
+    for scene in manifest_data.get("timeline_scenes", []):
+        bg_asset = scene.get("background_asset", "")
+        if bg_asset:
+            bg_full_path = orchestrator_path / bg_asset
+            if not bg_full_path.exists():
+                bg_full_path.parent.mkdir(parents=True, exist_ok=True)
+                bg_name = bg_full_path.stem.replace("_", " ")
+                prompt = f"A gorgeous, vibrant, colorful {bg_name} background illustration, high-end 3D Pixar claymation animation style, clean detail, no text, widescreen 16:9, depth of field."
+                
+                try:
+                    from content_pipeline.bots.image import ImageVariant, image_provider
+                    provider = image_provider(replace(settings, image_provider=st.session_state.get("image_provider_choice", "flux")))
+                    variant = ImageVariant("16:9", 1280, 720, "bg_asset")
+                    img_bytes = provider.create(prompt, variant)
+                    bg_full_path.write_bytes(img_bytes)
+                    generated_assets.append(f"Background: {bg_asset}")
+                except Exception as e:
+                    st.warning(f"Failed to generate background '{bg_asset}': {e}")
+                    
+    # 2. Characters
+    for scene in manifest_data.get("timeline_scenes", []):
+        for char in scene.get("scene_characters", []):
+            folder_name = char.get("folder_name", "")
+            if folder_name:
+                char_dir = orchestrator_path / "assets" / "sprites" / folder_name
+                body_path = char_dir / "body.png"
+                if not body_path.exists():
+                    char_dir.mkdir(parents=True, exist_ok=True)
+                    char_name = folder_name.replace("_", " ")
+                    prompt = f"A cute, funny standalone {char_name} character, full body view, centered, solid flat green background for chroma keying, high-end 3D Pixar claymation animation style, vibrant colors, clear outlines."
+                    
+                    try:
+                        from content_pipeline.bots.image import ImageVariant, image_provider
+                        provider = image_provider(replace(settings, image_provider=st.session_state.get("image_provider_choice", "flux")))
+                        variant = ImageVariant("1:1", 1024, 1024, "char_asset")
+                        img_bytes = provider.create(prompt, variant)
+                        body_path.write_bytes(img_bytes)
+                        
+                        # Copy talk shapes from kalu_crow template
+                        talk_dir = char_dir / "talk"
+                        talk_dir.mkdir(exist_ok=True)
+                        template_talk = orchestrator_path / "assets" / "sprites" / "kalu_crow" / "talk"
+                        if template_talk.exists():
+                            for f in template_talk.iterdir():
+                                if f.is_file():
+                                    shutil.copy(f, talk_dir / f.name)
+                                    
+                        # Copy and update metadata.json
+                        template_meta = orchestrator_path / "assets" / "sprites" / "kalu_crow" / "metadata.json"
+                        if template_meta.exists():
+                            with open(template_meta, "r") as f:
+                                meta_data = json.load(f)
+                            meta_data["character_key"] = folder_name.upper()
+                            with open(char_dir / "metadata.json", "w") as f:
+                                json.dump(meta_data, f, indent=2)
+                                
+                        generated_assets.append(f"Character: {folder_name}")
+                    except Exception as e:
+                        st.warning(f"Failed to generate character body for '{folder_name}': {e}")
+                        
+    return generated_assets
+
+
 def render_frontdoor(settings: Settings) -> None:
     global json
     latest_day = latest_daily_day(settings.output_dir)
@@ -2475,48 +2688,100 @@ def render_frontdoor(settings: Settings) -> None:
         else:
             available_projects = sorted([p.name for p in projects_dir.iterdir() if p.is_dir()])
             
-            # Select project workspace
-            selected_project = st.selectbox("Select Project Workspace", options=available_projects, index=0 if "ghamandi_mor" not in available_projects else available_projects.index("ghamandi_mor"))
+            # Forced Creation Logic Execution
+            forced_create = st.session_state.pop("trigger_create_project_forced", None)
+            if forced_create:
+                clean_name = forced_create
+                new_proj_dir = projects_dir / clean_name
+                new_proj_dir.mkdir(parents=True, exist_ok=True)
+                (new_proj_dir / "output").mkdir(exist_ok=True)
+                (new_proj_dir / "vocals").mkdir(exist_ok=True)
+                
+                topic = st.session_state.get("new_proj_topic_input", "").strip()
+                manifest_created = False
+                
+                if topic:
+                    with st.spinner(f"Generating brand new story for '{topic}'..."):
+                        try:
+                            new_manifest = generate_manifest_from_scratch(topic, clean_name, settings)
+                            with open(new_proj_dir / "scene_manifest.json", "w", encoding="utf-8") as f:
+                                json.dump(new_manifest, f, indent=2, ensure_ascii=False)
+                            manifest_created = True
+                            
+                            # Generate any missing assets immediately
+                            with st.spinner("Generating background & character illustration assets..."):
+                                generated = generate_missing_assets(new_manifest, orchestrator_path, settings)
+                                if generated:
+                                    st.success(f"Generated assets: {', '.join(generated)}")
+                        except Exception as e:
+                            st.error(f"Failed to generate story via Gemini: {e}. Falling back to default template.")
+                
+                if not manifest_created:
+                    # Fallback to copy ghamandi_mor as a baseline template structure
+                    template_manifest = projects_dir / "ghamandi_mor" / "scene_manifest.json"
+                    if template_manifest.exists():
+                        import shutil
+                        shutil.copy(template_manifest, new_proj_dir / "scene_manifest.json")
+                        with open(new_proj_dir / "scene_manifest.json", "r", encoding="utf-8") as f:
+                            new_manifest = json.load(f)
+                        new_manifest["video_id"] = clean_name
+                        with open(new_proj_dir / "scene_manifest.json", "w", encoding="utf-8") as f:
+                            json.dump(new_manifest, f, indent=2, ensure_ascii=False)
+                    else:
+                        st.error("Baseline template 'ghamandi_mor' not found to initialize manifest.")
+                
+                st.success(f"Workspace '{clean_name}' initialized successfully!")
+                st.session_state["selected_project_override"] = clean_name
+                st.rerun()
+
+            # Select project workspace override index resolution
+            default_index = 0
+            override_proj = st.session_state.pop("selected_project_override", None)
+            if override_proj and override_proj in available_projects:
+                default_index = available_projects.index(override_proj)
+            elif "ghamandi_mor" in available_projects:
+                default_index = available_projects.index("ghamandi_mor")
+                
+            selected_project = st.selectbox("Select Project Workspace", options=available_projects, index=default_index)
             
             # Create Project Expander
             with st.expander("➕ Create New Project Workspace", expanded=False):
                 new_project_name = st.text_input("New Project Name (alphanumeric/underscores)", key="new_proj_name_input")
-                if st.button("Create Project", type="secondary", use_container_width=True):
-                    import re
-                    import shutil
-                    clean_name = re.sub(r'[^a-zA-Z0-9_]', '', new_project_name.strip())
-                    if not clean_name:
-                        st.error("Invalid project name. Use alphanumeric characters and underscores.")
-                    else:
-                        new_proj_dir = projects_dir / clean_name
-                        if new_proj_dir.exists():
-                            st.error(f"Project '{clean_name}' already exists.")
+                new_project_topic = st.text_area("Story Topic / Idea (e.g. 'A thirsty crow finding water in a pitcher', leave blank for template)", key="new_proj_topic_input", height=70)
+                
+                # Check for confirmation state
+                confirm_proj = st.session_state.get("project_creation_confirm")
+                if confirm_proj:
+                    st.warning(f"⚠️ A workspace named '{confirm_proj}' already exists. Do you want to load the existing workspace or overwrite and create a completely fresh one?")
+                    confirm_cols = st.columns(2)
+                    with confirm_cols[0]:
+                        if st.button("📂 Load Existing Workspace", key="confirm_btn_load"):
+                            st.session_state["project_creation_confirm"] = None
+                            st.session_state["selected_project_override"] = confirm_proj
+                            st.rerun()
+                    with confirm_cols[1]:
+                        if st.button("🔥 Overwrite & Create Fresh", key="confirm_btn_overwrite"):
+                            import shutil
+                            shutil.rmtree(projects_dir / confirm_proj, ignore_errors=True)
+                            st.session_state["project_creation_confirm"] = None
+                            st.session_state["trigger_create_project_forced"] = confirm_proj
+                            st.rerun()
+                
+                # Main Creation Button
+                if not confirm_proj:
+                    if st.button("Create Project", type="secondary", key="btn_create_proj_main", use_container_width=True):
+                        import re
+                        clean_name = re.sub(r'[^a-zA-Z0-9_]', '', new_project_name.strip())
+                        if not clean_name:
+                            st.error("Invalid project name. Use alphanumeric characters and underscores.")
                         else:
-                            try:
-                                template_project = "ghamandi_mor"
-                                if template_project not in available_projects and available_projects:
-                                    template_project = available_projects[0]
-                                    
-                                template_manifest = projects_dir / template_project / "scene_manifest.json"
-                                if not template_manifest.exists():
-                                    st.error("No template project found to copy.")
-                                else:
-                                    new_proj_dir.mkdir(parents=True, exist_ok=True)
-                                    shutil.copy(template_manifest, new_proj_dir / "scene_manifest.json")
-                                    with open(new_proj_dir / "scene_manifest.json", "r", encoding="utf-8") as f:
-                                        new_manifest = json.load(f)
-                                    new_manifest["video_id"] = clean_name
-                                    
-                                    # Ensure vocals/output folders are initialized
-                                    (new_proj_dir / "output").mkdir(exist_ok=True)
-                                    (new_proj_dir / "vocals").mkdir(exist_ok=True)
-                                    
-                                    with open(new_proj_dir / "scene_manifest.json", "w", encoding="utf-8") as f:
-                                        json.dump(new_manifest, f, indent=2, ensure_ascii=False)
-                                    st.success(f"Project '{clean_name}' created successfully!")
-                                    st.rerun()
-                            except Exception as e:
-                                st.error(f"Error creating project: {e}")
+                            new_proj_dir = projects_dir / clean_name
+                            if new_proj_dir.exists():
+                                st.session_state["project_creation_confirm"] = clean_name
+                                st.rerun()
+                            else:
+                                st.session_state["trigger_create_project_forced"] = clean_name
+                                st.rerun()
 
             project_path = projects_dir / selected_project
             manifest_path = project_path / "scene_manifest.json"
@@ -2536,209 +2801,371 @@ def render_frontdoor(settings: Settings) -> None:
                     # Global config info
                     st.caption(f"Video ID: **{manifest_data.get('video_id')}** | Resolution: **{manifest_data.get('canvas_dimensions')}** | FPS: **{manifest_data.get('fps')}**")
                     
-                    # 1. Render Scene Background Previews
-                    scenes = manifest_data.get("timeline_scenes", [])
-                    st.markdown("### 🖼️ Scene Layout Previews")
-                    cols = st.columns(len(scenes))
-                    for s_idx, scene in enumerate(scenes):
-                        with cols[s_idx]:
-                            bg_path = orchestrator_path / scene.get("background_asset", "")
-                            st.markdown(f"**Scene {scene.get('scene_sequence')}**")
-                            if bg_path.exists():
-                                st.image(str(bg_path), use_container_width=True)
-                            st.caption(f"Camera: `{scene.get('camera_effect')}`")
-                            
-                    st.markdown("---")
+                    # Create step-by-step navigation tabs
+                    tab1, tab2, tab3 = st.tabs(["1. Setup & Storyboard", "2. Script & Voices", "3. Compile & Playback"])
                     
-                    # 2. Unified Script Editor (Pasting raw script text)
-                    st.markdown("### 📝 Unified Script Editor")
-                    st.caption("Edit the dialog lines for all scenes in one unified box. Format as 'Speaker: text' under '--- Scene X ---' headers.")
-                    
-                    # Generate formatted script text from manifest
-                    script_lines = []
-                    for scene in scenes:
-                        script_lines.append(f"--- Scene {scene.get('scene_sequence')} ---")
-                        for dial in scene.get("dialogue", []):
-                            script_lines.append(f"{dial.get('speaker')}: {dial.get('text')}")
-                        script_lines.append("")
-                    formatted_script = "\n".join(script_lines)
-                    
-                    # Text Area for editing
-                    edited_script = st.text_area(
-                        "Script Text",
-                        value=formatted_script,
-                        height=350,
-                        key=f"script_text_{selected_project}"
-                    )
-                    
-                    # Extract unique speakers from scene manifest
-                    unique_speakers = set()
-                    for scene in scenes:
-                        for dial in scene.get("dialogue", []):
-                            if dial.get("speaker"):
-                                unique_speakers.add(dial.get("speaker"))
+                    with tab1:
+                        # 1. Render Scene Background Previews
+                        scenes = manifest_data.get("timeline_scenes", [])
+                        st.markdown("### 🖼️ Scene Layout Previews")
+                        cols = st.columns(len(scenes))
+                        for s_idx, scene in enumerate(scenes):
+                            with cols[s_idx]:
+                                bg_path = orchestrator_path / scene.get("background_asset", "")
+                                st.markdown(f"**Scene {scene.get('scene_sequence')}**")
+                                if bg_path.exists():
+                                    st.image(str(bg_path), use_container_width=True)
+                                st.caption(f"Camera: `{scene.get('camera_effect')}`")
                                 
-                    # Voice presets config
-                    st.markdown("#### 🎙️ Speaker Voice Assignment")
-                    voice_presets = manifest_data.get("voice_presets", {
-                        "Narrator": "Rasalgethi",
-                        "Peacock": "Charon",
-                        "Kalu": "Puck"
-                    })
-                    
-                    new_voice_presets = {}
-                    voice_options = ["Rasalgethi", "Charon", "Puck", "Kore", "Fenrir", "Aoede"]
-                    
-                    # Layout voice selectors in columns
-                    if unique_speakers:
-                        v_cols = st.columns(len(unique_speakers))
-                        for v_idx, speaker in enumerate(sorted(list(unique_speakers))):
-                            current_voice = voice_presets.get(speaker)
-                            if current_voice not in voice_options:
-                                if speaker.lower() == "narrator":
-                                    current_voice = "Rasalgethi"
-                                elif speaker.lower() in ["peacock", "proud_peacock"]:
-                                    current_voice = "Charon"
-                                elif speaker.lower() in ["kalu", "crow", "kalu_crow"]:
-                                    current_voice = "Puck"
-                                else:
-                                    current_voice = "Rasalgethi"
+                        # Render character body images in a row
+                        unique_characters = {}
+                        for scene in scenes:
+                            for char in scene.get("scene_characters", []):
+                                fname = char.get("folder_name")
+                                if fname and fname not in unique_characters:
+                                    unique_characters[fname] = char
                                     
-                            with v_cols[v_idx]:
-                                selected_voice = st.selectbox(
-                                    f"Voice for {speaker}",
-                                    options=voice_options,
-                                    index=voice_options.index(current_voice),
-                                    key=f"voice_sel_{selected_project}_{speaker}"
-                                )
-                                new_voice_presets[speaker] = selected_voice
-                    else:
-                        st.info("No speakers detected in the script yet.")
-                    
-                    # Parsing function to map back to JSON
-                    def parse_script_text(script_text: str) -> dict[int, list[dict[str, str]]]:
-                        scenes_dialogue = {}
-                        current_scene = None
-                        lines = script_text.splitlines()
-                        for line in lines:
-                            line = line.strip()
-                            if not line:
-                                continue
-                            # Match scene headers like "--- Scene 1 ---"
-                            match = re.match(r"(?i)^---\s*Scene\s*(\d+)\s*---", line)
-                            if match:
-                                current_scene = int(match.group(1))
-                                scenes_dialogue[current_scene] = []
-                                continue
-                                
-                            if current_scene is not None:
-                                if ":" in line:
-                                    speaker, text = line.split(":", 1)
-                                    scenes_dialogue[current_scene].append({
-                                        "speaker": speaker.strip(),
-                                        "text": text.strip()
-                                    })
-                        return scenes_dialogue
-                    
-                    # Save changes button
-                    script_changed = (edited_script != formatted_script)
-                    voices_changed = (new_voice_presets != voice_presets)
-                    
-                    if script_changed or voices_changed:
-                        if st.button("💾 Save Script & Voice Changes", type="primary", use_container_width=True):
-                            parsed_scenes = parse_script_text(edited_script)
-                            
-                            # Map parsed dialogues back to manifest_data
-                            for scene in manifest_data.get("timeline_scenes", []):
-                                seq = scene.get("scene_sequence")
-                                if seq in parsed_scenes:
-                                    scene["dialogue"] = parsed_scenes[seq]
-                                    
-                            # Update voice presets
-                            manifest_data["voice_presets"] = new_voice_presets
-                            
-                            try:
-                                with open(manifest_path, "w", encoding="utf-8") as f:
-                                    json.dump(manifest_data, f, indent=2, ensure_ascii=False)
-                                st.toast("✅ Project configuration updated successfully!")
-                                st.rerun()
-                            except Exception as e:
-                                st.error(f"Failed to save manifest: {e}")
-                                
-                    st.markdown("---")
-                    st.markdown("### 🚀 Compile Animation Video")
-                    
-                    # Compile button
-                    if st.button("🎬 Compile Video Master", type="primary", use_container_width=True):
-                        st.info("Compiling video... This involves TTS audio generation, lip-sync mapping, frame rendering, and FFmpeg assembly.")
-                        
-                        import subprocess
-                        compiler_script = orchestrator_path / "src" / "video_pipeline" / "scene_compiler.py"
-                        
-                        cmd = [
-                            "/Users/lalitprasadsingh/.gemini/antigravity/scratch/content-automation-pipeline/.venv/bin/python",
-                            "-u",
-                            str(compiler_script),
-                            f"projects/{selected_project}/scene_manifest.json"
-                        ]
-                        
-                        # Set up real-time log tracking inside expander to keep UI clean
-                        with st.expander("🛠️ Live Compilation Terminal Logs", expanded=True):
-                            log_placeholder = st.empty()
-                            log_content = []
-                            
-                            try:
-                                # Set PYTHONPATH so it can import from KidsStudio-Orchestrator root
-                                env = os.environ.copy()
-                                env["PYTHONPATH"] = str(orchestrator_path)
-                                
-                                process = subprocess.Popen(
-                                    cmd,
-                                    stdout=subprocess.PIPE,
-                                    stderr=subprocess.STDOUT,
-                                    text=True,
-                                    bufsize=1,
-                                    cwd=str(orchestrator_path),
-                                    env=env
-                                )
-                                
-                                while True:
-                                    line = process.stdout.readline()
-                                    if not line and process.poll() is not None:
-                                        break
-                                    if line:
-                                        log_content.append(line)
-                                        log_placeholder.code("".join(log_content[-20:]), language="bash")
+                        if unique_characters:
+                            st.markdown("#### 👥 Character Sprites Used")
+                            c_cols = st.columns(len(unique_characters))
+                            for c_idx, fname in enumerate(sorted(unique_characters.keys())):
+                                with c_cols[c_idx]:
+                                    img_path = orchestrator_path / "assets" / "sprites" / fname / "body.png"
+                                    if not img_path.exists():
+                                        img_path = orchestrator_path / "assets" / "character" / f"{fname}_body.png"
+                                    if not img_path.exists():
+                                        img_path = orchestrator_path / "assets" / "character" / f"{fname}.png"
+                                    short_name = fname.replace("_crow", "").replace("proud_", "")
+                                    if not img_path.exists():
+                                        img_path = orchestrator_path / "assets" / "character" / f"{short_name}_body.png"
+                                    if not img_path.exists():
+                                        img_path = orchestrator_path / "assets" / "character" / f"{short_name}.png"
                                         
-                                rc = process.poll()
-                                if rc == 0:
-                                    st.success("🎉 Video compiled successfully!")
-                                    st.toast("Success!")
-                                    st.rerun()
-                                else:
-                                    st.error(f"❌ Compiler failed with exit code: {rc}")
-                            except Exception as e:
-                                st.error(f"Execution error: {e}")
-                            
-                    # Render final video preview
-                    output_video = project_path / "output" / "ghamandi_mor_final.mp4"
-                    if not output_video.exists():
-                        output_video = project_path / "output" / f"{selected_project}_final.mp4"
+                                    if img_path.exists():
+                                        st.image(str(img_path), caption=f"Sprite: {fname}", use_container_width=True)
+                                    else:
+                                        st.caption(f"Sprite: {fname} (No body image found)")
+                                
+                    with tab2:
+                        # 2. Unified Script Editor (Pasting raw script text)
+                        st.markdown("### 📝 Unified Script Editor")
+                        st.caption("Edit the dialog lines for all scenes in one unified box. Format as 'Speaker: text' under '--- Scene X ---' headers.")
                         
-                    if output_video.exists():
+                        # Generate formatted script text from manifest
+                        script_lines = []
+                        for scene in scenes:
+                            script_lines.append(f"--- Scene {scene.get('scene_sequence')} ---")
+                            for dial in scene.get("dialogue", []):
+                                script_lines.append(f"{dial.get('speaker')}: {dial.get('text')}")
+                            script_lines.append("")
+                        formatted_script = "\n".join(script_lines)
+                        
+                        # Text Area for editing
+                        edited_script = st.text_area(
+                            "Script Text",
+                            value=formatted_script,
+                            height=350,
+                            key=f"script_text_{selected_project}"
+                        )
+                        
+                        # Extract unique speakers from scene manifest
+                        unique_speakers = set()
+                        for scene in scenes:
+                            for dial in scene.get("dialogue", []):
+                                if dial.get("speaker"):
+                                    unique_speakers.add(dial.get("speaker"))
+                                    
+                        # Voice presets config
+                        st.markdown("#### 🎙️ Speaker Voice Assignment")
+                        voice_presets = manifest_data.get("voice_presets", {
+                            "Narrator": "Rasalgethi",
+                            "Peacock": "Charon",
+                            "Kalu": "Puck"
+                        })
+                        
+                        new_voice_presets = {}
+                        voice_options = ["Rasalgethi", "Charon", "Puck", "Kore", "Fenrir", "Aoede"]
+                        
+                        # Layout voice selectors in columns
+                        if unique_speakers:
+                            v_cols = st.columns(len(unique_speakers))
+                            for v_idx, speaker in enumerate(sorted(list(unique_speakers))):
+                                current_voice = voice_presets.get(speaker)
+                                if current_voice not in voice_options:
+                                    if speaker.lower() == "narrator":
+                                        current_voice = "Rasalgethi"
+                                    elif speaker.lower() in ["peacock", "proud_peacock"]:
+                                        current_voice = "Charon"
+                                    elif speaker.lower() in ["kalu", "crow", "kalu_crow"]:
+                                        current_voice = "Puck"
+                                    else:
+                                        current_voice = "Rasalgethi"
+                                        
+                                with v_cols[v_idx]:
+                                    selected_voice = st.selectbox(
+                                        f"Voice for {speaker}",
+                                        options=voice_options,
+                                        index=voice_options.index(current_voice),
+                                        key=f"voice_sel_{selected_project}_{speaker}"
+                                    )
+                                    new_voice_presets[speaker] = selected_voice
+                        else:
+                            st.info("No speakers detected in the script yet.")
+                        
+                        # Parsing function to map back to JSON
+                        def parse_script_text(script_text: str) -> dict[int, list[dict[str, str]]]:
+                            scenes_dialogue = {}
+                            current_scene = None
+                            lines = script_text.splitlines()
+                            for line in lines:
+                                line = line.strip()
+                                if not line:
+                                    continue
+                                # Match scene headers like "--- Scene 1 ---"
+                                match = re.match(r"(?i)^---\s*Scene\s*(\d+)\s*---", line)
+                                if match:
+                                    current_scene = int(match.group(1))
+                                    scenes_dialogue[current_scene] = []
+                                    continue
+                                    
+                                if current_scene is not None:
+                                    if ":" in line:
+                                        speaker, text = line.split(":", 1)
+                                        scenes_dialogue[current_scene].append({
+                                            "speaker": speaker.strip(),
+                                            "text": text.strip()
+                                        })
+                            return scenes_dialogue
+                        
+                        # Save changes button
+                        script_changed = (edited_script != formatted_script)
+                        voices_changed = (new_voice_presets != voice_presets)
+                        
+                        if script_changed or voices_changed:
+                            if st.button("💾 Save Script & Voice Changes", type="primary", use_container_width=True):
+                                parsed_scenes = parse_script_text(edited_script)
+                                
+                                # Map parsed dialogues back to manifest_data
+                                for scene in manifest_data.get("timeline_scenes", []):
+                                    seq = scene.get("scene_sequence")
+                                    if seq in parsed_scenes:
+                                        scene["dialogue"] = parsed_scenes[seq]
+                                        
+                                # Update voice presets
+                                manifest_data["voice_presets"] = new_voice_presets
+                                
+                                try:
+                                    with open(manifest_path, "w", encoding="utf-8") as f:
+                                        json.dump(manifest_data, f, indent=2, ensure_ascii=False)
+                                    st.toast("✅ Project configuration updated successfully!")
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Failed to save manifest: {e}")
+                                    
                         st.markdown("---")
-                        st.markdown("### 📺 Compiled Video Preview")
-                        st.video(str(output_video))
-                        with open(output_video, "rb") as video_file:
-                            st.download_button(
-                                label="📥 Download Compiled Video",
-                                data=video_file,
-                                file_name=f"{selected_project}_final.mp4",
-                                mime="video/mp4",
-                                use_container_width=True,
-                                key=f"download_btn_{selected_project}"
-                            )
-                        st.caption(f"Location: `{output_video}` (Size: {output_video.stat().st_size / (1024*1024):.2f} MB)")
+                        st.markdown("### ✨ Dynamic Story Editing & AI Suggestions")
+                        st.caption("Tell AI what modifications you want in this story. Gemini will rewrite dialogues, characters, placements, and generate new illustrations as needed.")
+                        
+                        user_suggestion = st.text_area(
+                            "What changes do you want in this video?",
+                            placeholder="e.g. 'Change the setting to a sunset snowy forest, and make Peacock speak English.', 'Change Kalu crow to a beautiful parrot named Mithu.'",
+                            key=f"suggestion_{selected_project}",
+                            height=100
+                        )
+                        
+                        if st.button("🤖 Apply Story Suggestions & Regenerate", type="primary", use_container_width=True, key=f"btn_apply_sugg_{selected_project}"):
+                            if not user_suggestion.strip():
+                                st.warning("Please enter a suggestion first.")
+                            else:
+                                with st.spinner("Analyzing suggestions and updating scene manifest..."):
+                                    try:
+                                        updated_manifest = apply_manifest_suggestions(manifest_data, user_suggestion, settings)
+                                        with open(manifest_path, "w", encoding="utf-8") as f:
+                                            json.dump(updated_manifest, f, indent=2, ensure_ascii=False)
+                                        st.success("Manifest updated successfully!")
+                                        
+                                        # Generate any new background or character assets
+                                        with st.spinner("Generating any new backgrounds or character sprites..."):
+                                            generated = generate_missing_assets(updated_manifest, orchestrator_path, settings)
+                                            if generated:
+                                                st.info(f"Generated new assets: {', '.join(generated)}")
+                                                
+                                        st.rerun()
+                                    except Exception as err:
+                                        st.error(f"Error applying suggestions: {err}")
+                                    
+                    with tab3:
+                        st.markdown("### 🚀 Compile Animation Video")
+                        
+                        # Compile button
+                        if st.button("🎬 Compile Video Master", type="primary", use_container_width=True):
+                            st.info("Compiling video... This involves TTS audio generation, lip-sync mapping, frame rendering, and FFmpeg assembly.")
+                            
+                            import subprocess
+                            compiler_script = orchestrator_path / "src" / "video_pipeline" / "scene_compiler.py"
+                            
+                            cmd = [
+                                "/Users/lalitprasadsingh/.gemini/antigravity/scratch/content-automation-pipeline/.venv/bin/python",
+                                "-u",
+                                str(compiler_script),
+                                f"projects/{selected_project}/scene_manifest.json"
+                            ]
+                            
+                            # Set up real-time log tracking inside expander to keep UI clean
+                            with st.expander("🛠️ Live Compilation Terminal Logs", expanded=True):
+                                log_placeholder = st.empty()
+                                log_content = []
+                                
+                                try:
+                                    # Set PYTHONPATH so it can import from KidsStudio-Orchestrator root
+                                    env = os.environ.copy()
+                                    env["PYTHONPATH"] = str(orchestrator_path)
+                                    
+                                    process = subprocess.Popen(
+                                        cmd,
+                                        stdout=subprocess.PIPE,
+                                        stderr=subprocess.STDOUT,
+                                        text=True,
+                                        bufsize=1,
+                                        cwd=str(orchestrator_path),
+                                        env=env
+                                    )
+                                    
+                                    while True:
+                                        line = process.stdout.readline()
+                                        if not line and process.poll() is not None:
+                                            break
+                                        if line:
+                                            log_content.append(line)
+                                            log_placeholder.code("".join(log_content[-20:]), language="bash")
+                                            
+                                    rc = process.poll()
+                                    if rc == 0:
+                                        st.success("🎉 Video compiled successfully!")
+                                        st.toast("Success!")
+                                        
+                                        # Copy compiled video to orchestrator's central output folder
+                                        try:
+                                            import shutil
+                                            target_video = project_path / "output" / "ghamandi_mor_final.mp4"
+                                            if not target_video.exists():
+                                                target_video = project_path / "output" / f"{selected_project}_final.mp4"
+                                            
+                                            if target_video.exists():
+                                                central_output_dir = orchestrator_path / "output"
+                                                central_output_dir.mkdir(exist_ok=True)
+                                                
+                                                # Copy with project-specific name
+                                                shutil.copy(target_video, central_output_dir / f"{selected_project}_final.mp4")
+                                                # If ghamandi_mor, also copy as ghamandi_mor_final.mp4
+                                                if selected_project == "ghamandi_mor":
+                                                    shutil.copy(target_video, central_output_dir / "ghamandi_mor_final.mp4")
+                                                    
+                                                st.info(f"💾 Copied compiled video to orchestrator output: `/Users/lalitprasadsingh/.gemini/antigravity/scratch/KidsStudio-Orchestrator/output/{selected_project}_final.mp4`")
+                                        except Exception as copy_err:
+                                            st.warning(f"⚠️ Failed to copy compiled video to central output: {copy_err}")
+                                        
+                                        # Google Drive Upload
+                                        st.info("📤 Uploading compiled video to Google Drive...")
+                                        try:
+                                            target_video = project_path / "output" / "ghamandi_mor_final.mp4"
+                                            if not target_video.exists():
+                                                target_video = project_path / "output" / f"{selected_project}_final.mp4"
+                                            
+                                            if target_video.exists():
+                                                from content_pipeline.bots.google_drive import upload_to_google_drive
+                                                drive_folder = os.getenv("GOOGLE_DRIVE_FOLDER_ID", "").strip()
+                                                drive_link = upload_to_google_drive(target_video, drive_folder, settings)
+                                                
+                                                # Save the link to manifest
+                                                manifest_data["google_drive_link"] = drive_link
+                                                with open(manifest_path, "w", encoding="utf-8") as f:
+                                                    json.dump(manifest_data, f, indent=2, ensure_ascii=False)
+                                                st.success(f"Uploaded to Google Drive successfully: {drive_link}")
+                                            else:
+                                                st.error("Compiled video output file not found on disk.")
+                                        except Exception as drive_err:
+                                            st.warning(f"⚠️ Google Drive upload failed: {drive_err}")
+                                            
+                                        st.rerun()
+                                    else:
+                                        st.error(f"❌ Compiler failed with exit code: {rc}")
+                                except Exception as e:
+                                    st.error(f"Execution error: {e}")
+                                
+                        # Render final video preview
+                        output_video = project_path / "output" / "ghamandi_mor_final.mp4"
+                        if not output_video.exists():
+                            output_video = project_path / "output" / f"{selected_project}_final.mp4"
+                            
+                        if output_video.exists():
+                            st.markdown("---")
+                            st.markdown("### 📺 Compiled Video Preview")
+                            st.video(str(output_video))
+                            
+                            # Verify copy exists and report exact path
+                            central_final_path = orchestrator_path / "output" / f"{selected_project}_final.mp4"
+                            if not central_final_path.exists() and selected_project == "ghamandi_mor":
+                                central_final_path = orchestrator_path / "output" / "ghamandi_mor_final.mp4"
+                                
+                            if central_final_path.exists():
+                                st.success(f"✨ Compiled Gold Master is saved at: `{central_final_path}`")
+                            else:
+                                # Safe fall-through copy
+                                try:
+                                    import shutil
+                                    central_output_dir = orchestrator_path / "output"
+                                    central_output_dir.mkdir(exist_ok=True)
+                                    shutil.copy(output_video, central_output_dir / f"{selected_project}_final.mp4")
+                                    if selected_project == "ghamandi_mor":
+                                        shutil.copy(output_video, central_output_dir / "ghamandi_mor_final.mp4")
+                                    st.success(f"✨ Compiled Gold Master is saved at: `/Users/lalitprasadsingh/.gemini/antigravity/scratch/KidsStudio-Orchestrator/output/{selected_project}_final.mp4`")
+                                except Exception:
+                                    pass
+                            
+                            # Google Drive Link display
+                            drive_link = manifest_data.get("google_drive_link", "")
+                            
+                            if drive_link:
+                                st.link_button(
+                                    "📥 Download Compiled Video (Google Drive)",
+                                    url=drive_link,
+                                    use_container_width=True
+                                )
+                            else:
+                                st.warning("⚠️ This video has not been uploaded to Google Drive yet.")
+                                
+                                # Fallback layout
+                                btn_col1, btn_col2 = st.columns(2)
+                                with btn_col1:
+                                    with open(output_video, "rb") as video_file:
+                                        st.download_button(
+                                            label="📥 Download Compiled Video (Local)",
+                                            data=video_file,
+                                            file_name=f"{selected_project}_final.mp4",
+                                            mime="video/mp4",
+                                            use_container_width=True,
+                                            key=f"download_btn_{selected_project}"
+                                        )
+                                with btn_col2:
+                                    if st.button("📤 Sync/Upload to Google Drive", use_container_width=True, key=f"upload_drive_btn_{selected_project}"):
+                                        with st.spinner("Uploading to Google Drive..."):
+                                            try:
+                                                from content_pipeline.bots.google_drive import upload_to_google_drive
+                                                drive_folder = os.getenv("GOOGLE_DRIVE_FOLDER_ID", "").strip()
+                                                new_drive_link = upload_to_google_drive(output_video, drive_folder, settings)
+                                                
+                                                # Save back to JSON
+                                                manifest_data["google_drive_link"] = new_drive_link
+                                                with open(manifest_path, "w", encoding="utf-8") as f:
+                                                    json.dump(manifest_data, f, indent=2, ensure_ascii=False)
+                                                    
+                                                st.success("Uploaded successfully!")
+                                                st.rerun()
+                                            except Exception as err:
+                                                st.error(f"Google Drive upload failed: {err}")
+                                            
+                            st.caption(f"Location: `{output_video}` (Size: {output_video.stat().st_size / (1024*1024):.2f} MB)")
 
     elif active_p == "Image":
         # Dynamic prompt synchronization when topic, subject, or art style changes
