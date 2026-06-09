@@ -7,6 +7,7 @@ import json
 import os
 import shutil
 import subprocess
+import textwrap
 from dataclasses import asdict, dataclass
 from datetime import date
 from html import escape
@@ -153,6 +154,182 @@ def create_story_workspace(
     recent = recent_stories(output_dir)
     paths.append(_write_text(ui / "index.html", _dashboard_html(episode, root, recent)))
     return paths
+
+
+def build_story_preview_video(
+    workspace_dir: Path,
+    progress_callback: Any | None = None,
+) -> Path:
+    workspace_dir = workspace_dir.resolve()
+    episode = StoryEpisode.from_dict(json.loads((workspace_dir / "episode.json").read_text(encoding="utf-8")))
+    video_dir = workspace_dir / "video"
+    frames_dir = video_dir / "preview_frames"
+    frames_dir.mkdir(parents=True, exist_ok=True)
+
+    executable = shutil.which("ffmpeg")
+    if not executable:
+        raise RuntimeError("FFmpeg is required to build the 2D story preview video.")
+
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+    except Exception as exc:  # pragma: no cover - local dependency guard
+        raise RuntimeError("Pillow is required to render the 2D story preview frames.") from exc
+
+    width, height = episode.width, episode.height
+    if episode.aspect == "shorts":
+        bg_start = (23, 37, 84)
+        bg_end = (91, 33, 182)
+    else:
+        bg_start = (16, 24, 40)
+        bg_end = (99, 102, 241)
+
+    def _blend(a: tuple[int, int, int], b: tuple[int, int, int], factor: float) -> tuple[int, int, int]:
+        return tuple(int(a[i] + (b[i] - a[i]) * factor) for i in range(3))
+
+    def _wrap(draw: ImageDraw.ImageDraw, text: str, font: Any, max_width: int) -> list[str]:
+        words = text.split()
+        lines: list[str] = []
+        current = ""
+        for word in words:
+            candidate = f"{current} {word}".strip()
+            box = draw.textbbox((0, 0), candidate, font=font)
+            if box[2] - box[0] <= max_width or not current:
+                current = candidate
+            else:
+                lines.append(current)
+                current = word
+        if current:
+            lines.append(current)
+        return lines or [text]
+
+    def _font(size: int) -> Any:
+        for candidate in [
+            "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+            "/System/Library/Fonts/Supplemental/Arial.ttf",
+            "/System/Library/Fonts/Supplemental/Helvetica.ttc",
+            "/Library/Fonts/Arial.ttf",
+        ]:
+            if Path(candidate).exists():
+                try:
+                    return ImageFont.truetype(candidate, size=size)
+                except Exception:
+                    continue
+        return ImageFont.load_default()
+
+    title_font = _font(54 if episode.aspect == "landscape" else 42)
+    scene_font = _font(38 if episode.aspect == "landscape" else 30)
+    body_font = _font(28 if episode.aspect == "landscape" else 24)
+    footer_font = _font(20 if episode.aspect == "landscape" else 18)
+
+    slide_paths: list[Path] = []
+    scenes = episode.scenes or []
+    for index, scene in enumerate(scenes, start=1):
+        if progress_callback:
+            progress_callback(
+                {
+                    "stage": "render_scene",
+                    "index": index,
+                    "total": len(scenes),
+                    "scene": scene,
+                }
+            )
+        image = Image.new("RGB", (width, height), bg_start)
+        draw = ImageDraw.Draw(image)
+        for y in range(height):
+            factor = y / max(height - 1, 1)
+            draw.line([(0, y), (width, y)], fill=_blend(bg_start, bg_end, factor))
+
+        margin = 64 if episode.aspect == "landscape" else 42
+        panel = [margin, margin, width - margin, height - margin]
+        draw.rounded_rectangle(panel, radius=28, fill=(11, 18, 32), outline=(120, 119, 198), width=3)
+
+        badge = f"Scene {index}/{len(scenes)}"
+        draw.rounded_rectangle([margin + 30, margin + 24, margin + 180, margin + 76], radius=16, fill=(251, 191, 36))
+        draw.text((margin + 52, margin + 37), badge, font=footer_font, fill=(17, 24, 39))
+
+        y = margin + 110
+        title_lines = _wrap(draw, scene.title, title_font, width - (margin * 2) - 80)
+        for line in title_lines[:3]:
+            draw.text((margin + 34, y), line, font=title_font, fill=(255, 251, 240))
+            y += title_font.size + 8
+        y += 18
+
+        narration_lines = _wrap(draw, scene.narration, body_font, width - (margin * 2) - 80)
+        for line in narration_lines[:8]:
+            draw.text((margin + 34, y), line, font=body_font, fill=(226, 232, 240))
+            y += body_font.size + 8
+
+        text_y = height - margin - 130
+        draw.rounded_rectangle(
+            [margin + 24, text_y - 10, width - margin - 24, height - margin - 22],
+            radius=18,
+            fill=(31, 41, 55),
+            outline=(148, 163, 184),
+            width=2,
+        )
+        footer_text = f"On screen: {scene.on_screen_text}"
+        footer_lines = _wrap(draw, footer_text, footer_font, width - (margin * 2) - 100)
+        footer_y = text_y + 18
+        for line in footer_lines[:3]:
+            draw.text((margin + 38, footer_y), line, font=footer_font, fill=(248, 250, 252))
+            footer_y += footer_font.size + 6
+
+        frame_path = frames_dir / f"scene_{index:02d}.png"
+        image.save(frame_path)
+        slide_paths.append(frame_path)
+        if progress_callback:
+            progress_callback(
+                {
+                    "stage": "scene_ready",
+                    "index": index,
+                    "total": len(scenes),
+                    "scene": scene,
+                }
+            )
+
+    concat_path = video_dir / "preview_slides.txt"
+    concat_lines: list[str] = []
+    for scene, frame_path in zip(scenes, slide_paths, strict=False):
+        concat_lines.append(f"file '{frame_path.as_posix()}'")
+        concat_lines.append(f"duration {max(scene.duration_seconds, 2)}")
+    if slide_paths:
+        concat_lines.append(f"file '{slide_paths[-1].as_posix()}'")
+    concat_path.write_text("\n".join(concat_lines) + "\n", encoding="utf-8")
+
+    if progress_callback:
+        progress_callback(
+            {
+                "stage": "mixing",
+                "index": len(scenes),
+                "total": len(scenes),
+                "scene": None,
+            }
+        )
+
+    output_path = video_dir / "assembled_review.mp4"
+    subprocess.run(
+        [
+            executable,
+            "-y",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            str(concat_path),
+            "-vsync",
+            "vfr",
+            "-pix_fmt",
+            "yuv420p",
+            str(output_path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    if progress_callback:
+        progress_callback({"stage": "complete", "output_path": output_path})
+    return output_path
 
 
 def update_story_bank(output_dir: Path, episode: StoryEpisode) -> Path:
