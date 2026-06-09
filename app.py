@@ -1306,30 +1306,122 @@ def render_frontdoor(settings: Settings) -> None:
     except Exception:
         pass
 
-    # Render horizontal top bar page navigation inside columns
-    nav_cols = st.columns(11)
+    # Render horizontal top bar page navigation inside columns (Categorized)
+    nav_cols = st.columns(6)
 
-    pages = ["Dashboard", "Music", "Video", "Image", "Kids", "Speech", "Run", "Cloner", "Distribution", "Prompts", "Files"]
-    icons = [
+    categories = ["Dashboard", "Music", "Video", "Image", "Automation", "Files"]
+    category_icons = [
         "📊 Dashboard",
-        "🎵 Music Studio",
-        "🎬 Video Studio",
-        "🎨 Image Studio",
-        "👶 Kids Studio",
-        "🎙️ Speech Studio",
-        "⚙️ Run Pipeline",
-        "🎙️ Voice Cloner",
-        "🚀 Social Publish",
-        "💡 Daily Prompts",
+        "🎵 Music",
+        "🎬 Video",
+        "🎨 Image",
+        "⚙️ Automation",
         "📁 Files"
     ]
 
-    for i, (page, icon) in enumerate(zip(pages, icons)):
+    # Initialize active category if not set
+    if "active_category" not in st.session_state:
+        initial_cat = "Dashboard"
+        cur_page = st.session_state.get("active_page", "Dashboard")
+        if cur_page in ["Music", "Kids", "Speech", "Cloner"]:
+            initial_cat = "Music"
+        elif cur_page in ["Video", "2DVideo"]:
+            initial_cat = "Video"
+        elif cur_page == "Image":
+            initial_cat = "Image"
+        elif cur_page in ["Run", "Distribution", "Prompts"]:
+            initial_cat = "Automation"
+        elif cur_page == "Files":
+            initial_cat = "Files"
+        st.session_state["active_category"] = initial_cat
+
+    for i, (cat, icon) in enumerate(zip(categories, category_icons)):
         with nav_cols[i]:
-            is_active = st.session_state["active_page"] == page
-            if st.button(icon, key=f"nav_{page}", use_container_width=True, type="primary" if is_active else "secondary"):
-                st.session_state["active_page"] = page
+            is_active = st.session_state["active_category"] == cat
+            if st.button(icon, key=f"nav_cat_{cat}", use_container_width=True, type="primary" if is_active else "secondary"):
+                st.session_state["active_category"] = cat
+                if cat == "Music":
+                    st.session_state["active_music_page"] = "Music Studio"
+                elif cat == "Video":
+                    st.session_state["active_video_page"] = "Current Video Studio"
+                elif cat == "Automation":
+                    st.session_state["active_automation_page"] = "Run Pipeline"
                 st.rerun()
+
+    active_cat = st.session_state["active_category"]
+    
+    # Render sub-navigation below top bar if category has subpages
+    if active_cat == "Music":
+        st.session_state.setdefault("active_music_page", "Music Studio")
+        sub_cols = st.columns(4)
+        sub_pages = ["Music Studio", "Kids Music Studio", "Speech Studio", "Voice Cloner"]
+        sub_icons = ["🎵 Music Studio", "👶 Kids Music Studio", "🎙️ Speech Studio", "🎙️ Voice Cloner"]
+        for i, (page, icon) in enumerate(zip(sub_pages, sub_icons)):
+            with sub_cols[i]:
+                is_active = st.session_state["active_music_page"] == page
+                if st.button(icon, key=f"sub_music_{page}", use_container_width=True, type="primary" if is_active else "secondary"):
+                    st.session_state["active_music_page"] = page
+                    st.rerun()
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+    elif active_cat == "Video":
+        st.session_state.setdefault("active_video_page", "Current Video Studio")
+        sub_cols = st.columns(2)
+        sub_pages = ["Current Video Studio", "2D Video Studio"]
+        sub_icons = ["🎬 Current Video Studio", "🎥 2D Video Studio"]
+        for i, (page, icon) in enumerate(zip(sub_pages, sub_icons)):
+            with sub_cols[i]:
+                is_active = st.session_state["active_video_page"] == page
+                if st.button(icon, key=f"sub_video_{page}", use_container_width=True, type="primary" if is_active else "secondary"):
+                    st.session_state["active_video_page"] = page
+                    st.rerun()
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+    elif active_cat == "Automation":
+        st.session_state.setdefault("active_automation_page", "Run Pipeline")
+        sub_cols = st.columns(3)
+        sub_pages = ["Run Pipeline", "Social Publish", "Daily Prompts"]
+        sub_icons = ["⚙️ Run Pipeline", "🚀 Social Publish", "💡 Daily Prompts"]
+        for i, (page, icon) in enumerate(zip(sub_pages, sub_icons)):
+            with sub_cols[i]:
+                is_active = st.session_state["active_automation_page"] == page
+                if st.button(icon, key=f"sub_auto_{page}", use_container_width=True, type="primary" if is_active else "secondary"):
+                    st.session_state["active_automation_page"] = page
+                    st.rerun()
+        st.markdown("<br>", unsafe_allow_html=True)
+
+    # Resolve active_p variable to sync with original logic
+    if active_cat == "Dashboard":
+        active_p = "Dashboard"
+    elif active_cat == "Music":
+        subpage_mapping = {
+            "Music Studio": "Music",
+            "Kids Music Studio": "Kids",
+            "Speech Studio": "Speech",
+            "Voice Cloner": "Cloner"
+        }
+        active_p = subpage_mapping.get(st.session_state["active_music_page"], "Music")
+    elif active_cat == "Video":
+        subpage_mapping = {
+            "Current Video Studio": "Video",
+            "2D Video Studio": "2DVideo"
+        }
+        active_p = subpage_mapping.get(st.session_state["active_video_page"], "Video")
+    elif active_cat == "Image":
+        active_p = "Image"
+    elif active_cat == "Automation":
+        subpage_mapping = {
+            "Run Pipeline": "Run",
+            "Social Publish": "Distribution",
+            "Daily Prompts": "Prompts"
+        }
+        active_p = subpage_mapping.get(st.session_state["active_automation_page"], "Run")
+    elif active_cat == "Files":
+        active_p = "Files"
+    else:
+        active_p = "Dashboard"
+        
+    st.session_state["active_page"] = active_p
 
     with st.expander("⚙️ Studio Settings & Date Controls", expanded=False):
         # 1. Output directory
@@ -2362,6 +2454,146 @@ def render_frontdoor(settings: Settings) -> None:
                 scene_img_file = antigravity_output_dir / "images" / f"scene_{selected_scene_num:02d}.png"
                 if scene_img_file.exists():
                     st.image(str(scene_img_file), caption=f"Pristine slide illustration", use_container_width=True)
+
+    elif active_p == "2DVideo":
+        st.markdown(
+            """
+            <div class="hero" style="background: linear-gradient(135deg, rgba(236,72,153,0.15), rgba(168,85,247,0.15)); border: 1px solid rgba(236,72,153,0.3); margin-bottom: 24px;">
+              <h1 style="font-size: 32px;">🎬 2D Video Animation Studio</h1>
+              <p style="margin-top: 6px; font-size: 14px;">Procedural layout, automated lip-syncing, and video rendering engine.</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        orchestrator_path = Path("/Users/lalitprasadsingh/.gemini/antigravity/scratch/KidsStudio-Orchestrator")
+        projects_dir = orchestrator_path / "projects"
+        
+        if not projects_dir.exists():
+            st.error(f"❌ Projects directory not found at: {projects_dir}")
+        else:
+            available_projects = sorted([p.name for p in projects_dir.iterdir() if p.is_dir()])
+            
+            # Select project
+            selected_project = st.selectbox("Select Project Workspace", options=available_projects, index=0 if "ghamandi_mor" not in available_projects else available_projects.index("ghamandi_mor"))
+            
+            project_path = projects_dir / selected_project
+            manifest_path = project_path / "scene_manifest.json"
+            
+            if not manifest_path.exists():
+                st.error(f"❌ scene_manifest.json not found in {project_path}")
+            else:
+                st.markdown("### 📋 Edit Scene Manifest Script")
+                
+                # Load JSON
+                try:
+                    with open(manifest_path, "r", encoding="utf-8") as f:
+                        manifest_data = json.load(f)
+                except Exception as e:
+                    st.error(f"Error reading manifest: {e}")
+                    manifest_data = None
+                    
+                if manifest_data:
+                    # Global config info
+                    st.caption(f"Video ID: **{manifest_data.get('video_id')}** | Resolution: **{manifest_data.get('canvas_dimensions')}** | FPS: **{manifest_data.get('fps')}**")
+                    
+                    # Display and allow editing scenes
+                    scenes = manifest_data.get("timeline_scenes", [])
+                    modified = False
+                    
+                    for idx, scene in enumerate(scenes):
+                        with st.container(border=True):
+                            st.markdown(f"**Scene {scene.get('scene_sequence')}** (Background: `{scene.get('background_asset')}` | Effect: `{scene.get('camera_effect')}`)")
+                            
+                            dialogue_list = scene.get("dialogue", [])
+                            for d_idx, dial in enumerate(dialogue_list):
+                                speaker = dial.get("speaker")
+                                text = dial.get("text")
+                                
+                                # Inputs for text
+                                new_text = st.text_input(
+                                    f"Line {d_idx+1} ({speaker})",
+                                    value=text,
+                                    key=f"text_{selected_project}_{idx}_{d_idx}"
+                                )
+                                if new_text != text:
+                                    dial["text"] = new_text
+                                    modified = True
+                                    
+                    # Save changes
+                    if modified:
+                        if st.button("💾 Save Changes to Manifest", use_container_width=True, type="primary"):
+                            try:
+                                with open(manifest_path, "w", encoding="utf-8") as f:
+                                    json.dump(manifest_data, f, indent=2, ensure_ascii=False)
+                                st.toast("✅ Manifest updated successfully!")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Failed to save changes: {e}")
+                                
+                    st.markdown("---")
+                    st.markdown("### 🚀 Compile Animation Video")
+                    
+                    # Compile button
+                    if st.button("🎬 Compile Video Master", type="primary", use_container_width=True):
+                        st.info("Compiling video... This involves TTS audio generation, lip-sync mapping, frame rendering, and FFmpeg assembly.")
+                        
+                        import subprocess
+                        compiler_script = orchestrator_path / "src" / "video_pipeline" / "scene_compiler.py"
+                        
+                        cmd = [
+                            "/Users/lalitprasadsingh/.gemini/antigravity/scratch/content-automation-pipeline/.venv/bin/python",
+                            "-u",
+                            str(compiler_script)
+                        ]
+                        
+                        # Set up real-time log tracking
+                        log_placeholder = st.empty()
+                        log_content = []
+                        
+                        try:
+                            # Set PYTHONPATH so it can import from KidsStudio-Orchestrator root
+                            env = os.environ.copy()
+                            env["PYTHONPATH"] = str(orchestrator_path)
+                            
+                            process = subprocess.Popen(
+                                cmd,
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT,
+                                text=True,
+                                bufsize=1,
+                                cwd=str(orchestrator_path),
+                                env=env
+                            )
+                            
+                            while True:
+                                line = process.stdout.readline()
+                                if not line and process.poll() is not None:
+                                    break
+                                if line:
+                                    log_content.append(line)
+                                    log_placeholder.code("".join(log_content[-20:]), language="bash")
+                                    
+                            rc = process.poll()
+                            if rc == 0:
+                                st.success("🎉 Video compiled successfully!")
+                                st.toast("Success!")
+                                st.rerun()
+                            else:
+                                st.error(f"❌ Compiler failed with exit code: {rc}")
+                        except Exception as e:
+                            st.error(f"Execution error: {e}")
+                            
+                    # Render final video preview
+                    output_video = project_path / "output" / "ghamandi_mor_final.mp4"
+                    if not output_video.exists():
+                        output_video = project_path / "output" / f"{selected_project}_final.mp4"
+                        
+                    if output_video.exists():
+                        st.markdown("---")
+                        st.markdown("### 📺 Compiled Video Preview")
+                        st.video(str(output_video))
+                        st.caption(f"Location: `{output_video}` (Size: {output_video.stat().st_size / (1024*1024):.2f} MB)")
 
     elif active_p == "Image":
         # Dynamic prompt synchronization when topic, subject, or art style changes
