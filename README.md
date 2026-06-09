@@ -1,3 +1,14 @@
+---
+title: Kids Story Studio
+emoji: 🧸
+colorFrom: indigo
+colorTo: purple
+sdk: streamlit
+sdk_version: 1.37.0
+app_file: streamlit_app.py
+pinned: false
+---
+
 # Content Automation Pipeline
 
 A staged automation project for creating and distributing daily content to LinkedIn,
