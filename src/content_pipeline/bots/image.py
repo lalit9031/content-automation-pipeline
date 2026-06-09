@@ -672,82 +672,134 @@ class PollinationsImageProvider:
         self.settings = settings
 
     def create(self, prompt: str, variant: ImageVariant) -> bytes:
-        import requests
-        import time
-        import urllib.parse
+        import requests, time, urllib.parse, os, base64
 
-        # Attempt 1: Hugging Face Inference API (Paid/Inference Providers - FLUX)
-        model = "black-forest-labs/FLUX.1-schnell"
-        url = f"https://router.huggingface.co/hf-inference/models/{model}"
+        errors: dict[str, str] = {}
 
-        headers = {}
+        # ── Tier 1: Pollinations.ai  (100% free, no key, FLUX quality) ───────────
+        # 3 models x 3 seeds = 9 attempts across different queues / servers
+        poll_models = ["flux", "sana", "turbo"]
+        encoded_prompt = urllib.parse.quote(prompt)
+        for p_model in poll_models:
+            for seed in [42, 1337, 999]:
+                try:
+                    p_url = (
+                        f"https://image.pollinations.ai/prompt/{encoded_prompt}"
+                        f"?width={variant.width}&height={variant.height}"
+                        f"&model={p_model}&nologo=true&seed={seed}"
+                    )
+                    r = requests.get(p_url, timeout=90,
+                                     headers={"User-Agent": "Mozilla/5.0"})
+                    if r.status_code == 200 and len(r.content) > 5000:
+                        print(f"\u2705 [Image] Pollinations/{p_model} seed={seed}")
+                        return self._process_image(r.content, variant)
+                    if r.status_code == 402:
+                        time.sleep(3)   # queue full — brief pause, try next model
+                        break
+                except Exception as exc:
+                    errors[f"pollinations/{p_model}"] = str(exc)
+
+        # ── Tier 2: HuggingFace Serverless  (free, no credits needed) ────────────
+        hf_headers = {}
         if self.settings.hf_token:
-            headers["Authorization"] = f"Bearer {self.settings.hf_token}"
-
-        payload = {"inputs": prompt}
-
-        max_retries = 3
-        delay = 2
-        last_error = None
-        
-        for attempt in range(1, max_retries + 1):
-            try:
-                time.sleep(delay)
-                response = requests.post(url, headers=headers, json=payload, timeout=120)
-                response.raise_for_status()
-                image_bytes = response.content
-                return self._process_image(image_bytes, variant)
-            except Exception as exc:
-                last_error = exc
-                delay *= 2
-                
-        # Attempt 2: pollinations.ai Fallback (100% Free, public API)
-        poll_last_error = None
-        try:
-            encoded_prompt = urllib.parse.quote(prompt)
-            poll_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width={variant.width}&height={variant.height}&model=flux&nologo=true"
-            response = requests.get(poll_url, timeout=120)
-            response.raise_for_status()
-            image_bytes = response.content
-            return self._process_image(image_bytes, variant)
-        except Exception as poll_exc:
-            poll_last_error = poll_exc
-
-        # Attempt 3: Hugging Face Serverless free model fallback (100% free, no credits required)
-        free_models = ["Lykon/dreamshaper-8", "runwayml/stable-diffusion-v1-5"]
-        free_last_error = None
-
-        for free_model in free_models:
-            # We try both domains to bypass DNS resolution issues in the sandbox and support local networks
-            for use_domain in ["api-inference.huggingface.co", "api-inference.hf.co"]:
-                free_url = f"https://{use_domain}/models/{free_model}"
-                
-                # Retry loop in case the model is cold-starting
+            hf_headers["Authorization"] = f"Bearer {self.settings.hf_token}"
+        for free_model in ["Lykon/dreamshaper-8", "runwayml/stable-diffusion-v1-5"]:
+            for domain in ["api-inference.huggingface.co", "api-inference.hf.co"]:
+                hf_url = f"https://{domain}/models/{free_model}"
                 for attempt in range(3):
                     try:
-                        response = requests.post(free_url, headers=headers, json={"inputs": prompt}, timeout=60)
-                        if response.status_code == 200:
-                            return self._process_image(response.content, variant)
-                        elif response.status_code == 503:
-                            # Model is currently loading, wait and retry
-                            resp_json = response.json()
-                            estimated_time = resp_json.get("estimated_time", 10.0)
-                            time.sleep(min(estimated_time, 15.0))
-                            continue
+                        r = requests.post(hf_url, headers=hf_headers,
+                                          json={"inputs": prompt}, timeout=60)
+                        if r.status_code == 200 and len(r.content) > 5000:
+                            print(f"\u2705 [Image] HF Serverless/{free_model}")
+                            return self._process_image(r.content, variant)
+                        elif r.status_code == 503:
+                            time.sleep(min(r.json().get("estimated_time", 10.0), 20.0))
                         else:
-                            response.raise_for_status()
-                    except Exception as e:
-                        free_last_error = e
-                        break # Break model-loading loop to try next option if not a loading warning
+                            break
+                    except Exception as exc:
+                        errors[f"hf_free/{free_model}"] = str(exc)
+                        break
 
-        # Attempt 4 skipped (removed recursive Gemini fallback to prevent infinite loops)
+        # ── Tier 3: HuggingFace FLUX.1-schnell  (paid, HF_TOKEN) ─────────────────
+        if self.settings.hf_token:
+            flux_url = (
+                "https://router.huggingface.co/hf-inference/models"
+                "/black-forest-labs/FLUX.1-schnell"
+            )
+            flux_delay = 2
+            for _ in range(3):
+                try:
+                    time.sleep(flux_delay)
+                    r = requests.post(
+                        flux_url,
+                        headers={"Authorization": f"Bearer {self.settings.hf_token}"},
+                        json={"inputs": prompt}, timeout=120,
+                    )
+                    if r.status_code == 200 and len(r.content) > 5000:
+                        print("\u2705 [Image] HF FLUX.1-schnell (paid)")
+                        return self._process_image(r.content, variant)
+                    if r.status_code == 402:
+                        break   # credits exhausted — skip to Gemini
+                    flux_delay *= 2
+                except Exception as exc:
+                    errors["hf_flux"] = str(exc)
+                    flux_delay *= 2
 
-        # Attempt 5: Absolute Placeholder Fallback (to guarantee compilation never breaks)
+        # ── Tier 4: Gemini REST API  (free AI Studio quota, all 7 keys rotated) ──
+        # Direct REST — no SDK required. Free quota ~1500 img/day per key.
+        gemini_slots = [
+            "GEMINI_API_KEY", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3",
+            "GEMINI_API_KEY_4", "GEMINI_API_KEY_5", "GEMINI_API_KEY_6",
+            "GEMINI_API_KEY_7",
+        ]
+        gemini_model = (
+            getattr(self.settings, "gemini_image_model", None)
+            or "gemini-2.5-flash-image"
+        )
+        gemini_url = (
+            f"https://generativelanguage.googleapis.com/v1beta/models"
+            f"/{gemini_model}:generateContent"
+        )
+        for slot in gemini_slots:
+            key = os.environ.get(slot, "")
+            if not key:
+                continue
+            try:
+                r = requests.post(
+                    gemini_url,
+                    params={"key": key},
+                    json={
+                        "contents": [{"parts": [{"text": prompt}]}],
+                        "generationConfig": {"responseModalities": ["IMAGE", "TEXT"]},
+                    },
+                    timeout=60,
+                )
+                if r.status_code == 200:
+                    cands = r.json().get("candidates", [{}])
+                    parts = cands[0].get("content", {}).get("parts", []) if cands else []
+                    for part in parts:
+                        raw = part.get("inlineData", {}).get("data", "")
+                        if raw:
+                            img_bytes = (
+                                raw if isinstance(raw, bytes)
+                                else base64.b64decode(raw)
+                            )
+                            if len(img_bytes) > 5000:
+                                print(f"\u2705 [Image] Gemini/{gemini_model} ({slot})")
+                                return self._process_image(img_bytes, variant)
+                elif r.status_code == 429:
+                    time.sleep(15)
+                    continue
+                elif r.status_code in (401, 403):
+                    continue
+            except Exception as exc:
+                errors[f"gemini/{slot}"] = str(exc)
+
+        # ── Tier 5: Grey placeholder  (compilation never hard-crashes) ────────────
         import logging
         logging.warning(
-            f"All image generation methods failed for prompt: {prompt}. "
-            f"Errors: {last_error} (HF Flux), {poll_last_error} (Pollinations), {free_last_error} (HF Serverless). "
-            f"Using dynamic fallback placeholder image."
+            f"All image providers failed for: {prompt[:80]!r}. Errors: {errors}"
         )
         return self._create_placeholder_image(prompt, variant)
 
@@ -755,17 +807,13 @@ class PollinationsImageProvider:
         try:
             from PIL import Image, ImageDraw
             import io
-            # Generate a nice slate gray placeholder image
             img = Image.new("RGB", (variant.width, variant.height), color="#1e293b")
             draw = ImageDraw.Draw(img)
-            # Add text
-            text = f"Asset Placeholder\nPrompt: {prompt[:60]}..."
-            draw.text((40, 40), text, fill="#cbd5e1")
+            draw.text((40, 40), f"Asset Placeholder\nPrompt: {prompt[:60]}...", fill="#cbd5e1")
             out_buffer = io.BytesIO()
             img.save(out_buffer, format="PNG")
             return out_buffer.getvalue()
         except Exception:
-            # 1x1 transparent PNG bytes
             return b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15c4\x00\x00\x00\rIDATx\x9cc`\x00\x00\x00\x02\x00\x01H\xaf\xa4q\x00\x00\x00\x00IEND\xaeB`\x82'
 
     def _process_image(self, image_bytes: bytes, variant: ImageVariant) -> bytes:
@@ -773,19 +821,14 @@ class PollinationsImageProvider:
             from PIL import Image
             import io
             img = Image.open(io.BytesIO(image_bytes))
-            
-            # Apply Lanczos upscaling if dimensions are smaller than requested
             if img.width < variant.width or img.height < variant.height:
                 resample_filter = getattr(Image, "Resampling", Image).LANCZOS
                 img = img.resize((variant.width, variant.height), resample=resample_filter)
-                
-            # Save as PNG
             out_buffer = io.BytesIO()
             img.save(out_buffer, format="PNG")
             image_bytes = out_buffer.getvalue()
         except Exception:
             pass
-            
         return image_bytes
 
 
