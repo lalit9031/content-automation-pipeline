@@ -3279,7 +3279,7 @@ def render_frontdoor(settings: Settings) -> None:
                 if is_fallback_svg and st.session_state.get("image_provider_choice") != "mock":
                     st.warning(
                         "⚠️ **Fallback to Mock:** The selected provider failed to generate the image (likely due to API billing/limit constraints) and silently fell back to the Mock provider. "
-                        "Please check your API keys or switch to the **`free-ai`** (Pollinations) provider to generate real Pixar illustrations for free."
+                        "Please check your API keys or switch to the **`free-ai`** fallback chain for other image APIs."
                     )
             else:
                 st.info("No visual canvas synthesized yet. Tweak subject descriptions under the screen and generate!")
@@ -3306,8 +3306,8 @@ def render_frontdoor(settings: Settings) -> None:
 
             if st.session_state.get("image_provider_choice") == "gemini":
                 st.info(
-                    "💡 **Note on Gemini:** Dedicated image generation (`Imagen 3`/`4`) is only supported on Google AI Studio keys that have **billing enabled** (paid plan). "
-                    "If your key is on the free tier, please select the **`free-ai`** (Pollinations) provider to generate real Pixar 3D illustrations for free."
+                    "💡 **Note on Gemini:** Dedicated image generation is paid-only and uses your Gemini image key directly. "
+                    "If your key is on the free tier or the image model is not enabled, select the **`free-ai`** fallback chain instead."
                 )
 
             prompt_input = st.text_area("Engine-Injected Style Prompt", value=st.session_state.get("image_studio_prompt", ""), height=120)

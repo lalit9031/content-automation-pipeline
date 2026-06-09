@@ -42,7 +42,7 @@ class ImageProvider(Protocol):
 class MockImageProvider:
     extension = ".png"
     def create(self, prompt: str, variant: ImageVariant) -> bytes:
-        raise ValueError("MockImageProvider is disabled. Please select a valid AI image provider (gemini, imagen, openai, pollinations).")
+        raise ValueError("MockImageProvider is disabled. Please select a valid AI image provider (gemini, imagen, openai, free-ai).")
 
 
 class ImagenProvider:
@@ -88,6 +88,7 @@ class ImagenProvider:
 
 class GeminiImageProvider:
     extension = ".png"
+    request_timeout_ms = 300_000
 
     def __init__(
         self,
@@ -103,13 +104,15 @@ class GeminiImageProvider:
         if clients is None:
             try:
                 from google import genai
-                from google.genai.types import GenerateImagesConfig
+                from google.genai.types import GenerateContentConfig, ImageConfig
             except ImportError as exc:
                 raise RuntimeError("Install live dependencies with: pip install -e '.[live]'") from exc
-            self.generate_images_config = GenerateImagesConfig
-            clients = [genai.Client(api_key=key, http_options={"timeout": 120.0}) for key in (settings.gemini_api_keys or (settings.gemini_api_key,))]
+            self.generate_content_config = GenerateContentConfig
+            self.image_config_type = ImageConfig
+            clients = [genai.Client(api_key=key, http_options={"timeout": self.request_timeout_ms}) for key in (settings.gemini_api_keys or (settings.gemini_api_key,))]
         else:
-            self.generate_images_config = None
+            self.generate_content_config = None
+            self.image_config_type = None
         self.settings = settings
         self.clients = clients
         self.model = settings.imagen_model
@@ -137,7 +140,7 @@ class GeminiImageProvider:
             self.ensure_capacity(1)
         except RuntimeError as exc:
             if _is_budget_exhausted(exc):
-                return self.fallback_provider.create(prompt, variant)
+                raise RuntimeError(f"Gemini image budget exhausted: {exc}") from exc
             raise
         last_error: Exception | None = None
         for _ in range(self.limiter.max_attempts):
@@ -147,15 +150,17 @@ class GeminiImageProvider:
             client = self.clients[client_index]
             try:
                 config = None
-                if self.generate_images_config is not None:
-                    config = self.generate_images_config(
-                        number_of_images=1,
-                        aspect_ratio=variant.aspect_ratio,
-                        output_mime_type="image/png",
+                if self.generate_content_config is not None and self.image_config_type is not None:
+                    config = self.generate_content_config(
+                        http_options={"timeout": self.request_timeout_ms},
+                        response_modalities=["Image"],
+                        image_config=self.image_config_type(
+                            aspect_ratio=variant.aspect_ratio,
+                        ),
                     )
-                response = client.models.generate_images(
+                response = client.models.generate_content(
                     model=self.model,
-                    prompt=prompt,
+                    contents=[prompt],
                     config=config,
                 )
                 image_bytes = _response_image_bytes(response)
@@ -187,7 +192,9 @@ class GeminiImageProvider:
         if last_error is not None:
             import logging
             logging.warning(f"Gemini image generation exhausted all keys. Last error: {last_error}")
-        return self.fallback_provider.create(prompt, variant)
+        raise RuntimeError(
+            f"Gemini image generation failed for all configured keys after {self.request_timeout_ms / 1000:.0f}s timeout: {last_error}"
+        )
 
 
 @dataclass
@@ -795,8 +802,6 @@ def _resolved_image_provider_name(settings: Settings) -> str:
     provider_name = (settings.image_provider or "").strip().lower()
     if provider_name == "mock":
         provider_name = "gemini"
-    if provider_name == "gemini" and settings.gcp_project_id:
-        return "imagen"
     return provider_name
 
 
