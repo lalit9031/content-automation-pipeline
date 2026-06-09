@@ -348,13 +348,13 @@ def render_image_preview(path: Path) -> None:
     try:
         from PIL import Image, UnidentifiedImageError
     except ImportError:
-        st.image(str(path), use_container_width=True)
+        st.image(str(path), use_column_width=True)
         return
 
     try:
         with Image.open(path) as image:
             image.verify()
-        st.image(str(path), use_container_width=True)
+        st.image(str(path), use_column_width=True)
     except (UnidentifiedImageError, OSError, ValueError, SyntaxError):
         st.error(
             "The image preview could not be decoded as an image. The generated payload may be a text error or corrupted file."
@@ -2637,7 +2637,7 @@ def render_frontdoor(settings: Settings) -> None:
                     for idx, img_path in enumerate(image_files[:6]):
                         col_idx = idx % 2
                         with img_cols[col_idx]:
-                            st.image(str(img_path), caption=f"Scene {idx+1}", use_container_width=True)
+                            st.image(str(img_path), caption=f"Scene {idx+1}", use_column_width=True)
                     if len(image_files) > 6:
                         st.caption(f"Showing first 6 of {len(image_files)} scenes in this view. All scenes are compiled cleanly.")
                 else:
@@ -2667,7 +2667,7 @@ def render_frontdoor(settings: Settings) -> None:
 
                 scene_img_file = antigravity_output_dir / "images" / f"scene_{selected_scene_num:02d}.png"
                 if scene_img_file.exists():
-                    st.image(str(scene_img_file), caption=f"Pristine slide illustration", use_container_width=True)
+                    st.image(str(scene_img_file), caption=f"Pristine slide illustration", use_column_width=True)
 
     elif active_p == "2DVideo":
         st.markdown(
@@ -2824,7 +2824,7 @@ def render_frontdoor(settings: Settings) -> None:
                             bg_path = orchestrator_path / scene.get("background_asset", "")
                             st.markdown(f"**Scene {scene.get('scene_sequence')}**")
                             if bg_path.exists():
-                                st.image(str(bg_path), use_container_width=True)
+                                st.image(str(bg_path), use_column_width=True)
                             st.caption(f"Camera: `{scene.get('camera_effect')}`")
                             
                     # Render character body images in a row
@@ -2852,7 +2852,7 @@ def render_frontdoor(settings: Settings) -> None:
                                     img_path = orchestrator_path / "assets" / "character" / f"{short_name}.png"
                                     
                                 if img_path.exists():
-                                    st.image(str(img_path), caption=f"Sprite: {fname}", use_container_width=True)
+                                    st.image(str(img_path), caption=f"Sprite: {fname}", use_column_width=True)
                                 else:
                                     st.caption(f"Sprite: {fname} (No body image found)")
                             
