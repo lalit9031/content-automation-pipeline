@@ -762,8 +762,8 @@ def render_preview_panel(overview: dict[str, object], day_root: Path) -> None:
 
 
 def generate_manifest_from_scratch(topic: str, video_id: str, settings) -> dict:
-    """Uses Gemini to generate a brand new 4-scene manifest from a story topic."""
-    # Find all API keys
+    """Uses Gemini or OpenAI to generate a brand new 4-scene manifest from a story topic."""
+    # Find all Gemini API keys
     keys = list(settings.gemini_api_keys) if hasattr(settings, "gemini_api_keys") else []
     if not keys and settings.gemini_api_key:
         keys = [settings.gemini_api_key]
@@ -777,8 +777,17 @@ def generate_manifest_from_scratch(topic: str, video_id: str, settings) -> dict:
         keys.insert(0, custom_ui_key)
         
     keys = [k for k in keys if k]
-    if not keys:
-        raise ValueError("No Gemini API keys found in Settings or Environment.")
+
+    # Find all OpenAI API keys
+    openai_keys = list(settings.openai_api_keys) if hasattr(settings, "openai_api_keys") else []
+    if not openai_keys and settings.openai_api_key:
+        openai_keys = [settings.openai_api_key]
+    if os.environ.get("OPENAI_API_KEY") and os.environ.get("OPENAI_API_KEY") not in openai_keys:
+        openai_keys.insert(0, os.environ.get("OPENAI_API_KEY"))
+    openai_keys = [k for k in openai_keys if k]
+
+    if not keys and not openai_keys:
+        raise ValueError("No API keys (Gemini or OpenAI) found in Settings or Environment.")
         
     prompt = f"""
     Create a highly engaging 4-scene kids animation script/manifest based on the topic: "{topic}".
@@ -828,58 +837,58 @@ def generate_manifest_from_scratch(topic: str, video_id: str, settings) -> dict:
     6. Return ONLY the valid JSON block conforming exactly to this structure. No markdown formatting.
     """
     
-    for key in keys:
-        if key.startswith("AQ."):
-            continue
-        try:
-            from google import genai
-            from google.genai import types
-            client = genai.Client(api_key=key)
-            response = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json"
-                )
-            )
-            data = json.loads(response.text)
-            if "timeline_scenes" in data:
-                return data
-        except Exception as e:
-            pass
-            
-    # Try OpenAI fallback if Gemini keys failed or if none were valid
-    openai_keys = list(settings.openai_api_keys)
-    if not openai_keys and settings.openai_api_key:
-        openai_keys = [settings.openai_api_key]
-    if os.environ.get("OPENAI_API_KEY") and os.environ.get("OPENAI_API_KEY") not in openai_keys:
-        openai_keys.insert(0, os.environ.get("OPENAI_API_KEY"))
-    openai_keys = [k for k in openai_keys if k]
+    provider_pref = settings.prompt_provider if hasattr(settings, "prompt_provider") else "gemini"
+    if provider_pref == "openai":
+        order = ["openai", "gemini"]
+    else:
+        order = ["gemini", "openai"]
 
-    for o_key in openai_keys:
-        try:
-            from openai import OpenAI
-            client = OpenAI(api_key=o_key)
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "user", "content": prompt}
-                ],
-                response_format={"type": "json_object"}
-            )
-            data = json.loads(response.choices[0].message.content)
-            if "timeline_scenes" in data:
-                return data
-        except Exception as e:
-            pass
+    for prov in order:
+        if prov == "gemini":
+            for key in keys:
+                if key.startswith("AQ."):
+                    continue
+                try:
+                    from google import genai
+                    from google.genai import types
+                    client = genai.Client(api_key=key)
+                    response = client.models.generate_content(
+                        model="gemini-2.5-flash",
+                        contents=prompt,
+                        config=types.GenerateContentConfig(
+                            response_mime_type="application/json"
+                        )
+                    )
+                    data = json.loads(response.text)
+                    if "timeline_scenes" in data:
+                        return data
+                except Exception as e:
+                    pass
+        elif prov == "openai":
+            for o_key in openai_keys:
+                try:
+                    from openai import OpenAI
+                    client = OpenAI(api_key=o_key)
+                    response = client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[
+                            {"role": "user", "content": prompt}
+                        ],
+                        response_format={"type": "json_object"}
+                    )
+                    data = json.loads(response.choices[0].message.content)
+                    if "timeline_scenes" in data:
+                        return data
+                except Exception as e:
+                    pass
 
     raise RuntimeError("AI model (Gemini/OpenAI) failed to generate manifest from topic. Please check your keys.")
 
 
 
 def apply_manifest_suggestions(manifest_data: dict, user_suggestion: str, settings) -> dict:
-    """Uses Gemini to rewrite the scene manifest JSON based on user suggestions."""
-    # Find all API keys
+    """Uses Gemini or OpenAI to rewrite the scene manifest JSON based on user suggestions."""
+    # Find all Gemini API keys
     keys = list(settings.gemini_api_keys) if hasattr(settings, "gemini_api_keys") else []
     if not keys and settings.gemini_api_key:
         keys = [settings.gemini_api_key]
@@ -893,8 +902,17 @@ def apply_manifest_suggestions(manifest_data: dict, user_suggestion: str, settin
         keys.insert(0, custom_ui_key)
         
     keys = [k for k in keys if k]
-    if not keys:
-        raise ValueError("No Gemini API keys found in Settings or Environment.")
+
+    # Find all OpenAI API keys
+    openai_keys = list(settings.openai_api_keys) if hasattr(settings, "openai_api_keys") else []
+    if not openai_keys and settings.openai_api_key:
+        openai_keys = [settings.openai_api_key]
+    if os.environ.get("OPENAI_API_KEY") and os.environ.get("OPENAI_API_KEY") not in openai_keys:
+        openai_keys.insert(0, os.environ.get("OPENAI_API_KEY"))
+    openai_keys = [k for k in openai_keys if k]
+
+    if not keys and not openai_keys:
+        raise ValueError("No API keys (Gemini or OpenAI) found in Settings or Environment.")
         
     prompt = f"""
     You are an expert AI video director. Your job is to modify the following 2D Animation Scene Manifest based on the user's suggestion.
@@ -912,50 +930,50 @@ def apply_manifest_suggestions(manifest_data: dict, user_suggestion: str, settin
     5. Return ONLY a valid JSON block conforming exactly to the manifest schema. Do not enclose it in markdown blocks or anything.
     """
     
-    for key in keys:
-        if key.startswith("AQ."):
-            continue
-        try:
-            from google import genai
-            from google.genai import types
-            client = genai.Client(api_key=key)
-            response = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json"
-                )
-            )
-            data = json.loads(response.text)
-            if "timeline_scenes" in data:
-                return data
-        except Exception as e:
-            pass
+    provider_pref = settings.prompt_provider if hasattr(settings, "prompt_provider") else "gemini"
+    if provider_pref == "openai":
+        order = ["openai", "gemini"]
+    else:
+        order = ["gemini", "openai"]
 
-    # Try OpenAI fallback if Gemini keys failed or if none were valid
-    openai_keys = list(settings.openai_api_keys)
-    if not openai_keys and settings.openai_api_key:
-        openai_keys = [settings.openai_api_key]
-    if os.environ.get("OPENAI_API_KEY") and os.environ.get("OPENAI_API_KEY") not in openai_keys:
-        openai_keys.insert(0, os.environ.get("OPENAI_API_KEY"))
-    openai_keys = [k for k in openai_keys if k]
-
-    for o_key in openai_keys:
-        try:
-            from openai import OpenAI
-            client = OpenAI(api_key=o_key)
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "user", "content": prompt}
-                ],
-                response_format={"type": "json_object"}
-            )
-            data = json.loads(response.choices[0].message.content)
-            if "timeline_scenes" in data:
-                return data
-        except Exception as e:
-            pass
+    for prov in order:
+        if prov == "gemini":
+            for key in keys:
+                if key.startswith("AQ."):
+                    continue
+                try:
+                    from google import genai
+                    from google.genai import types
+                    client = genai.Client(api_key=key)
+                    response = client.models.generate_content(
+                        model="gemini-2.5-flash",
+                        contents=prompt,
+                        config=types.GenerateContentConfig(
+                            response_mime_type="application/json"
+                        )
+                    )
+                    data = json.loads(response.text)
+                    if "timeline_scenes" in data:
+                        return data
+                except Exception as e:
+                    pass
+        elif prov == "openai":
+            for o_key in openai_keys:
+                try:
+                    from openai import OpenAI
+                    client = OpenAI(api_key=o_key)
+                    response = client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[
+                            {"role": "user", "content": prompt}
+                        ],
+                        response_format={"type": "json_object"}
+                    )
+                    data = json.loads(response.choices[0].message.content)
+                    if "timeline_scenes" in data:
+                        return data
+                except Exception as e:
+                    pass
 
     raise RuntimeError("AI model (Gemini/OpenAI) failed to process manifest update suggestions.")
 
@@ -1960,8 +1978,8 @@ def render_frontdoor(settings: Settings) -> None:
                 st.session_state["music_studio_playback_singer_key"] = "arijit_singh" if one_click_gender == "Male" else "shreya_ghoshal"
             
             if st.session_state.get("gemini_api_error"):
-                st.error("⚠️ **Gemini API Call Failed (Offline Fallback Active)**\n\n"
-                         "The application fell back to the local offline template song because the Gemini API keys failed:\n"
+                st.error("⚠️ **AI API Call Failed (Offline Fallback Active)**\n\n"
+                         "The application fell back to the local offline template song because the AI API keys failed:\n"
                          f"```\n{st.session_state['gemini_api_error']}\n```\n"
                          "Please check your `.env` or system environment keys.")
 
@@ -2754,7 +2772,9 @@ def render_frontdoor(settings: Settings) -> None:
                 projects_dir.mkdir(parents=True, exist_ok=True)
             except Exception as e:
                 st.error(f"⚠️ Failed to dynamically create projects directory: {e}")
-        else:
+        
+        available_projects = []
+        if projects_dir.exists():
             available_projects = sorted([p.name for p in projects_dir.iterdir() if p.is_dir()])
             
             # Forced Creation Logic Execution
@@ -2804,14 +2824,17 @@ def render_frontdoor(settings: Settings) -> None:
                 st.rerun()
 
             # Select project workspace override index resolution
-            default_index = 0
-            override_proj = st.session_state.pop("selected_project_override", None)
-            if override_proj and override_proj in available_projects:
-                default_index = available_projects.index(override_proj)
-            elif "ghamandi_mor" in available_projects:
-                default_index = available_projects.index("ghamandi_mor")
-                
-            selected_project = st.selectbox("Select Project Workspace", options=available_projects, index=default_index)
+            if not available_projects:
+                st.info("ℹ️ No project workspaces found. Please create a new project workspace below.")
+                selected_project = None
+            else:
+                default_index = 0
+                override_proj = st.session_state.pop("selected_project_override", None)
+                if override_proj and override_proj in available_projects:
+                    default_index = available_projects.index(override_proj)
+                elif "ghamandi_mor" in available_projects:
+                    default_index = available_projects.index("ghamandi_mor")
+                selected_project = st.selectbox("Select Project Workspace", options=available_projects, index=default_index)
             
             # Create Project Expander
             with st.expander("➕ Create New Project Workspace", expanded=False):
@@ -2852,11 +2875,13 @@ def render_frontdoor(settings: Settings) -> None:
                                 st.session_state["trigger_create_project_forced"] = clean_name
                                 st.rerun()
 
-            project_path = projects_dir / selected_project
-            manifest_path = project_path / "scene_manifest.json"
+            project_path = projects_dir / selected_project if selected_project else None
+            manifest_path = project_path / "scene_manifest.json" if project_path else None
             
-            if not manifest_path.exists():
-                st.error(f"❌ scene_manifest.json not found in {project_path}")
+            if not manifest_path or not manifest_path.exists():
+                if selected_project:
+                    st.error(f"❌ scene_manifest.json not found in {project_path}")
+                manifest_data = None
             else:
                 # Load JSON
                 try:
@@ -3458,8 +3483,8 @@ def render_frontdoor(settings: Settings) -> None:
             one_click_gender = st.session_state.get("kids_song_singer_gender", "Female")
             
             if st.session_state.get("gemini_api_error"):
-                st.error("⚠️ **Gemini API Call Failed (Offline Fallback Active)**\n\n"
-                         "The application fell back to the local offline template because the Gemini API keys failed:\n"
+                st.error("⚠️ **AI API Call Failed (Offline Fallback Active)**\n\n"
+                         "The application fell back to the local offline template because the AI API keys failed:\n"
                          f"```\n{st.session_state['gemini_api_error']}\n```\n"
                          "Please check your `.env` or system environment keys.")
 
@@ -5435,7 +5460,8 @@ def expand_general_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, sin
     if "gemini_api_error" in st.session_state:
         del st.session_state["gemini_api_error"]
 
-    keys = list(settings.gemini_api_keys)
+    # Resolve all Gemini keys
+    keys = list(settings.gemini_api_keys) if hasattr(settings, "gemini_api_keys") else []
     if not keys and settings.gemini_api_key:
         keys = [settings.gemini_api_key]
     if os.environ.get("GEMINI_API_KEY") and os.environ.get("GEMINI_API_KEY") not in keys:
@@ -5447,8 +5473,15 @@ def expand_general_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, sin
         if custom_ui_key in keys:
             keys.remove(custom_ui_key)
         keys.insert(0, custom_ui_key)
-
     keys = [k for k in keys if k]
+
+    # Resolve all OpenAI keys
+    openai_keys = list(settings.openai_api_keys) if hasattr(settings, "openai_api_keys") else []
+    if not openai_keys and settings.openai_api_key:
+        openai_keys = [settings.openai_api_key]
+    if os.environ.get("OPENAI_API_KEY") and os.environ.get("OPENAI_API_KEY") not in openai_keys:
+        openai_keys.insert(0, os.environ.get("OPENAI_API_KEY"))
+    openai_keys = [k for k in openai_keys if k]
 
     system_instruction = (
         "You are a music composer and lyricist. Expand the user's idea into complete lyrics and style description. "
@@ -5478,60 +5511,60 @@ def expand_general_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, sin
         "style": "comma-separated musical style description"
     }}
     """
+    
     errors = []
+    
+    provider_pref = settings.prompt_provider if hasattr(settings, "prompt_provider") else "gemini"
+    if provider_pref == "openai":
+        order = ["openai", "gemini"]
+    else:
+        order = ["gemini", "openai"]
 
-    # 1. Try Gemini
-    for key in keys:
-        if key.startswith("AQ."):
-            errors.append(f"API key beginning with '{key[:6]}...': Starts with 'AQ.', which is an OAuth 2.0 developer access token instead of a standard Gemini API key starting with 'AIzaSy'. Standard API keys should be generated from Google AI Studio (https://aistudio.google.com).")
-            continue
-        try:
-            from google import genai
-            from google.genai import types
-            client = genai.Client(api_key=key)
-            response = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=user_prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    system_instruction=system_instruction
-                )
-            )
-            data = json.loads(response.text)
-            if "lyrics" in data and "style" in data:
-                return data["lyrics"], data["style"]
-            else:
-                errors.append(f"Gemini returned invalid JSON (missing 'lyrics' or 'style'): {response.text}")
-        except Exception as e:
-            errors.append(f"API key beginning with '{key[:6]}...': {str(e)}")
-
-    # 2. Try OpenAI Fallback
-    openai_keys = list(settings.openai_api_keys)
-    if not openai_keys and settings.openai_api_key:
-        openai_keys = [settings.openai_api_key]
-    if os.environ.get("OPENAI_API_KEY") and os.environ.get("OPENAI_API_KEY") not in openai_keys:
-        openai_keys.insert(0, os.environ.get("OPENAI_API_KEY"))
-    openai_keys = [k for k in openai_keys if k]
-
-    for o_key in openai_keys:
-        try:
-            from openai import OpenAI
-            client = OpenAI(api_key=o_key)
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": system_instruction},
-                    {"role": "user", "content": user_prompt}
-                ],
-                response_format={"type": "json_object"}
-            )
-            data = json.loads(response.choices[0].message.content)
-            if "lyrics" in data and "style" in data:
-                return data["lyrics"], data["style"]
-            else:
-                errors.append(f"OpenAI returned invalid JSON: {response.choices[0].message.content}")
-        except Exception as e:
-            errors.append(f"OpenAI key beginning with '{o_key[:7] if o_key else ''}...': {str(e)}")
+    for prov in order:
+        if prov == "gemini":
+            for key in keys:
+                if key.startswith("AQ."):
+                    errors.append(f"Gemini API key beginning with '{key[:6]}...': Starts with 'AQ.', which is an OAuth 2.0 developer access token instead of a standard Gemini API key starting with 'AIzaSy'. Standard API keys should be generated from Google AI Studio (https://aistudio.google.com).")
+                    continue
+                try:
+                    from google import genai
+                    from google.genai import types
+                    client = genai.Client(api_key=key)
+                    response = client.models.generate_content(
+                        model="gemini-2.5-flash",
+                        contents=user_prompt,
+                        config=types.GenerateContentConfig(
+                            response_mime_type="application/json",
+                            system_instruction=system_instruction
+                        )
+                    )
+                    data = json.loads(response.text)
+                    if "lyrics" in data and "style" in data:
+                        return data["lyrics"], data["style"]
+                    else:
+                        errors.append(f"Gemini returned invalid JSON (missing 'lyrics' or 'style'): {response.text}")
+                except Exception as e:
+                    errors.append(f"Gemini API key beginning with '{key[:6]}...': {str(e)}")
+        elif prov == "openai":
+            for o_key in openai_keys:
+                try:
+                    from openai import OpenAI
+                    client = OpenAI(api_key=o_key)
+                    response = client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[
+                            {"role": "system", "content": system_instruction},
+                            {"role": "user", "content": user_prompt}
+                        ],
+                        response_format={"type": "json_object"}
+                    )
+                    data = json.loads(response.choices[0].message.content)
+                    if "lyrics" in data and "style" in data:
+                        return data["lyrics"], data["style"]
+                    else:
+                        errors.append(f"OpenAI returned invalid JSON: {response.choices[0].message.content}")
+                except Exception as e:
+                    errors.append(f"OpenAI key beginning with '{o_key[:7] if o_key else ''}...': {str(e)}")
 
     if errors:
         st.session_state["gemini_api_error"] = "\n".join(errors)
@@ -5550,7 +5583,8 @@ def expand_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, singer_gend
     if "gemini_api_error" in st.session_state:
         del st.session_state["gemini_api_error"]
 
-    keys = list(settings.gemini_api_keys)
+    # Resolve all Gemini keys
+    keys = list(settings.gemini_api_keys) if hasattr(settings, "gemini_api_keys") else []
     if not keys and settings.gemini_api_key:
         keys = [settings.gemini_api_key]
     if os.environ.get("GEMINI_API_KEY") and os.environ.get("GEMINI_API_KEY") not in keys:
@@ -5562,8 +5596,15 @@ def expand_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, singer_gend
         if custom_ui_key in keys:
             keys.remove(custom_ui_key)
         keys.insert(0, custom_ui_key)
-
     keys = [k for k in keys if k]
+
+    # Resolve all OpenAI keys
+    openai_keys = list(settings.openai_api_keys) if hasattr(settings, "openai_api_keys") else []
+    if not openai_keys and settings.openai_api_key:
+        openai_keys = [settings.openai_api_key]
+    if os.environ.get("OPENAI_API_KEY") and os.environ.get("OPENAI_API_KEY") not in openai_keys:
+        openai_keys.insert(0, os.environ.get("OPENAI_API_KEY"))
+    openai_keys = [k for k in openai_keys if k]
 
     if mode == "Storytelling":
         system_instruction = (
@@ -5617,59 +5658,58 @@ def expand_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, singer_gend
         """
 
     errors = []
+    
+    provider_pref = settings.prompt_provider if hasattr(settings, "prompt_provider") else "gemini"
+    if provider_pref == "openai":
+        order = ["openai", "gemini"]
+    else:
+        order = ["gemini", "openai"]
 
-    # 1. Try Gemini
-    for key in keys:
-        if key.startswith("AQ."):
-            errors.append(f"API key beginning with '{key[:6]}...': Starts with 'AQ.', which is an OAuth 2.0 developer access token instead of a standard Gemini API key starting with 'AIzaSy'. Standard API keys should be generated from Google AI Studio (https://aistudio.google.com).")
-            continue
-        try:
-            from google import genai
-            from google.genai import types
-            client = genai.Client(api_key=key)
-            response = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=user_prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    system_instruction=system_instruction
-                )
-            )
-            data = json.loads(response.text)
-            if "lyrics" in data and "style" in data:
-                return data["lyrics"], data["style"]
-            else:
-                errors.append(f"Gemini returned invalid JSON (missing 'lyrics' or 'style'): {response.text}")
-        except Exception as e:
-            errors.append(f"API key beginning with '{key[:6]}...': {str(e)}")
-
-    # 2. Try OpenAI Fallback
-    openai_keys = list(settings.openai_api_keys)
-    if not openai_keys and settings.openai_api_key:
-        openai_keys = [settings.openai_api_key]
-    if os.environ.get("OPENAI_API_KEY") and os.environ.get("OPENAI_API_KEY") not in openai_keys:
-        openai_keys.insert(0, os.environ.get("OPENAI_API_KEY"))
-    openai_keys = [k for k in openai_keys if k]
-
-    for o_key in openai_keys:
-        try:
-            from openai import OpenAI
-            client = OpenAI(api_key=o_key)
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": system_instruction},
-                    {"role": "user", "content": user_prompt}
-                ],
-                response_format={"type": "json_object"}
-            )
-            data = json.loads(response.choices[0].message.content)
-            if "lyrics" in data and "style" in data:
-                return data["lyrics"], data["style"]
-            else:
-                errors.append(f"OpenAI returned invalid JSON: {response.choices[0].message.content}")
-        except Exception as e:
-            errors.append(f"OpenAI key beginning with '{o_key[:7] if o_key else ''}...': {str(e)}")
+    for prov in order:
+        if prov == "gemini":
+            for key in keys:
+                if key.startswith("AQ."):
+                    errors.append(f"Gemini API key beginning with '{key[:6]}...': Starts with 'AQ.', which is an OAuth 2.0 developer access token instead of a standard Gemini API key starting with 'AIzaSy'. Standard API keys should be generated from Google AI Studio (https://aistudio.google.com).")
+                    continue
+                try:
+                    from google import genai
+                    from google.genai import types
+                    client = genai.Client(api_key=key)
+                    response = client.models.generate_content(
+                        model="gemini-2.5-flash",
+                        contents=user_prompt,
+                        config=types.GenerateContentConfig(
+                            response_mime_type="application/json",
+                            system_instruction=system_instruction
+                        )
+                    )
+                    data = json.loads(response.text)
+                    if "lyrics" in data and "style" in data:
+                        return data["lyrics"], data["style"]
+                    else:
+                        errors.append(f"Gemini returned invalid JSON (missing 'lyrics' or 'style'): {response.text}")
+                except Exception as e:
+                    errors.append(f"Gemini API key beginning with '{key[:6]}...': {str(e)}")
+        elif prov == "openai":
+            for o_key in openai_keys:
+                try:
+                    from openai import OpenAI
+                    client = OpenAI(api_key=o_key)
+                    response = client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[
+                            {"role": "system", "content": system_instruction},
+                            {"role": "user", "content": user_prompt}
+                        ],
+                        response_format={"type": "json_object"}
+                    )
+                    data = json.loads(response.choices[0].message.content)
+                    if "lyrics" in data and "style" in data:
+                        return data["lyrics"], data["style"]
+                    else:
+                        errors.append(f"OpenAI returned invalid JSON: {response.choices[0].message.content}")
+                except Exception as e:
+                    errors.append(f"OpenAI key beginning with '{o_key[:7] if o_key else ''}...': {str(e)}")
 
     if errors:
         st.session_state["gemini_api_error"] = "\n".join(errors)
