@@ -2474,17 +2474,55 @@ def render_frontdoor(settings: Settings) -> None:
         else:
             available_projects = sorted([p.name for p in projects_dir.iterdir() if p.is_dir()])
             
-            # Select project
+            # Select project workspace
             selected_project = st.selectbox("Select Project Workspace", options=available_projects, index=0 if "ghamandi_mor" not in available_projects else available_projects.index("ghamandi_mor"))
             
+            # Create Project Expander
+            with st.expander("➕ Create New Project Workspace", expanded=False):
+                new_project_name = st.text_input("New Project Name (alphanumeric/underscores)", key="new_proj_name_input")
+                if st.button("Create Project", type="secondary", use_container_width=True):
+                    import re
+                    import shutil
+                    clean_name = re.sub(r'[^a-zA-Z0-9_]', '', new_project_name.strip())
+                    if not clean_name:
+                        st.error("Invalid project name. Use alphanumeric characters and underscores.")
+                    else:
+                        new_proj_dir = projects_dir / clean_name
+                        if new_proj_dir.exists():
+                            st.error(f"Project '{clean_name}' already exists.")
+                        else:
+                            try:
+                                template_project = "ghamandi_mor"
+                                if template_project not in available_projects and available_projects:
+                                    template_project = available_projects[0]
+                                    
+                                template_manifest = projects_dir / template_project / "scene_manifest.json"
+                                if not template_manifest.exists():
+                                    st.error("No template project found to copy.")
+                                else:
+                                    new_proj_dir.mkdir(parents=True, exist_ok=True)
+                                    shutil.copy(template_manifest, new_proj_dir / "scene_manifest.json")
+                                    with open(new_proj_dir / "scene_manifest.json", "r", encoding="utf-8") as f:
+                                        new_manifest = json.load(f)
+                                    new_manifest["video_id"] = clean_name
+                                    
+                                    # Ensure vocals/output folders are initialized
+                                    (new_proj_dir / "output").mkdir(exist_ok=True)
+                                    (new_proj_dir / "vocals").mkdir(exist_ok=True)
+                                    
+                                    with open(new_proj_dir / "scene_manifest.json", "w", encoding="utf-8") as f:
+                                        json.dump(new_manifest, f, indent=2, ensure_ascii=False)
+                                    st.success(f"Project '{clean_name}' created successfully!")
+                                    st.rerun()
+                            except Exception as e:
+                                st.error(f"Error creating project: {e}")
+
             project_path = projects_dir / selected_project
             manifest_path = project_path / "scene_manifest.json"
             
             if not manifest_path.exists():
                 st.error(f"❌ scene_manifest.json not found in {project_path}")
             else:
-                st.markdown("### 📋 Edit Scene Manifest Script")
-                
                 # Load JSON
                 try:
                     with open(manifest_path, "r", encoding="utf-8") as f:
@@ -2497,39 +2535,134 @@ def render_frontdoor(settings: Settings) -> None:
                     # Global config info
                     st.caption(f"Video ID: **{manifest_data.get('video_id')}** | Resolution: **{manifest_data.get('canvas_dimensions')}** | FPS: **{manifest_data.get('fps')}**")
                     
-                    # Display and allow editing scenes
+                    # 1. Render Scene Background Previews
                     scenes = manifest_data.get("timeline_scenes", [])
-                    modified = False
-                    
-                    for idx, scene in enumerate(scenes):
-                        with st.container(border=True):
-                            st.markdown(f"**Scene {scene.get('scene_sequence')}** (Background: `{scene.get('background_asset')}` | Effect: `{scene.get('camera_effect')}`)")
+                    st.markdown("### 🖼️ Scene Layout Previews")
+                    cols = st.columns(len(scenes))
+                    for s_idx, scene in enumerate(scenes):
+                        with cols[s_idx]:
+                            bg_path = orchestrator_path / scene.get("background_asset", "")
+                            st.markdown(f"**Scene {scene.get('scene_sequence')}**")
+                            if bg_path.exists():
+                                st.image(str(bg_path), use_container_width=True)
+                            st.caption(f"Camera: `{scene.get('camera_effect')}`")
                             
-                            dialogue_list = scene.get("dialogue", [])
-                            for d_idx, dial in enumerate(dialogue_list):
-                                speaker = dial.get("speaker")
-                                text = dial.get("text")
+                    st.markdown("---")
+                    
+                    # 2. Unified Script Editor (Pasting raw script text)
+                    st.markdown("### 📝 Unified Script Editor")
+                    st.caption("Edit the dialog lines for all scenes in one unified box. Format as 'Speaker: text' under '--- Scene X ---' headers.")
+                    
+                    # Generate formatted script text from manifest
+                    script_lines = []
+                    for scene in scenes:
+                        script_lines.append(f"--- Scene {scene.get('scene_sequence')} ---")
+                        for dial in scene.get("dialogue", []):
+                            script_lines.append(f"{dial.get('speaker')}: {dial.get('text')}")
+                        script_lines.append("")
+                    formatted_script = "\n".join(script_lines)
+                    
+                    # Text Area for editing
+                    edited_script = st.text_area(
+                        "Script Text",
+                        value=formatted_script,
+                        height=350,
+                        key=f"script_text_{selected_project}"
+                    )
+                    
+                    # Extract unique speakers from scene manifest
+                    unique_speakers = set()
+                    for scene in scenes:
+                        for dial in scene.get("dialogue", []):
+                            if dial.get("speaker"):
+                                unique_speakers.add(dial.get("speaker"))
                                 
-                                # Inputs for text
-                                new_text = st.text_input(
-                                    f"Line {d_idx+1} ({speaker})",
-                                    value=text,
-                                    key=f"text_{selected_project}_{idx}_{d_idx}"
-                                )
-                                if new_text != text:
-                                    dial["text"] = new_text
-                                    modified = True
+                    # Voice presets config
+                    st.markdown("#### 🎙️ Speaker Voice Assignment")
+                    voice_presets = manifest_data.get("voice_presets", {
+                        "Narrator": "Rasalgethi",
+                        "Peacock": "Charon",
+                        "Kalu": "Puck"
+                    })
+                    
+                    new_voice_presets = {}
+                    voice_options = ["Rasalgethi", "Charon", "Puck", "Kore", "Fenrir", "Aoede"]
+                    
+                    # Layout voice selectors in columns
+                    if unique_speakers:
+                        v_cols = st.columns(len(unique_speakers))
+                        for v_idx, speaker in enumerate(sorted(list(unique_speakers))):
+                            current_voice = voice_presets.get(speaker)
+                            if current_voice not in voice_options:
+                                if speaker.lower() == "narrator":
+                                    current_voice = "Rasalgethi"
+                                elif speaker.lower() in ["peacock", "proud_peacock"]:
+                                    current_voice = "Charon"
+                                elif speaker.lower() in ["kalu", "crow", "kalu_crow"]:
+                                    current_voice = "Puck"
+                                else:
+                                    current_voice = "Rasalgethi"
                                     
-                    # Save changes
-                    if modified:
-                        if st.button("💾 Save Changes to Manifest", use_container_width=True, type="primary"):
+                            with v_cols[v_idx]:
+                                selected_voice = st.selectbox(
+                                    f"Voice for {speaker}",
+                                    options=voice_options,
+                                    index=voice_options.index(current_voice),
+                                    key=f"voice_sel_{selected_project}_{speaker}"
+                                )
+                                new_voice_presets[speaker] = selected_voice
+                    else:
+                        st.info("No speakers detected in the script yet.")
+                    
+                    # Parsing function to map back to JSON
+                    def parse_script_text(script_text: str) -> dict[int, list[dict[str, str]]]:
+                        scenes_dialogue = {}
+                        current_scene = None
+                        lines = script_text.splitlines()
+                        for line in lines:
+                            line = line.strip()
+                            if not line:
+                                continue
+                            # Match scene headers like "--- Scene 1 ---"
+                            match = re.match(r"(?i)^---\s*Scene\s*(\d+)\s*---", line)
+                            if match:
+                                current_scene = int(match.group(1))
+                                scenes_dialogue[current_scene] = []
+                                continue
+                                
+                            if current_scene is not None:
+                                if ":" in line:
+                                    speaker, text = line.split(":", 1)
+                                    scenes_dialogue[current_scene].append({
+                                        "speaker": speaker.strip(),
+                                        "text": text.strip()
+                                    })
+                        return scenes_dialogue
+                    
+                    # Save changes button
+                    script_changed = (edited_script != formatted_script)
+                    voices_changed = (new_voice_presets != voice_presets)
+                    
+                    if script_changed or voices_changed:
+                        if st.button("💾 Save Script & Voice Changes", type="primary", use_container_width=True):
+                            parsed_scenes = parse_script_text(edited_script)
+                            
+                            # Map parsed dialogues back to manifest_data
+                            for scene in manifest_data.get("timeline_scenes", []):
+                                seq = scene.get("scene_sequence")
+                                if seq in parsed_scenes:
+                                    scene["dialogue"] = parsed_scenes[seq]
+                                    
+                            # Update voice presets
+                            manifest_data["voice_presets"] = new_voice_presets
+                            
                             try:
                                 with open(manifest_path, "w", encoding="utf-8") as f:
                                     json.dump(manifest_data, f, indent=2, ensure_ascii=False)
-                                st.toast("✅ Manifest updated successfully!")
+                                st.toast("✅ Project configuration updated successfully!")
                                 st.rerun()
                             except Exception as e:
-                                st.error(f"Failed to save changes: {e}")
+                                st.error(f"Failed to save manifest: {e}")
                                 
                     st.markdown("---")
                     st.markdown("### 🚀 Compile Animation Video")
@@ -2544,45 +2677,47 @@ def render_frontdoor(settings: Settings) -> None:
                         cmd = [
                             "/Users/lalitprasadsingh/.gemini/antigravity/scratch/content-automation-pipeline/.venv/bin/python",
                             "-u",
-                            str(compiler_script)
+                            str(compiler_script),
+                            f"projects/{selected_project}/scene_manifest.json"
                         ]
                         
-                        # Set up real-time log tracking
-                        log_placeholder = st.empty()
-                        log_content = []
-                        
-                        try:
-                            # Set PYTHONPATH so it can import from KidsStudio-Orchestrator root
-                            env = os.environ.copy()
-                            env["PYTHONPATH"] = str(orchestrator_path)
+                        # Set up real-time log tracking inside expander to keep UI clean
+                        with st.expander("🛠️ Live Compilation Terminal Logs", expanded=True):
+                            log_placeholder = st.empty()
+                            log_content = []
                             
-                            process = subprocess.Popen(
-                                cmd,
-                                stdout=subprocess.PIPE,
-                                stderr=subprocess.STDOUT,
-                                text=True,
-                                bufsize=1,
-                                cwd=str(orchestrator_path),
-                                env=env
-                            )
-                            
-                            while True:
-                                line = process.stdout.readline()
-                                if not line and process.poll() is not None:
-                                    break
-                                if line:
-                                    log_content.append(line)
-                                    log_placeholder.code("".join(log_content[-20:]), language="bash")
-                                    
-                            rc = process.poll()
-                            if rc == 0:
-                                st.success("🎉 Video compiled successfully!")
-                                st.toast("Success!")
-                                st.rerun()
-                            else:
-                                st.error(f"❌ Compiler failed with exit code: {rc}")
-                        except Exception as e:
-                            st.error(f"Execution error: {e}")
+                            try:
+                                # Set PYTHONPATH so it can import from KidsStudio-Orchestrator root
+                                env = os.environ.copy()
+                                env["PYTHONPATH"] = str(orchestrator_path)
+                                
+                                process = subprocess.Popen(
+                                    cmd,
+                                    stdout=subprocess.PIPE,
+                                    stderr=subprocess.STDOUT,
+                                    text=True,
+                                    bufsize=1,
+                                    cwd=str(orchestrator_path),
+                                    env=env
+                                )
+                                
+                                while True:
+                                    line = process.stdout.readline()
+                                    if not line and process.poll() is not None:
+                                        break
+                                    if line:
+                                        log_content.append(line)
+                                        log_placeholder.code("".join(log_content[-20:]), language="bash")
+                                        
+                                rc = process.poll()
+                                if rc == 0:
+                                    st.success("🎉 Video compiled successfully!")
+                                    st.toast("Success!")
+                                    st.rerun()
+                                else:
+                                    st.error(f"❌ Compiler failed with exit code: {rc}")
+                            except Exception as e:
+                                st.error(f"Execution error: {e}")
                             
                     # Render final video preview
                     output_video = project_path / "output" / "ghamandi_mor_final.mp4"
