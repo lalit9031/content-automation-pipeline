@@ -2729,6 +2729,15 @@ def render_frontdoor(settings: Settings) -> None:
                         st.markdown("---")
                         st.markdown("### 📺 Compiled Video Preview")
                         st.video(str(output_video))
+                        with open(output_video, "rb") as video_file:
+                            st.download_button(
+                                label="📥 Download Compiled Video",
+                                data=video_file,
+                                file_name=f"{selected_project}_final.mp4",
+                                mime="video/mp4",
+                                use_container_width=True,
+                                key=f"download_btn_{selected_project}"
+                            )
                         st.caption(f"Location: `{output_video}` (Size: {output_video.stat().st_size / (1024*1024):.2f} MB)")
 
     elif active_p == "Image":
