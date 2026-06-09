@@ -12,3 +12,4 @@ google-auth-oauthlib>=1.2.2
 pydub>=0.25.1
 scipy>=1.13.0
 rvc-python>=0.1.5
+pillow>=10.4.0,<11
