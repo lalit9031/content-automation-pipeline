@@ -761,7 +761,221 @@ def render_preview_panel(overview: dict[str, object], day_root: Path) -> None:
             )
 
 
+def generate_manifest_from_scratch(topic: str, video_id: str, settings) -> dict:
+    """Uses Gemini to generate a brand new 4-scene manifest from a story topic."""
+    # Find all API keys
+    keys = list(settings.gemini_api_keys) if hasattr(settings, "gemini_api_keys") else []
+    if not keys and settings.gemini_api_key:
+        keys = [settings.gemini_api_key]
+    if os.environ.get("GEMINI_API_KEY") and os.environ.get("GEMINI_API_KEY") not in keys:
+        keys.insert(0, os.environ.get("GEMINI_API_KEY"))
+    
+    custom_ui_key = st.session_state.get("custom_gemini_api_key", "").strip()
+    if custom_ui_key:
+        if custom_ui_key in keys:
+            keys.remove(custom_ui_key)
+        keys.insert(0, custom_ui_key)
+        
+    keys = [k for k in keys if k]
+    if not keys:
+        raise ValueError("No Gemini API keys found in Settings or Environment.")
+        
+    prompt = f"""
+    Create a highly engaging 4-scene kids animation script/manifest based on the topic: "{topic}".
+    The output must strictly conform to the following schema structure:
+    {{
+      "video_id": "{video_id}",
+      "canvas_dimensions": [1280, 720],
+      "fps": 24,
+      "global_bgm": "assets/character/bg_music.mp3",
+      "voice_presets": {{
+          "Narrator": "Rasalgethi",
+          "Character1_Name": "Charon",
+          "Character2_Name": "Puck"
+      }},
+      "timeline_scenes": [
+        {{
+          "scene_sequence": 1,
+          "background_asset": "assets/environments/thirsty_crow_garden.png",
+          "camera_effect": "zoom_in",
+          "dialogue": [
+            {{ "speaker": "Narrator", "text": "एक कौआ बहुत प्यासा था..." }}
+          ],
+          "scene_characters": [
+            {{
+              "folder_name": "thirsty_crow",
+              "scale_factor": 250,
+              "motion_path": {{
+                "enabled": false,
+                "start_position": [500, 300],
+                "start_scale": 1.0
+              }},
+              "states": [
+                {{ "time_range": [0.0, 100.0], "animation_state": "idle" }}
+              ]
+            }}
+          ]
+        }}
+      ]
+    }}
+    
+    Rules:
+    1. Structure must have exactly 4 scenes.
+    2. Write the dialogues/text in Hindi (since this is a kids Hindi animation studio) using Devanagari script.
+    3. Specify characters and coordinate placements that match the scene action.
+    4. For "background_asset", specify a descriptive path under "assets/environments/" like "assets/environments/[topic_slug]_bg.png".
+    5. For characters, specify folder names under "assets/sprites/" like "thirsty_crow".
+    6. Return ONLY the valid JSON block conforming exactly to this structure. No markdown formatting.
+    """
+    
+    for key in keys:
+        try:
+            from google import genai
+            from google.genai import types
+            client = genai.Client(api_key=key)
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json"
+                )
+            )
+            data = json.loads(response.text)
+            if "timeline_scenes" in data:
+                return data
+        except Exception as e:
+            pass
+            
+    raise RuntimeError("Gemini failed to generate manifest from topic.")
+
+
+def apply_manifest_suggestions(manifest_data: dict, user_suggestion: str, settings) -> dict:
+    """Uses Gemini to rewrite the scene manifest JSON based on user suggestions."""
+    # Find all API keys
+    keys = list(settings.gemini_api_keys) if hasattr(settings, "gemini_api_keys") else []
+    if not keys and settings.gemini_api_key:
+        keys = [settings.gemini_api_key]
+    if os.environ.get("GEMINI_API_KEY") and os.environ.get("GEMINI_API_KEY") not in keys:
+        keys.insert(0, os.environ.get("GEMINI_API_KEY"))
+    
+    custom_ui_key = st.session_state.get("custom_gemini_api_key", "").strip()
+    if custom_ui_key:
+        if custom_ui_key in keys:
+            keys.remove(custom_ui_key)
+        keys.insert(0, custom_ui_key)
+        
+    keys = [k for k in keys if k]
+    if not keys:
+        raise ValueError("No Gemini API keys found in Settings or Environment.")
+        
+    prompt = f"""
+    You are an expert AI video director. Your job is to modify the following 2D Animation Scene Manifest based on the user's suggestion.
+    
+    User's suggestion: "{user_suggestion}"
+    
+    Current Scene Manifest JSON:
+    {json.dumps(manifest_data, indent=2, ensure_ascii=False)}
+    
+    Rules for output:
+    1. Maintain the exact JSON schema.
+    2. Update dialogues, visual backgrounds, speaker names, voice assignments, and character specifications (like scales, coordinates, folder names) to align with the user's suggestion.
+    3. If the user wants a new background (e.g. snowy mountains), change the "background_asset" value to a matching PNG name under "assets/environments/" (e.g., "assets/environments/snowy_mountains.png").
+    4. If the user wants new characters (e.g. a cute rabbit), update the "folder_name" of that character inside "scene_characters" (e.g., "cute_rabbit") and ensure they are added to the dialogue and character lists.
+    5. Return ONLY a valid JSON block conforming exactly to the manifest schema. Do not enclose it in markdown blocks or anything.
+    """
+    
+    for key in keys:
+        try:
+            from google import genai
+            from google.genai import types
+            client = genai.Client(api_key=key)
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json"
+                )
+            )
+            data = json.loads(response.text)
+            if "timeline_scenes" in data:
+                return data
+        except Exception as e:
+            pass
+            
+    raise RuntimeError("Gemini failed to process manifest update suggestions.")
+
+
+def generate_missing_assets(manifest_data: dict, orchestrator_path: Path, settings) -> list[str]:
+    """Generates any missing background or character images referenced in the manifest."""
+    import shutil
+    generated_assets = []
+    
+    # 1. Backgrounds
+    for scene in manifest_data.get("timeline_scenes", []):
+        bg_asset = scene.get("background_asset", "")
+        if bg_asset:
+            bg_full_path = orchestrator_path / bg_asset
+            if not bg_full_path.exists():
+                bg_full_path.parent.mkdir(parents=True, exist_ok=True)
+                bg_name = bg_full_path.stem.replace("_", " ")
+                prompt = f"A gorgeous, vibrant, colorful {bg_name} background illustration, high-end 3D Pixar claymation animation style, clean detail, no text, widescreen 16:9, depth of field."
+                
+                try:
+                    from content_pipeline.bots.image import ImageVariant, image_provider
+                    provider = image_provider(replace(settings, image_provider=st.session_state.get("image_provider_choice", "flux")))
+                    variant = ImageVariant("16:9", 1280, 720, "bg_asset")
+                    img_bytes = provider.create(prompt, variant)
+                    bg_full_path.write_bytes(img_bytes)
+                    generated_assets.append(f"Background: {bg_asset}")
+                except Exception as e:
+                    st.warning(f"Failed to generate background '{bg_asset}': {e}")
+                    
+    # 2. Characters
+    for scene in manifest_data.get("timeline_scenes", []):
+        for char in scene.get("scene_characters", []):
+            folder_name = char.get("folder_name", "")
+            if folder_name:
+                char_dir = orchestrator_path / "assets" / "sprites" / folder_name
+                body_path = char_dir / "body.png"
+                if not body_path.exists():
+                    char_dir.mkdir(parents=True, exist_ok=True)
+                    char_name = folder_name.replace("_", " ")
+                    prompt = f"A cute, funny standalone {char_name} character, full body view, centered, solid flat green background for chroma keying, high-end 3D Pixar claymation animation style, vibrant colors, clear outlines."
+                    
+                    try:
+                        from content_pipeline.bots.image import ImageVariant, image_provider
+                        provider = image_provider(replace(settings, image_provider=st.session_state.get("image_provider_choice", "flux")))
+                        variant = ImageVariant("1:1", 1024, 1024, "char_asset")
+                        img_bytes = provider.create(prompt, variant)
+                        body_path.write_bytes(img_bytes)
+                        
+                        # Copy talk shapes from kalu_crow template
+                        talk_dir = char_dir / "talk"
+                        talk_dir.mkdir(exist_ok=True)
+                        template_talk = orchestrator_path / "assets" / "sprites" / "kalu_crow" / "talk"
+                        if template_talk.exists():
+                            for f in template_talk.iterdir():
+                                if f.is_file():
+                                    shutil.copy(f, talk_dir / f.name)
+                                    
+                        # Copy and update metadata.json
+                        template_meta = orchestrator_path / "assets" / "sprites" / "kalu_crow" / "metadata.json"
+                        if template_meta.exists():
+                            with open(template_meta, "r") as f:
+                                meta_data = json.load(f)
+                            meta_data["character_key"] = folder_name.upper()
+                            with open(char_dir / "metadata.json", "w") as f:
+                                json.dump(meta_data, f, indent=2)
+                                
+                        generated_assets.append(f"Character: {folder_name}")
+                    except Exception as e:
+                        st.warning(f"Failed to generate character body for '{folder_name}': {e}")
+                        
+    return generated_assets
+
+
 def render_frontdoor(settings: Settings) -> None:
+    global json
     latest_day = latest_daily_day(settings.output_dir)
     default_day = date.fromisoformat(latest_day) if latest_day else date.today()
     latest_overview = day_overview(settings.output_dir / "daily" / latest_day) if latest_day else {"file_count": 0}
@@ -1306,30 +1520,122 @@ def render_frontdoor(settings: Settings) -> None:
     except Exception:
         pass
 
-    # Render horizontal top bar page navigation inside columns
-    nav_cols = st.columns(11)
+    # Render horizontal top bar page navigation inside columns (Categorized)
+    nav_cols = st.columns(6)
 
-    pages = ["Dashboard", "Music", "Video", "Image", "Kids", "Speech", "Run", "Cloner", "Distribution", "Prompts", "Files"]
-    icons = [
+    categories = ["Dashboard", "Music", "Video", "Image", "Automation", "Files"]
+    category_icons = [
         "📊 Dashboard",
-        "🎵 Music Studio",
-        "🎬 Video Studio",
-        "🎨 Image Studio",
-        "👶 Kids Studio",
-        "🎙️ Speech Studio",
-        "⚙️ Run Pipeline",
-        "🎙️ Voice Cloner",
-        "🚀 Social Publish",
-        "💡 Daily Prompts",
+        "🎵 Music",
+        "🎬 Video",
+        "🎨 Image",
+        "⚙️ Automation",
         "📁 Files"
     ]
 
-    for i, (page, icon) in enumerate(zip(pages, icons)):
+    # Initialize active category if not set
+    if "active_category" not in st.session_state:
+        initial_cat = "Dashboard"
+        cur_page = st.session_state.get("active_page", "Dashboard")
+        if cur_page in ["Music", "Kids", "Speech", "Cloner"]:
+            initial_cat = "Music"
+        elif cur_page in ["Video", "2DVideo"]:
+            initial_cat = "Video"
+        elif cur_page == "Image":
+            initial_cat = "Image"
+        elif cur_page in ["Run", "Distribution", "Prompts"]:
+            initial_cat = "Automation"
+        elif cur_page == "Files":
+            initial_cat = "Files"
+        st.session_state["active_category"] = initial_cat
+
+    for i, (cat, icon) in enumerate(zip(categories, category_icons)):
         with nav_cols[i]:
-            is_active = st.session_state["active_page"] == page
-            if st.button(icon, key=f"nav_{page}", use_container_width=True, type="primary" if is_active else "secondary"):
-                st.session_state["active_page"] = page
+            is_active = st.session_state["active_category"] == cat
+            if st.button(icon, key=f"nav_cat_{cat}", use_container_width=True, type="primary" if is_active else "secondary"):
+                st.session_state["active_category"] = cat
+                if cat == "Music":
+                    st.session_state["active_music_page"] = "Music Studio"
+                elif cat == "Video":
+                    st.session_state["active_video_page"] = "Current Video Studio"
+                elif cat == "Automation":
+                    st.session_state["active_automation_page"] = "Run Pipeline"
                 st.rerun()
+
+    active_cat = st.session_state["active_category"]
+    
+    # Render sub-navigation below top bar if category has subpages
+    if active_cat == "Music":
+        st.session_state.setdefault("active_music_page", "Music Studio")
+        sub_cols = st.columns(4)
+        sub_pages = ["Music Studio", "Kids Music Studio", "Speech Studio", "Voice Cloner"]
+        sub_icons = ["🎵 Music Studio", "👶 Kids Music Studio", "🎙️ Speech Studio", "🎙️ Voice Cloner"]
+        for i, (page, icon) in enumerate(zip(sub_pages, sub_icons)):
+            with sub_cols[i]:
+                is_active = st.session_state["active_music_page"] == page
+                if st.button(icon, key=f"sub_music_{page}", use_container_width=True, type="primary" if is_active else "secondary"):
+                    st.session_state["active_music_page"] = page
+                    st.rerun()
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+    elif active_cat == "Video":
+        st.session_state.setdefault("active_video_page", "Current Video Studio")
+        sub_cols = st.columns(2)
+        sub_pages = ["Current Video Studio", "2D Video Studio"]
+        sub_icons = ["🎬 Current Video Studio", "🎥 2D Video Studio"]
+        for i, (page, icon) in enumerate(zip(sub_pages, sub_icons)):
+            with sub_cols[i]:
+                is_active = st.session_state["active_video_page"] == page
+                if st.button(icon, key=f"sub_video_{page}", use_container_width=True, type="primary" if is_active else "secondary"):
+                    st.session_state["active_video_page"] = page
+                    st.rerun()
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+    elif active_cat == "Automation":
+        st.session_state.setdefault("active_automation_page", "Run Pipeline")
+        sub_cols = st.columns(3)
+        sub_pages = ["Run Pipeline", "Social Publish", "Daily Prompts"]
+        sub_icons = ["⚙️ Run Pipeline", "🚀 Social Publish", "💡 Daily Prompts"]
+        for i, (page, icon) in enumerate(zip(sub_pages, sub_icons)):
+            with sub_cols[i]:
+                is_active = st.session_state["active_automation_page"] == page
+                if st.button(icon, key=f"sub_auto_{page}", use_container_width=True, type="primary" if is_active else "secondary"):
+                    st.session_state["active_automation_page"] = page
+                    st.rerun()
+        st.markdown("<br>", unsafe_allow_html=True)
+
+    # Resolve active_p variable to sync with original logic
+    if active_cat == "Dashboard":
+        active_p = "Dashboard"
+    elif active_cat == "Music":
+        subpage_mapping = {
+            "Music Studio": "Music",
+            "Kids Music Studio": "Kids",
+            "Speech Studio": "Speech",
+            "Voice Cloner": "Cloner"
+        }
+        active_p = subpage_mapping.get(st.session_state["active_music_page"], "Music")
+    elif active_cat == "Video":
+        subpage_mapping = {
+            "Current Video Studio": "Video",
+            "2D Video Studio": "2DVideo"
+        }
+        active_p = subpage_mapping.get(st.session_state["active_video_page"], "Video")
+    elif active_cat == "Image":
+        active_p = "Image"
+    elif active_cat == "Automation":
+        subpage_mapping = {
+            "Run Pipeline": "Run",
+            "Social Publish": "Distribution",
+            "Daily Prompts": "Prompts"
+        }
+        active_p = subpage_mapping.get(st.session_state["active_automation_page"], "Run")
+    elif active_cat == "Files":
+        active_p = "Files"
+    else:
+        active_p = "Dashboard"
+        
+    st.session_state["active_page"] = active_p
 
     with st.expander("⚙️ Studio Settings & Date Controls", expanded=False):
         # 1. Output directory
@@ -1354,6 +1660,16 @@ def render_frontdoor(settings: Settings) -> None:
             "Select Target YouTube Channel",
             options=channel_options,
             key="active_youtube_channel"
+        )
+
+        st.markdown("---")
+        st.markdown("#### 🔑 Custom Gemini API Configuration")
+        st.info("If the pre-configured keys in the `.env` file are rate-limited or exhausted, enter your own Gemini API key below. It will take absolute highest priority.")
+        st.text_input(
+            "Custom Gemini API Key",
+            type="password",
+            key="custom_gemini_api_key",
+            help="Your personal key starting with AIzaSy... (kept securely in session memory and not written to disk)."
         )
 
         st.markdown("---")
@@ -1569,8 +1885,31 @@ def render_frontdoor(settings: Settings) -> None:
         with st.expander("⚡ One-Click Song Creator", expanded=True):
             st.markdown("<small style='color: #94a3b8;'>Type a simple idea (e.g., 'create an emotional song') and generate a complete song in one click.</small>", unsafe_allow_html=True)
             one_click_prompt = st.text_input("Song Idea", placeholder="e.g., create an emotional song", key="music_studio_one_click_song_idea")
-            one_click_gender = st.selectbox("Singer Voice Gender Selection", ["Female", "Male"], key="music_studio_one_click_singer_gender")
+            lang = st.session_state.get("music_studio_language", "English")
+            if lang in ["Hindi", "Hinglish"]:
+                from content_pipeline.bots.singer_manifest import SINGER_MANIFEST
+                singer_opts = {v["display_name"]: k for k, v in SINGER_MANIFEST.items()}
+                selected_display = st.selectbox(
+                    "Select Playback Singer Voice Profile:",
+                    options=list(singer_opts.keys()),
+                    key="music_studio_playback_singer_display"
+                )
+                active_singer = singer_opts[selected_display]
+                st.session_state["music_studio_playback_singer_key"] = active_singer
+                
+                singer_gender = SINGER_MANIFEST[active_singer]["gender"].capitalize()
+                st.session_state["music_studio_one_click_singer_gender"] = singer_gender
+                one_click_gender = singer_gender
+            else:
+                one_click_gender = st.selectbox("Singer Voice Gender Selection", ["Female", "Male"], key="music_studio_one_click_singer_gender")
+                st.session_state["music_studio_playback_singer_key"] = "arijit_singh" if one_click_gender == "Male" else "shreya_ghoshal"
             
+            if st.session_state.get("gemini_api_error"):
+                st.error("⚠️ **Gemini API Call Failed (Offline Fallback Active)**\n\n"
+                         "The application fell back to the local offline template song because the Gemini API keys failed:\n"
+                         f"```\n{st.session_state['gemini_api_error']}\n```\n"
+                         "Please check your `.env` or system environment keys.")
+
             if st.button("🚀 Create & Generate Song Draft", type="primary", use_container_width=True, key="music_studio_btn_one_click"):
                 if not one_click_prompt.strip():
                     st.warning("Please enter a song idea first.")
@@ -1578,6 +1917,8 @@ def render_frontdoor(settings: Settings) -> None:
                     with st.spinner("Writing lyrics and composing style..."):
                         lang = st.session_state.get("music_studio_language", "English")
                         lyrics_exp, desc_exp = expand_general_prompt_to_lyrics_and_style_dynamic(settings, one_click_prompt, one_click_gender, lang)
+                        if lang in ["Hindi", "Hinglish"]:
+                            desc_exp = clean_style_description_for_instrumental(desc_exp)
                         st.session_state["music_studio_lyrics"] = lyrics_exp
                         st.session_state["music_studio_description"] = desc_exp
                         # Force refresh fields
@@ -2078,6 +2419,18 @@ def render_frontdoor(settings: Settings) -> None:
                             st.info(f"📝 Transliterated Devanagari Lyrics:\n{sanitized_lyrics}")
                         
                         st.write("🔀 Language: Hindi detected. Bypassing Hugging Face Lyria to use Native Audio Pipeline...")
+                        import sys
+                        import importlib
+                        if "content_pipeline.bots.singing_synthesis" in sys.modules:
+                            importlib.reload(sys.modules["content_pipeline.bots.singing_synthesis"])
+                        if "content_pipeline.bots.kids_studio_manifest_core" in sys.modules:
+                            importlib.reload(sys.modules["content_pipeline.bots.kids_studio_manifest_core"])
+                        if "content_pipeline.bots.kids_studio_core" in sys.modules:
+                            importlib.reload(sys.modules["content_pipeline.bots.kids_studio_core"])
+                        if "content_pipeline.bots.singer_manifest" in sys.modules:
+                            importlib.reload(sys.modules["content_pipeline.bots.singer_manifest"])
+                        if "content_pipeline.bots.audio" in sys.modules:
+                            importlib.reload(sys.modules["content_pipeline.bots.audio"])
                         from content_pipeline.bots.audio import generate_hindi_song_via_native_audio
                         
                         out_path = PROJECT_ROOT / "output" / "Music_Studio_Generated_Song.mp3"
@@ -2094,7 +2447,8 @@ def render_frontdoor(settings: Settings) -> None:
                             genre=genre,
                             temperature=temp,
                             cfg_coef=cfg,
-                            style_description=desc
+                            style_description=desc,
+                            singer_key=st.session_state.get("music_studio_playback_singer_key", "arijit_singh")
                         )
                         st.session_state["music_studio_generated_mp3"] = str(out_path)
                         st.success("🎉 Hindi Song generated successfully using Native Audio Pipeline!")
@@ -2315,6 +2669,460 @@ def render_frontdoor(settings: Settings) -> None:
                 if scene_img_file.exists():
                     st.image(str(scene_img_file), caption=f"Pristine slide illustration", use_container_width=True)
 
+    elif active_p == "2DVideo":
+        st.markdown(
+            """
+            <div class="hero" style="background: linear-gradient(135deg, rgba(236,72,153,0.15), rgba(168,85,247,0.15)); border: 1px solid rgba(236,72,153,0.3); margin-bottom: 24px;">
+              <h1 style="font-size: 32px;">🎬 2D Video Animation Studio</h1>
+              <p style="margin-top: 6px; font-size: 14px;">Procedural layout, automated lip-syncing, and video rendering engine.</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        orchestrator_path = Path("/Users/lalitprasadsingh/.gemini/antigravity/scratch/KidsStudio-Orchestrator")
+        projects_dir = orchestrator_path / "projects"
+        
+        if not projects_dir.exists():
+            st.error(f"❌ Projects directory not found at: {projects_dir}")
+        else:
+            available_projects = sorted([p.name for p in projects_dir.iterdir() if p.is_dir()])
+            
+            # Forced Creation Logic Execution
+            forced_create = st.session_state.pop("trigger_create_project_forced", None)
+            if forced_create:
+                clean_name = forced_create
+                new_proj_dir = projects_dir / clean_name
+                new_proj_dir.mkdir(parents=True, exist_ok=True)
+                (new_proj_dir / "output").mkdir(exist_ok=True)
+                (new_proj_dir / "vocals").mkdir(exist_ok=True)
+                
+                topic = st.session_state.get("new_proj_topic_input", "").strip()
+                manifest_created = False
+                
+                if topic:
+                    with st.spinner(f"Generating brand new story for '{topic}'..."):
+                        try:
+                            new_manifest = generate_manifest_from_scratch(topic, clean_name, settings)
+                            with open(new_proj_dir / "scene_manifest.json", "w", encoding="utf-8") as f:
+                                json.dump(new_manifest, f, indent=2, ensure_ascii=False)
+                            manifest_created = True
+                            
+                            # Generate any missing assets immediately
+                            with st.spinner("Generating background & character illustration assets..."):
+                                generated = generate_missing_assets(new_manifest, orchestrator_path, settings)
+                                if generated:
+                                    st.success(f"Generated assets: {', '.join(generated)}")
+                        except Exception as e:
+                            st.error(f"Failed to generate story via Gemini: {e}. Falling back to default template.")
+                
+                if not manifest_created:
+                    # Fallback to copy ghamandi_mor as a baseline template structure
+                    template_manifest = projects_dir / "ghamandi_mor" / "scene_manifest.json"
+                    if template_manifest.exists():
+                        import shutil
+                        shutil.copy(template_manifest, new_proj_dir / "scene_manifest.json")
+                        with open(new_proj_dir / "scene_manifest.json", "r", encoding="utf-8") as f:
+                            new_manifest = json.load(f)
+                        new_manifest["video_id"] = clean_name
+                        with open(new_proj_dir / "scene_manifest.json", "w", encoding="utf-8") as f:
+                            json.dump(new_manifest, f, indent=2, ensure_ascii=False)
+                    else:
+                        st.error("Baseline template 'ghamandi_mor' not found to initialize manifest.")
+                
+                st.success(f"Workspace '{clean_name}' initialized successfully!")
+                st.session_state["selected_project_override"] = clean_name
+                st.rerun()
+
+            # Select project workspace override index resolution
+            default_index = 0
+            override_proj = st.session_state.pop("selected_project_override", None)
+            if override_proj and override_proj in available_projects:
+                default_index = available_projects.index(override_proj)
+            elif "ghamandi_mor" in available_projects:
+                default_index = available_projects.index("ghamandi_mor")
+                
+            selected_project = st.selectbox("Select Project Workspace", options=available_projects, index=default_index)
+            
+            # Create Project Expander
+            with st.expander("➕ Create New Project Workspace", expanded=False):
+                new_project_name = st.text_input("New Project Name (alphanumeric/underscores)", key="new_proj_name_input")
+                new_project_topic = st.text_area("Story Topic / Idea (e.g. 'A thirsty crow finding water in a pitcher', leave blank for template)", key="new_proj_topic_input", height=70)
+                
+                # Check for confirmation state
+                confirm_proj = st.session_state.get("project_creation_confirm")
+                if confirm_proj:
+                    st.warning(f"⚠️ A workspace named '{confirm_proj}' already exists. Do you want to load the existing workspace or overwrite and create a completely fresh one?")
+                    confirm_cols = st.columns(2)
+                    with confirm_cols[0]:
+                        if st.button("📂 Load Existing Workspace", key="confirm_btn_load"):
+                            st.session_state["project_creation_confirm"] = None
+                            st.session_state["selected_project_override"] = confirm_proj
+                            st.rerun()
+                    with confirm_cols[1]:
+                        if st.button("🔥 Overwrite & Create Fresh", key="confirm_btn_overwrite"):
+                            import shutil
+                            shutil.rmtree(projects_dir / confirm_proj, ignore_errors=True)
+                            st.session_state["project_creation_confirm"] = None
+                            st.session_state["trigger_create_project_forced"] = confirm_proj
+                            st.rerun()
+                
+                # Main Creation Button
+                if not confirm_proj:
+                    if st.button("Create Project", type="secondary", key="btn_create_proj_main", use_container_width=True):
+                        import re
+                        clean_name = re.sub(r'[^a-zA-Z0-9_]', '', new_project_name.strip())
+                        if not clean_name:
+                            st.error("Invalid project name. Use alphanumeric characters and underscores.")
+                        else:
+                            new_proj_dir = projects_dir / clean_name
+                            if new_proj_dir.exists():
+                                st.session_state["project_creation_confirm"] = clean_name
+                                st.rerun()
+                            else:
+                                st.session_state["trigger_create_project_forced"] = clean_name
+                                st.rerun()
+
+            project_path = projects_dir / selected_project
+            manifest_path = project_path / "scene_manifest.json"
+            
+            if not manifest_path.exists():
+                st.error(f"❌ scene_manifest.json not found in {project_path}")
+            else:
+                # Load JSON
+                try:
+                    with open(manifest_path, "r", encoding="utf-8") as f:
+                        manifest_data = json.load(f)
+                except Exception as e:
+                    st.error(f"Error reading manifest: {e}")
+                    manifest_data = None
+                    
+                if manifest_data:
+                    # Global config info
+                    st.caption(f"Video ID: **{manifest_data.get('video_id')}** | Resolution: **{manifest_data.get('canvas_dimensions')}** | FPS: **{manifest_data.get('fps')}**")
+                    
+                    # 1. Render Scene Background Previews
+                    scenes = manifest_data.get("timeline_scenes", [])
+                    st.markdown("### 🖼️ Scene Layout Previews")
+                    cols = st.columns(len(scenes))
+                    for s_idx, scene in enumerate(scenes):
+                        with cols[s_idx]:
+                            bg_path = orchestrator_path / scene.get("background_asset", "")
+                            st.markdown(f"**Scene {scene.get('scene_sequence')}**")
+                            if bg_path.exists():
+                                st.image(str(bg_path), use_container_width=True)
+                            st.caption(f"Camera: `{scene.get('camera_effect')}`")
+                            
+                    # Render character body images in a row
+                    unique_characters = {}
+                    for scene in scenes:
+                        for char in scene.get("scene_characters", []):
+                            fname = char.get("folder_name")
+                            if fname and fname not in unique_characters:
+                                unique_characters[fname] = char
+                                
+                    if unique_characters:
+                        st.markdown("#### 👥 Character Sprites Used")
+                        c_cols = st.columns(len(unique_characters))
+                        for c_idx, fname in enumerate(sorted(unique_characters.keys())):
+                            with c_cols[c_idx]:
+                                img_path = orchestrator_path / "assets" / "sprites" / fname / "body.png"
+                                if not img_path.exists():
+                                    img_path = orchestrator_path / "assets" / "character" / f"{fname}_body.png"
+                                if not img_path.exists():
+                                    img_path = orchestrator_path / "assets" / "character" / f"{fname}.png"
+                                short_name = fname.replace("_crow", "").replace("proud_", "")
+                                if not img_path.exists():
+                                    img_path = orchestrator_path / "assets" / "character" / f"{short_name}_body.png"
+                                if not img_path.exists():
+                                    img_path = orchestrator_path / "assets" / "character" / f"{short_name}.png"
+                                    
+                                if img_path.exists():
+                                    st.image(str(img_path), caption=f"Sprite: {fname}", use_container_width=True)
+                                else:
+                                    st.caption(f"Sprite: {fname} (No body image found)")
+                            
+                    st.markdown("---")
+                    
+                    # 2. Unified Script Editor (Pasting raw script text)
+                    st.markdown("### 📝 Unified Script Editor")
+                    st.caption("Edit the dialog lines for all scenes in one unified box. Format as 'Speaker: text' under '--- Scene X ---' headers.")
+                    
+                    # Generate formatted script text from manifest
+                    script_lines = []
+                    for scene in scenes:
+                        script_lines.append(f"--- Scene {scene.get('scene_sequence')} ---")
+                        for dial in scene.get("dialogue", []):
+                            script_lines.append(f"{dial.get('speaker')}: {dial.get('text')}")
+                        script_lines.append("")
+                    formatted_script = "\n".join(script_lines)
+                    
+                    # Text Area for editing
+                    edited_script = st.text_area(
+                        "Script Text",
+                        value=formatted_script,
+                        height=350,
+                        key=f"script_text_{selected_project}"
+                    )
+                    
+                    # Extract unique speakers from scene manifest
+                    unique_speakers = set()
+                    for scene in scenes:
+                        for dial in scene.get("dialogue", []):
+                            if dial.get("speaker"):
+                                unique_speakers.add(dial.get("speaker"))
+                                
+                    # Voice presets config
+                    st.markdown("#### 🎙️ Speaker Voice Assignment")
+                    voice_presets = manifest_data.get("voice_presets", {
+                        "Narrator": "Rasalgethi",
+                        "Peacock": "Charon",
+                        "Kalu": "Puck"
+                    })
+                    
+                    new_voice_presets = {}
+                    voice_options = ["Rasalgethi", "Charon", "Puck", "Kore", "Fenrir", "Aoede"]
+                    
+                    # Layout voice selectors in columns
+                    if unique_speakers:
+                        v_cols = st.columns(len(unique_speakers))
+                        for v_idx, speaker in enumerate(sorted(list(unique_speakers))):
+                            current_voice = voice_presets.get(speaker)
+                            if current_voice not in voice_options:
+                                if speaker.lower() == "narrator":
+                                    current_voice = "Rasalgethi"
+                                elif speaker.lower() in ["peacock", "proud_peacock"]:
+                                    current_voice = "Charon"
+                                elif speaker.lower() in ["kalu", "crow", "kalu_crow"]:
+                                    current_voice = "Puck"
+                                else:
+                                    current_voice = "Rasalgethi"
+                                    
+                            with v_cols[v_idx]:
+                                selected_voice = st.selectbox(
+                                    f"Voice for {speaker}",
+                                    options=voice_options,
+                                    index=voice_options.index(current_voice),
+                                    key=f"voice_sel_{selected_project}_{speaker}"
+                                )
+                                new_voice_presets[speaker] = selected_voice
+                    else:
+                        st.info("No speakers detected in the script yet.")
+                    
+                    # Parsing function to map back to JSON
+                    def parse_script_text(script_text: str) -> dict[int, list[dict[str, str]]]:
+                        scenes_dialogue = {}
+                        current_scene = None
+                        lines = script_text.splitlines()
+                        for line in lines:
+                            line = line.strip()
+                            if not line:
+                                continue
+                            # Match scene headers like "--- Scene 1 ---"
+                            match = re.match(r"(?i)^---\s*Scene\s*(\d+)\s*---", line)
+                            if match:
+                                current_scene = int(match.group(1))
+                                scenes_dialogue[current_scene] = []
+                                continue
+                                
+                            if current_scene is not None:
+                                if ":" in line:
+                                    speaker, text = line.split(":", 1)
+                                    scenes_dialogue[current_scene].append({
+                                        "speaker": speaker.strip(),
+                                        "text": text.strip()
+                                    })
+                        return scenes_dialogue
+                    
+                    # Save changes button
+                    script_changed = (edited_script != formatted_script)
+                    voices_changed = (new_voice_presets != voice_presets)
+                    
+                    if script_changed or voices_changed:
+                        if st.button("💾 Save Script & Voice Changes", type="primary", use_container_width=True):
+                            parsed_scenes = parse_script_text(edited_script)
+                            
+                            # Map parsed dialogues back to manifest_data
+                            for scene in manifest_data.get("timeline_scenes", []):
+                                seq = scene.get("scene_sequence")
+                                if seq in parsed_scenes:
+                                    scene["dialogue"] = parsed_scenes[seq]
+                                    
+                            # Update voice presets
+                            manifest_data["voice_presets"] = new_voice_presets
+                            
+                            try:
+                                with open(manifest_path, "w", encoding="utf-8") as f:
+                                    json.dump(manifest_data, f, indent=2, ensure_ascii=False)
+                                st.toast("✅ Project configuration updated successfully!")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Failed to save manifest: {e}")
+                                
+                    st.markdown("---")
+                    st.markdown("### ✨ Dynamic Story Editing & AI Suggestions")
+                    st.caption("Tell AI what modifications you want in this story. Gemini will rewrite dialogues, characters, placements, and generate new illustrations as needed.")
+                    
+                    user_suggestion = st.text_area(
+                        "What changes do you want in this video?",
+                        placeholder="e.g. 'Change the setting to a sunset snowy forest, and make Peacock speak English.', 'Change Kalu crow to a beautiful parrot named Mithu.'",
+                        key=f"suggestion_{selected_project}",
+                        height=100
+                    )
+                    
+                    if st.button("🤖 Apply Story Suggestions & Regenerate", type="primary", use_container_width=True, key=f"btn_apply_sugg_{selected_project}"):
+                        if not user_suggestion.strip():
+                            st.warning("Please enter a suggestion first.")
+                        else:
+                            with st.spinner("Analyzing suggestions and updating scene manifest..."):
+                                try:
+                                    updated_manifest = apply_manifest_suggestions(manifest_data, user_suggestion, settings)
+                                    with open(manifest_path, "w", encoding="utf-8") as f:
+                                        json.dump(updated_manifest, f, indent=2, ensure_ascii=False)
+                                    st.success("Manifest updated successfully!")
+                                    
+                                    # Generate any new background or character assets
+                                    with st.spinner("Generating any new backgrounds or character sprites..."):
+                                        generated = generate_missing_assets(updated_manifest, orchestrator_path, settings)
+                                        if generated:
+                                            st.info(f"Generated new assets: {', '.join(generated)}")
+                                            
+                                    st.rerun()
+                                except Exception as err:
+                                    st.error(f"Error applying suggestions: {err}")
+                                
+                    st.markdown("---")
+                    st.markdown("### 🚀 Compile Animation Video")
+                    
+                    # Compile button
+                    if st.button("🎬 Compile Video Master", type="primary", use_container_width=True):
+                        st.info("Compiling video... This involves TTS audio generation, lip-sync mapping, frame rendering, and FFmpeg assembly.")
+                        
+                        import subprocess
+                        compiler_script = orchestrator_path / "src" / "video_pipeline" / "scene_compiler.py"
+                        
+                        cmd = [
+                            "/Users/lalitprasadsingh/.gemini/antigravity/scratch/content-automation-pipeline/.venv/bin/python",
+                            "-u",
+                            str(compiler_script),
+                            f"projects/{selected_project}/scene_manifest.json"
+                        ]
+                        
+                        # Set up real-time log tracking inside expander to keep UI clean
+                        with st.expander("🛠️ Live Compilation Terminal Logs", expanded=True):
+                            log_placeholder = st.empty()
+                            log_content = []
+                            
+                            try:
+                                # Set PYTHONPATH so it can import from KidsStudio-Orchestrator root
+                                env = os.environ.copy()
+                                env["PYTHONPATH"] = str(orchestrator_path)
+                                
+                                process = subprocess.Popen(
+                                    cmd,
+                                    stdout=subprocess.PIPE,
+                                    stderr=subprocess.STDOUT,
+                                    text=True,
+                                    bufsize=1,
+                                    cwd=str(orchestrator_path),
+                                    env=env
+                                )
+                                
+                                while True:
+                                    line = process.stdout.readline()
+                                    if not line and process.poll() is not None:
+                                        break
+                                    if line:
+                                        log_content.append(line)
+                                        log_placeholder.code("".join(log_content[-20:]), language="bash")
+                                        
+                                rc = process.poll()
+                                if rc == 0:
+                                    st.success("🎉 Video compiled successfully!")
+                                    st.toast("Success!")
+                                    
+                                    # Google Drive Upload
+                                    st.info("📤 Uploading compiled video to Google Drive...")
+                                    try:
+                                        target_video = project_path / "output" / "ghamandi_mor_final.mp4"
+                                        if not target_video.exists():
+                                            target_video = project_path / "output" / f"{selected_project}_final.mp4"
+                                        
+                                        if target_video.exists():
+                                            from content_pipeline.bots.google_drive import upload_to_google_drive
+                                            drive_folder = os.getenv("GOOGLE_DRIVE_FOLDER_ID", "").strip()
+                                            drive_link = upload_to_google_drive(target_video, drive_folder, settings)
+                                            
+                                            # Save the link to manifest
+                                            manifest_data["google_drive_link"] = drive_link
+                                            with open(manifest_path, "w", encoding="utf-8") as f:
+                                                json.dump(manifest_data, f, indent=2, ensure_ascii=False)
+                                            st.success(f"Uploaded to Google Drive successfully: {drive_link}")
+                                        else:
+                                            st.error("Compiled video output file not found on disk.")
+                                    except Exception as drive_err:
+                                        st.warning(f"⚠️ Google Drive upload failed: {drive_err}")
+                                        
+                                    st.rerun()
+                                else:
+                                    st.error(f"❌ Compiler failed with exit code: {rc}")
+                            except Exception as e:
+                                st.error(f"Execution error: {e}")
+                            
+                    # Render final video preview
+                    output_video = project_path / "output" / "ghamandi_mor_final.mp4"
+                    if not output_video.exists():
+                        output_video = project_path / "output" / f"{selected_project}_final.mp4"
+                        
+                    if output_video.exists():
+                        st.markdown("---")
+                        st.markdown("### 📺 Compiled Video Preview")
+                        st.video(str(output_video))
+                        
+                        # Google Drive Link display
+                        drive_link = manifest_data.get("google_drive_link", "")
+                        
+                        if drive_link:
+                            st.link_button(
+                                "📥 Download Compiled Video (Google Drive)",
+                                url=drive_link,
+                                use_container_width=True
+                            )
+                        else:
+                            st.warning("⚠️ This video has not been uploaded to Google Drive yet.")
+                            
+                            # Fallback layout
+                            btn_col1, btn_col2 = st.columns(2)
+                            with btn_col1:
+                                with open(output_video, "rb") as video_file:
+                                    st.download_button(
+                                        label="📥 Download Compiled Video (Local)",
+                                        data=video_file,
+                                        file_name=f"{selected_project}_final.mp4",
+                                        mime="video/mp4",
+                                        use_container_width=True,
+                                        key=f"download_btn_{selected_project}"
+                                    )
+                            with btn_col2:
+                                if st.button("📤 Sync/Upload to Google Drive", use_container_width=True, key=f"upload_drive_btn_{selected_project}"):
+                                    with st.spinner("Uploading to Google Drive..."):
+                                        try:
+                                            from content_pipeline.bots.google_drive import upload_to_google_drive
+                                            drive_folder = os.getenv("GOOGLE_DRIVE_FOLDER_ID", "").strip()
+                                            new_drive_link = upload_to_google_drive(output_video, drive_folder, settings)
+                                            
+                                            # Save back to JSON
+                                            manifest_data["google_drive_link"] = new_drive_link
+                                            with open(manifest_path, "w", encoding="utf-8") as f:
+                                                json.dump(manifest_data, f, indent=2, ensure_ascii=False)
+                                                
+                                            st.success("Uploaded successfully!")
+                                            st.rerun()
+                                        except Exception as err:
+                                            st.error(f"Google Drive upload failed: {err}")
+                                        
+                        st.caption(f"Location: `{output_video}` (Size: {output_video.stat().st_size / (1024*1024):.2f} MB)")
+
     elif active_p == "Image":
         # Dynamic prompt synchronization when topic, subject, or art style changes
         current_topic = st.session_state.get("image_topic", "")
@@ -2469,15 +3277,35 @@ def render_frontdoor(settings: Settings) -> None:
             """, unsafe_allow_html=True)
 
     elif active_p == "Kids":
-        st.markdown(
-            """
-            <div class="hero" style="background: linear-gradient(135deg, rgba(56,189,248,0.15), rgba(168,85,247,0.15)); border: 1px solid rgba(56,189,248,0.3); margin-bottom: 24px;">
-              <h1 style="font-size: 32px;">🎵 Kids Rhymes & Rhythm Studio (Lyria 3)</h1>
-              <p style="margin-top: 6px; font-size: 14px;">Generate cheerful, high-quality music and nursery rhymes matching your reference tracks using the Tencent SongGeneration model.</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
+        # Creative Mode Dropdown
+        st.session_state.setdefault("kids_studio_mode", "Poem/Rhyme")
+        kids_mode = st.selectbox(
+            "Creative Mode",
+            options=["Poem/Rhyme", "Storytelling"],
+            key="kids_studio_mode",
+            help="Choose whether to generate a rhythmic rhyming nursery poem or an expressive storytelling script."
         )
+
+        if kids_mode == "Storytelling":
+            st.markdown(
+                """
+                <div class="hero" style="background: linear-gradient(135deg, rgba(56,189,248,0.15), rgba(168,85,247,0.15)); border: 1px solid rgba(56,189,248,0.3); margin-bottom: 24px;">
+                  <h1 style="font-size: 32px;">📖 Kids Storytelling Studio (Native Audio)</h1>
+                  <p style="margin-top: 6px; font-size: 14px;">Generate warm, expressive narration and storytelling with zero-drums background score and natural voices.</p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                """
+                <div class="hero" style="background: linear-gradient(135deg, rgba(56,189,248,0.15), rgba(168,85,247,0.15)); border: 1px solid rgba(56,189,248,0.3); margin-bottom: 24px;">
+                  <h1 style="font-size: 32px;">🎵 Kids Rhymes & Rhythm Studio (Lyria 3 / Native Audio)</h1>
+                  <p style="margin-top: 6px; font-size: 14px;">Generate cheerful, high-quality music and nursery rhymes matching your reference tracks using the Tencent SongGeneration model.</p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
         # Target Language Dropdown
         st.session_state.setdefault("kids_studio_language", "English")
@@ -2488,250 +3316,305 @@ def render_frontdoor(settings: Settings) -> None:
             help="Choose the language for the song generation. This filters the reference audio files and guides the dynamic lyric generator."
         )
 
-        left_col, right_col = st.columns([1.1, 0.9])
-
-        with left_col:
-            with st.expander("⚡ One-Click Song Creator", expanded=True):
-                st.markdown("<small style='color: #94a3b8;'>Type a simple idea (e.g., 'create an emotional song') and generate a complete song in one click.</small>", unsafe_allow_html=True)
-                one_click_prompt = st.text_input("Song Idea", placeholder="e.g., create an emotional song", key="one_click_song_idea")
-                one_click_gender = st.selectbox("Singer Voice Gender Selection", ["Female", "Male"], key="one_click_singer_gender")
+        # Determine kids voice options based on the selected language and mode
+        from content_pipeline.bots.kids_studio_manifest_core import KIDS_STUDIO_MASTER_REGISTRY
+        kids_lang = st.session_state.get("kids_studio_language", "English")
+        
+        kids_singer_opts = {}
+        for key, profile in KIDS_STUDIO_MASTER_REGISTRY.items():
+            base_voice = profile.get("base_tts_voice", "")
+            is_en = base_voice.startswith("en-")
+            is_hi = base_voice.startswith("hi-")
+            
+            # Filter based on active mode
+            is_storytelling_profile = "STORY" in key or "EN_KIDS" in key
+            is_rhyme_profile = "RHYME" in key
+            
+            if kids_mode == "Storytelling" and not is_storytelling_profile:
+                continue
+            if kids_mode == "Poem/Rhyme" and not is_rhyme_profile:
+                continue
                 
-                if st.button("🚀 Create & Generate Song", type="primary", use_container_width=True):
-                    if not one_click_prompt.strip():
-                        st.warning("Please enter a song idea first.")
-                    else:
-                        lyrics_exp, desc_exp = expand_prompt_to_lyrics_and_style_dynamic(settings, one_click_prompt, one_click_gender, st.session_state.get("kids_studio_language", "English"))
-                        st.session_state["kids_song_lyrics"] = lyrics_exp
-                        st.session_state["kids_song_description"] = desc_exp
-                        st.session_state["kids_song_singer_gender"] = one_click_gender
-                        st.session_state["trigger_generation_now"] = True
-                        st.rerun()
+            if kids_lang == "English" and is_en:
+                kids_singer_opts[profile["display_name"]] = key
+            elif kids_lang == "Hindi" and is_hi:
+                kids_singer_opts[profile["display_name"]] = key
+            elif kids_lang == "Hinglish":
+                kids_singer_opts[profile["display_name"]] = key
 
-            st.markdown("### Lyrics Composer")
-            kids_lyrics_val = st.session_state.get("kids_song_lyrics", "")
-            lyrics = st.text_area(
-                "Enter lyrics here (use [verse] and [chorus] tags, avoid [intro]/[outro] tags)",
-                value=kids_lyrics_val,
-                height=350,
-                key="kids_song_lyrics_input"
+        # Top-Level Kids Voice Profile Selector
+        if kids_singer_opts:
+            selected_display = st.selectbox(
+                "Select Kids Voice Profile",
+                options=list(kids_singer_opts.keys()),
+                key="kids_studio_playback_singer_display",
+                help="Select the specific voice profile to use for generation."
             )
-            st.session_state["kids_song_lyrics"] = lyrics
+            active_singer = kids_singer_opts[selected_display]
+            st.session_state["kids_studio_playback_singer_key"] = active_singer
+            
+            # Resolve gender dynamically from the selected voice profile manifest
+            from content_pipeline.bots.singer_manifest import SINGER_MANIFEST, SINGER_ALIASES
+            resolved_key = SINGER_ALIASES.get(active_singer, active_singer)
+            resolved_gender = "Female"
+            if resolved_key in SINGER_MANIFEST:
+                resolved_gender = SINGER_MANIFEST[resolved_key]["gender"].capitalize()
+            
+            st.session_state["kids_song_singer_gender"] = resolved_gender
 
-            col1, col2 = st.columns([1, 1])
-            with col1:
-                parse_clicked = st.button("✨ Parse & Autofill settings", use_container_width=True, help="Extracts lyrics, tempo, instruments, vocals, and mood from your prompt to autofill the settings panel.")
-            with col2:
-                if st.button("🗑️ Clear Lyrics", use_container_width=True):
-                    st.session_state["kids_song_lyrics"] = ""
-                    st.rerun()
+        # Define and manage all backend run settings here silently since right column is hidden
+        selected_ref = st.session_state.setdefault("kids_song_ref_audio_choice", "None (Text-only)")
+        cfg = float(st.session_state.setdefault("kids_song_cfg_coef", 1.8))
+        temp = float(st.session_state.setdefault("kids_song_temperature", 0.8))
+        genre = st.session_state.setdefault("kids_song_genre", "Auto")
+        
+        # Set default description based on mode if not already set
+        if kids_mode == "Storytelling":
+            default_desc = "warm theatrical spoken-word audiobook narrator, gentle bedtime story, calm pacing, soft glockenspiel and warm strings, 0 BPM"
+        else:
+            default_desc = "cheerful nursery rhyme, magical kids show music, happy bouncy melody, 92 BPM, ukulele, soft piano, glockenspiel, bells."
+        desc = st.session_state.setdefault("kids_song_description", default_desc)
 
-            if parse_clicked:
-                if lyrics.strip():
-                    sections = parse_prompt_into_sections(lyrics)
-                    if sections:
-                        lyrics_content = sections.get("lyrics", "")
-                        if not lyrics_content:
-                            lyrics_content = lyrics
-                            
-                        style_parts = []
-                        if "style" in sections:
-                            style_parts.append(sections["style"])
-                        if "tempo" in sections:
-                            style_parts.append(f"Tempo: {sections['tempo']}")
-                        if "vocals" in sections:
-                            style_parts.append(f"Vocals: {sections['vocals']}")
-                        if "mood" in sections:
-                            style_parts.append(f"Mood: {sections['mood']}")
-                        if "instruments" in sections:
-                            style_parts.append(f"Instruments: {sections['instruments']}")
-                        if "production" in sections:
-                            style_parts.append(f"Production: {sections['production']}")
-                            
-                        combined_style = ". ".join(style_parts)
-                        
-                        st.session_state["kids_song_lyrics"] = lyrics_content
-                        st.session_state.pop("kids_song_lyrics_input", None)
-                        st.session_state["kids_song_description"] = combined_style
-                        st.session_state.pop("kids_song_description_input", None)
-                        st.success("🎉 Successfully parsed and autofilled settings from prompt!")
-                        st.rerun()
-                    else:
-                        lower_text = lyrics.lower()
-                        is_kids = any(k in lower_text for k in ["abc", "alphabet", "kid", "child", "baby", "nursery", "rhyme", "toddler", "toy"])
-                        if is_kids:
-                            inferred_style = (
-                                "cheerful nursery rhyme, magical kids show music, happy bouncy melody, 92 BPM, "
-                                "warm friendly lead voice, clear pronunciation, ukulele, soft piano, glockenspiel, "
-                                "gentle bells, light percussion, clean mix."
-                            )
-                        else:
-                            inferred_style = (
-                                "catchy melodic pop song, warm vocals, piano, acoustic guitar, soft percussion, "
-                                "balanced audio mix."
-                            )
-                        
-                        st.session_state["kids_song_lyrics"] = lyrics
-                        st.session_state.pop("kids_song_lyrics_input", None)
-                        st.session_state["kids_song_description"] = inferred_style
-                        st.session_state.pop("kids_song_description_input", None)
-                        st.info("ℹ️ Plain prompt detected. Style inferred from song content.")
-                        st.rerun()
-                else:
-                    st.warning("⚠️ Please paste a prompt in the lyrics box first.")
-
+        expander_title = "⚡ One-Click Story Creator" if kids_mode == "Storytelling" else "⚡ One-Click Song Creator"
+        with st.expander(expander_title, expanded=True):
             st.markdown(
-                """
-                <div style="display: flex; gap: 16px; margin-top: 20px;">
-                  <div style="flex: 1; padding: 16px; border-radius: 12px; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(56, 189, 248, 0.25);">
-                    <div style="font-size: 12px; color: #38bdf8; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 6px;">
-                      <span>💡</span> Pro tip: Structure
-                    </div>
-                    <div style="font-size: 13px; color: #e2e8f0; margin-top: 6px; line-height: 1.4;">
-                      Start with a quiet piano intro, build into a loud verse, then explode into the chorus.
-                    </div>
-                  </div>
-                  <div style="flex: 1; padding: 16px; border-radius: 12px; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(168, 85, 247, 0.25);">
-                    <div style="font-size: 12px; color: #a855f7; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 6px;">
-                      <span>🎵</span> Pro tip: Details
-                    </div>
-                    <div style="font-size: 13px; color: #e2e8f0; margin-top: 6px; line-height: 1.4;">
-                      Mix genres for unique sounds, like a cheerful ukulele with bells and a gentle kids' choir.
-                    </div>
-                  </div>
-                </div>
-                """,
+                f"<small style='color: #94a3b8;'>Type a simple idea (e.g., {'a story about a wise turtle' if kids_mode == 'Storytelling' else 'create a song about alphabet'}) and generate in one click.</small>",
                 unsafe_allow_html=True
             )
+            prompt_label = "Story Idea" if kids_mode == "Storytelling" else "Song Idea"
+            prompt_placeholder = "e.g., a story about a wise turtle" if kids_mode == "Storytelling" else "e.g., create an emotional song"
+            one_click_prompt = st.text_input(prompt_label, placeholder=prompt_placeholder, key="one_click_song_idea")
+            
+            # Resolve gender dynamically based on current selected profile
+            one_click_gender = st.session_state.get("kids_song_singer_gender", "Female")
+            
+            if st.session_state.get("gemini_api_error"):
+                st.error("⚠️ **Gemini API Call Failed (Offline Fallback Active)**\n\n"
+                         "The application fell back to the local offline template because the Gemini API keys failed:\n"
+                         f"```\n{st.session_state['gemini_api_error']}\n```\n"
+                         "Please check your `.env` or system environment keys.")
 
-        with right_col:
-            st.markdown("### Run settings")
-            
-            lang_choice_kids = st.session_state.get("kids_studio_language", "English")
-            model_options_kids = ["Lyria 3 Pro Preview (tencent/SongGeneration)"]
-            if lang_choice_kids == "Hindi":
-                model_options_kids = ["Gemini 2.5 Flash + Edge-TTS (Native Accent)"]
-
-            st.selectbox(
-                "Model",
-                options=model_options_kids,
-                index=0,
-                disabled=True,
-                help="Lyria 3 Pro is used for English/Hinglish. Gemini 2.5/Edge-TTS Native Audio is used for Hindi to achieve perfect pronunciation."
-            )
-            
-            kids_vibe_presets = {
-                "Custom": "",
-                "Cheerful Nursery (Playful & Bouncy)": (
-                    "cheerful nursery rhyme, magical kids show music, happy bouncy melody, 92 BPM, "
-                    "ukulele, soft piano, glockenspiel, bells."
-                ),
-                "Lullaby (Calm & Dreamy)": (
-                    "soft soothing lullaby, magical bedtime stars melody, calm ambient pace, 60 BPM, "
-                    "sweet music box chime, gentle harp, warm pad strings."
-                ),
-                "Adventure (Energetic & Dynamic)": (
-                    "playful upbeat cartoon theme song, brass horn swells, xylophone, "
-                    "fast dynamic percussion, happy adventurous pacing, 115 BPM."
-                )
-            }
-            
-            selected_vibe_kids = st.selectbox(
-                "Soundscape Vibe Preset",
-                options=list(kids_vibe_presets.keys()),
-                key="kids_studio_vibe_preset",
-                help="Select a musical style preset to automatically populate the Style Description."
-            )
-            
-            if "prev_kids_studio_vibe" not in st.session_state:
-                st.session_state["prev_kids_studio_vibe"] = selected_vibe_kids
-                
-            if st.session_state["prev_kids_studio_vibe"] != selected_vibe_kids:
-                st.session_state["prev_kids_studio_vibe"] = selected_vibe_kids
-                if selected_vibe_kids != "Custom":
-                    st.session_state["kids_song_description_input"] = kids_vibe_presets[selected_vibe_kids]
-                    kids_preset_genres = {
-                        "Cheerful Nursery (Playful & Bouncy)": "Auto",
-                        "Lullaby (Calm & Dreamy)": "Ballad",
-                        "Adventure (Energetic & Dynamic)": "Soundtrack"
-                    }
-                    st.session_state["kids_song_genre_input"] = kids_preset_genres[selected_vibe_kids]
-            
-            if "kids_song_description_input" not in st.session_state:
-                st.session_state["kids_song_description_input"] = st.session_state.get("kids_song_description", "")
-                
-            desc = st.text_area(
-                "Style Description",
-                height=120,
-                key="kids_song_description_input",
-                help="Describe instruments, tempo (BPM), vocal qualities, and style of the song."
-            )
-            st.session_state["kids_song_description"] = desc
-
-            ref_dir = PROJECT_ROOT / "output" / "reference_audio"
-            if not ref_dir.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio").exists():
-                ref_dir = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio")
-            else:
-                ref_dir.mkdir(parents=True, exist_ok=True)
-            ref_files = []
-            if ref_dir.exists():
-                raw_files = sorted([f.name for f in ref_dir.glob("*.mp3")])
-                lang = st.session_state.get("kids_studio_language", "English")
-                if lang in ["Hindi", "Hinglish"]:
-                    ref_files = [f for f in raw_files if any(x in f.lower() for x in ["titli", "barnaby", "hindi", "squirrel"])]
+            btn_label = "🚀 Create & Generate Story" if kids_mode == "Storytelling" else "🚀 Create & Generate Song"
+            if st.button(btn_label, type="primary", use_container_width=True):
+                if not one_click_prompt.strip():
+                    st.warning(f"Please enter a {prompt_label.lower()} first.")
                 else:
-                    ref_files = [f for f in raw_files if not any(x in f.lower() for x in ["titli", "barnaby", "squirrel"])]
-            
-            options = ["None (Text-only)"] + ref_files
-            default_index = 0
-            default_val = st.session_state.get("kids_song_ref_audio_choice", "None (Text-only)")
-            if default_val in options:
-                default_index = options.index(default_val)
-            
-            selected_ref = st.selectbox(
-                "Style Reference Audio",
-                options=options,
-                index=default_index,
-                key="kids_song_ref_audio_choice_input",
-                help="Select an existing track to guide the style, melody, and voice of the song."
-            )
-            st.session_state["kids_song_ref_audio_choice"] = selected_ref
+                    lyrics_exp, desc_exp = expand_prompt_to_lyrics_and_style_dynamic(
+                        settings, one_click_prompt, one_click_gender, kids_lang, mode=kids_mode
+                    )
+                    if kids_lang in ["Hindi", "Hinglish"] and kids_mode != "Storytelling":
+                        desc_exp = clean_style_description_for_instrumental(desc_exp)
+                    st.session_state["kids_song_lyrics"] = lyrics_exp
+                    st.session_state["kids_song_description"] = desc_exp
+                    st.session_state["kids_song_singer_gender"] = one_click_gender
+                    st.session_state["trigger_generation_now"] = True
+                    st.rerun()
 
-            cfg = st.slider(
-                "CFG Scale",
-                min_value=1.0,
-                max_value=5.0,
-                value=float(st.session_state.get("kids_song_cfg_coef", 1.8)),
-                step=0.1,
-                key="kids_song_cfg_coef_input",
-                help="Classifier-Free Guidance. Higher values enforce the style description more strongly."
-            )
-            st.session_state["kids_song_cfg_coef"] = cfg
-            
-            temp = st.slider(
-                "Temperature",
-                min_value=0.0,
-                max_value=1.0,
-                value=float(st.session_state.get("kids_song_temperature", 0.8)),
-                step=0.05,
-                key="kids_song_temperature_input",
-                help="Controls diversity. Higher values produce more random/creative melodies."
-            )
-            st.session_state["kids_song_temperature"] = temp
-            
-            genre_options = ['Auto', 'Pop', 'Latin', 'Rock', 'Electronic', 'Metal', 'Country', 'R&B/Soul', 'Ballad', 'Jazz', 'World', 'Hip-Hop', 'Funk', 'Soundtrack', 'Folk', 'Traditional']
-            curr_genre = st.session_state.get("kids_song_genre", "Auto")
-            genre_index = genre_options.index(curr_genre) if curr_genre in genre_options else 0
-            genre = st.selectbox(
-                "Genre",
-                options=genre_options,
-                index=genre_index,
-                key="kids_song_genre_input"
-            )
-            st.session_state["kids_song_genre"] = genre
+            if kids_mode == "Poem/Rhyme":
+                lang_choice_kids = st.session_state.get("kids_studio_language", "English")
+                model_options_kids = ["Lyria 3 Pro Preview (tencent/SongGeneration)"]
+                if lang_choice_kids == "Hindi":
+                    model_options_kids = ["Gemini 2.5 Flash + Edge-TTS (Native Accent)"]
+    
+                st.selectbox(
+                    "Model",
+                    options=model_options_kids,
+                    index=0,
+                    disabled=True,
+                    help="Lyria 3 Pro is used for English/Hinglish. Gemini 2.5/Edge-TTS Native Audio is used for Hindi to achieve perfect pronunciation."
+                )
+                
+                kids_vibe_presets = {
+                    "Custom": "",
+                    "Cheerful Nursery (Playful & Bouncy)": (
+                        "cheerful nursery rhyme, magical kids show music, happy bouncy melody, 92 BPM, "
+                        "ukulele, soft piano, glockenspiel, bells."
+                    ),
+                    "Lullaby (Calm & Dreamy)": (
+                        "soft soothing lullaby, magical bedtime stars melody, calm ambient pace, 60 BPM, "
+                        "sweet music box chime, gentle harp, warm pad strings."
+                    ),
+                    "Adventure (Energetic & Dynamic)": (
+                        "playful upbeat cartoon theme song, brass horn swells, xylophone, "
+                        "fast dynamic percussion, happy adventurous pacing, 115 BPM."
+                    )
+                }
+                
+                selected_vibe_kids = st.selectbox(
+                    "Soundscape Vibe Preset",
+                    options=list(kids_vibe_presets.keys()),
+                    key="kids_studio_vibe_preset",
+                    help="Select a musical style preset to automatically populate the Style Description."
+                )
+                
+                if "prev_kids_studio_vibe" not in st.session_state:
+                    st.session_state["prev_kids_studio_vibe"] = selected_vibe_kids
+                    
+                if st.session_state["prev_kids_studio_vibe"] != selected_vibe_kids:
+                    st.session_state["prev_kids_studio_vibe"] = selected_vibe_kids
+                    if selected_vibe_kids != "Custom":
+                        st.session_state["kids_song_description_input"] = kids_vibe_presets[selected_vibe_kids]
+                        kids_preset_genres = {
+                            "Cheerful Nursery (Playful & Bouncy)": "Auto",
+                            "Lullaby (Calm & Dreamy)": "Ballad",
+                            "Adventure (Energetic & Dynamic)": "Soundtrack"
+                        }
+                        st.session_state["kids_song_genre_input"] = kids_preset_genres[selected_vibe_kids]
+                
+                if "kids_song_description_input" not in st.session_state:
+                    st.session_state["kids_song_description_input"] = st.session_state.get("kids_song_description", "")
+                    
+                desc = st.text_area(
+                    "Style Description",
+                    height=120,
+                    key="kids_song_description_input",
+                    help="Describe instruments, tempo (BPM), vocal qualities, and style of the song."
+                )
+                st.session_state["kids_song_description"] = desc
 
-            # Bind singer voice gender directly from the top-level selection (⚡ One-Click Song Creator)
-            singer_gender = st.session_state.get("one_click_singer_gender", "Male")
-            st.session_state["kids_song_singer_gender"] = singer_gender
+        composer_title = "Story Composer / Script" if kids_mode == "Storytelling" else "Lyrics Composer"
+        st.markdown(f"### {composer_title}")
+        kids_lyrics_val = st.session_state.get("kids_song_lyrics", "")
+        textarea_label = (
+            "Enter storytelling script here (use [pause] tags for natural pauses)"
+            if kids_mode == "Storytelling"
+            else "Enter lyrics here (use [verse] and [chorus] tags, avoid [intro]/[outro] tags)"
+        )
+        lyrics = st.text_area(
+            textarea_label,
+            value=kids_lyrics_val,
+            height=350,
+            key="kids_song_lyrics_input"
+        )
+        st.session_state["kids_song_lyrics"] = lyrics
+
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            if kids_mode == "Storytelling":
+                parse_clicked = False  # Bypassed for storytelling
+            else:
+                parse_clicked = st.button("✨ Parse & Autofill settings", use_container_width=True, help="Extracts lyrics, tempo, instruments, vocals, and mood from your prompt to autofill settings.")
+        with col2:
+            clear_label = "🗑️ Clear Script" if kids_mode == "Storytelling" else "🗑️ Clear Lyrics"
+            if st.button(clear_label, use_container_width=True):
+                st.session_state["kids_song_lyrics"] = ""
+                st.rerun()
+
+        if parse_clicked:
+            if lyrics.strip():
+                sections = parse_prompt_into_sections(lyrics)
+                if sections:
+                    lyrics_content = sections.get("lyrics", "")
+                    if not lyrics_content:
+                        lyrics_content = lyrics
+                        
+                    style_parts = []
+                    if "style" in sections:
+                        style_parts.append(sections["style"])
+                    if "tempo" in sections:
+                        style_parts.append(f"Tempo: {sections['tempo']}")
+                    if "vocals" in sections:
+                        style_parts.append(f"Vocals: {sections['vocals']}")
+                    if "mood" in sections:
+                        style_parts.append(f"Mood: {sections['mood']}")
+                    if "instruments" in sections:
+                        style_parts.append(f"Instruments: {sections['instruments']}")
+                    if "production" in sections:
+                        style_parts.append(f"Production: {sections['production']}")
+                        
+                    combined_style = ". ".join(style_parts)
+                    
+                    st.session_state["kids_song_lyrics"] = lyrics_content
+                    st.session_state.pop("kids_song_lyrics_input", None)
+                    st.session_state["kids_song_description"] = combined_style
+                    st.session_state.pop("kids_song_description_input", None)
+                    st.success("🎉 Successfully parsed and autofilled settings from prompt!")
+                    st.rerun()
+                else:
+                    lower_text = lyrics.lower()
+                    is_kids = any(k in lower_text for k in ["abc", "alphabet", "kid", "child", "baby", "nursery", "rhyme", "toddler", "toy"])
+                    if is_kids:
+                        inferred_style = (
+                            "cheerful nursery rhyme, magical kids show music, happy bouncy melody, 92 BPM, "
+                            "warm friendly lead voice, clear pronunciation, ukulele, soft piano, glockenspiel, "
+                            "gentle bells, light percussion, clean mix."
+                        )
+                    else:
+                        inferred_style = (
+                            "catchy melodic pop song, warm vocals, piano, acoustic guitar, soft percussion, "
+                            "balanced audio mix."
+                        )
+                    
+                    st.session_state["kids_song_lyrics"] = lyrics
+                    st.session_state.pop("kids_song_lyrics_input", None)
+                    st.session_state["kids_song_description"] = inferred_style
+                    st.session_state.pop("kids_song_description_input", None)
+                    st.info("ℹ️ Plain prompt detected. Style inferred from song content.")
+                    st.rerun()
+            else:
+                st.warning("⚠️ Please paste a prompt in the lyrics box first.")
+
+            if kids_mode == "Poem/Rhyme":
+                cfg = st.slider(
+                    "CFG Scale",
+                    min_value=1.0,
+                    max_value=5.0,
+                    value=float(st.session_state.get("kids_song_cfg_coef", 1.8)),
+                    step=0.1,
+                    key="kids_song_cfg_coef_input",
+                    help="Classifier-Free Guidance. Higher values enforce the style description more strongly."
+                )
+                st.session_state["kids_song_cfg_coef"] = cfg
+                
+                temp = st.slider(
+                    "Temperature",
+                    min_value=0.0,
+                    max_value=1.0,
+                    value=float(st.session_state.get("kids_song_temperature", 0.8)),
+                    step=0.05,
+                    key="kids_song_temperature_input",
+                    help="Controls diversity. Higher values produce more random/creative melodies."
+                )
+                st.session_state["kids_song_temperature"] = temp
+                
+                genre_options = ['Auto', 'Pop', 'Latin', 'Rock', 'Electronic', 'Metal', 'Country', 'R&B/Soul', 'Ballad', 'Jazz', 'World', 'Hip-Hop', 'Funk', 'Soundtrack', 'Folk', 'Traditional']
+                curr_genre = st.session_state.get("kids_song_genre", "Auto")
+                genre_index = genre_options.index(curr_genre) if curr_genre in genre_options else 0
+                genre = st.selectbox(
+                    "Genre",
+                    options=genre_options,
+                    index=genre_index,
+                    key="kids_song_genre_input"
+                )
+                st.session_state["kids_song_genre"] = genre
+    
+                # Bind singer voice gender directly from the top-level selection (⚡ One-Click Song Creator)
+                singer_gender = st.session_state.get("one_click_singer_gender", "Male")
+                st.session_state["kids_song_singer_gender"] = singer_gender
+
+        st.markdown(
+            """
+            <div style="display: flex; gap: 16px; margin-top: 20px;">
+              <div style="flex: 1; padding: 16px; border-radius: 12px; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(56, 189, 248, 0.25);">
+                <div style="font-size: 12px; color: #38bdf8; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 6px;">
+                  <span>💡</span> Pro tip: Structure
+                </div>
+                <div style="font-size: 13px; color: #e2e8f0; margin-top: 6px; line-height: 1.4;">
+                  For stories, use [pause] tags where you want natural storytelling pauses. For rhymes, structure with [verse] and [chorus].
+                </div>
+              </div>
+              <div style="flex: 1; padding: 16px; border-radius: 12px; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(168, 85, 247, 0.25);">
+                <div style="font-size: 12px; color: #a855f7; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 6px;">
+                  <span>🎵</span> Pro tip: Settings
+                </div>
+                <div style="font-size: 13px; color: #e2e8f0; margin-top: 6px; line-height: 1.4;">
+                  The studio manages parameters dynamically in the background, matching child-safe acoustics and vocal properties.
+                </div>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
         st.markdown("---")
         st.markdown("### Playback & Generation")
@@ -2930,52 +3813,71 @@ def render_frontdoor(settings: Settings) -> None:
                     st.session_state.pop("kids_song_description_input", None)
 
                     # 2. Split lines, skip empty lines, and sanitize tags
-                    sanitized_lines = []
-                    lines = [line.strip() for line in lyrics_to_process.splitlines()]
-                    
-                    filtered_lines = [line for line in lines if line]
-                    
-                    if filtered_lines:
-                        first_line = filtered_lines[0]
-                        if not (first_line.startswith("[") and first_line.endswith("]")):
-                            sanitized_lines.append("[verse]")
+                    kids_mode = st.session_state.get("kids_studio_mode", "Poem/Rhyme")
+                    if kids_mode == "Storytelling":
+                        sanitized_lines = []
+                        for line in [l.strip() for l in lyrics_to_process.splitlines() if l.strip()]:
+                            sanitized_lines.append(line.replace(";", ","))
+                        sanitized_lyrics = "\n".join(sanitized_lines).strip()
+                    else:
+                        sanitized_lines = []
+                        lines = [line.strip() for line in lyrics_to_process.splitlines()]
                         
-                        for line in filtered_lines:
-                            line_safe = line.replace(";", ",")
+                        filtered_lines = [line for line in lines if line]
+                        
+                        if filtered_lines:
+                            first_line = filtered_lines[0]
+                            if not (first_line.startswith("[") and first_line.endswith("]")):
+                                sanitized_lines.append("[verse]")
                             
-                            if line_safe.startswith("[") and line_safe.endswith("]"):
-                                tag_content = line_safe[1:-1].lower()
-                                if "chorus" in tag_content:
-                                    sanitized_lines.append("[chorus]")
-                                elif "bridge" in tag_content:
-                                    sanitized_lines.append("[bridge]")
-                                elif "intro" in tag_content:
-                                    sanitized_lines.append("[verse]")
-                                elif "outro" in tag_content:
-                                    sanitized_lines.append("[verse]")
-                                elif "inst" in tag_content:
-                                    sanitized_lines.append("[verse]")
-                                elif "silence" in tag_content:
-                                    sanitized_lines.append("[silence]")
-                                else:
-                                    sanitized_lines.append("[verse]")
-                            else:
-                                sanitized_lines.append(line_safe)
+                            for line in filtered_lines:
+                                line_safe = line.replace(";", ",")
                                 
-                    sanitized_lyrics = "\n".join(sanitized_lines).strip()
-                    
-                    if not sanitized_lyrics.startswith("["):
-                        sanitized_lyrics = "[verse]\n" + sanitized_lyrics
+                                if line_safe.startswith("[") and line_safe.endswith("]"):
+                                    tag_content = line_safe[1:-1].lower()
+                                    if "chorus" in tag_content:
+                                        sanitized_lines.append("[chorus]")
+                                    elif "bridge" in tag_content:
+                                        sanitized_lines.append("[bridge]")
+                                    elif "intro" in tag_content:
+                                        sanitized_lines.append("[verse]")
+                                    elif "outro" in tag_content:
+                                        sanitized_lines.append("[verse]")
+                                    elif "inst" in tag_content:
+                                        sanitized_lines.append("[verse]")
+                                    elif "silence" in tag_content:
+                                        sanitized_lines.append("[silence]")
+                                    else:
+                                        sanitized_lines.append("[verse]")
+                                else:
+                                    sanitized_lines.append(line_safe)
+                                    
+                        sanitized_lyrics = "\n".join(sanitized_lines).strip()
+                        
+                        if not sanitized_lyrics.startswith("["):
+                            sanitized_lyrics = "[verse]\n" + sanitized_lyrics
 
                     lang = st.session_state.get("kids_studio_language", "English")
-                    if lang == "Hindi":
-                        if not any("\u0900" <= char <= "\u097f" for char in sanitized_lyrics):
+                    if lang == "Hindi" or kids_mode == "Storytelling":
+                        if lang == "Hindi" and not any("\u0900" <= char <= "\u097f" for char in sanitized_lyrics):
                             st.write("🔮 Converting Romanized lyrics to native Devanagari script for perfect Indian accent...")
                             from content_pipeline.bots.gemini_tts import transliterate_to_devanagari
                             sanitized_lyrics = transliterate_to_devanagari(sanitized_lyrics, settings)
                             st.info(f"📝 Transliterated Devanagari Lyrics:\n{sanitized_lyrics}")
                         
-                        st.write("🔀 Language: Hindi detected. Bypassing Hugging Face Lyria to use Native Audio Pipeline...")
+                        st.write("🔀 Bypassing Hugging Face Lyria to use Native Audio Pipeline...")
+                        import sys
+                        import importlib
+                        if "content_pipeline.bots.singing_synthesis" in sys.modules:
+                            importlib.reload(sys.modules["content_pipeline.bots.singing_synthesis"])
+                        if "content_pipeline.bots.kids_studio_manifest_core" in sys.modules:
+                            importlib.reload(sys.modules["content_pipeline.bots.kids_studio_manifest_core"])
+                        if "content_pipeline.bots.kids_studio_core" in sys.modules:
+                            importlib.reload(sys.modules["content_pipeline.bots.kids_studio_core"])
+                        if "content_pipeline.bots.singer_manifest" in sys.modules:
+                            importlib.reload(sys.modules["content_pipeline.bots.singer_manifest"])
+                        if "content_pipeline.bots.audio" in sys.modules:
+                            importlib.reload(sys.modules["content_pipeline.bots.audio"])
                         from content_pipeline.bots.audio import generate_hindi_song_via_native_audio
                         
                         out_path = PROJECT_ROOT / "output" / "LittleBubbles_Generated_Song.mp3"
@@ -2983,7 +3885,7 @@ def render_frontdoor(settings: Settings) -> None:
                             out_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio/LittleBubbles_Generated_Song.mp3")
                         out_path.parent.mkdir(parents=True, exist_ok=True)
                         
-                        singer_gender = st.session_state.get("kids_song_singer_gender", "Male")
+                        singer_gender = st.session_state.get("kids_song_singer_gender", "Female")
                         selected_ref = st.session_state.get("kids_song_ref_audio_choice", "None (Text-only)")
                         
                         generate_hindi_song_via_native_audio(
@@ -2995,10 +3897,12 @@ def render_frontdoor(settings: Settings) -> None:
                             genre=genre,
                             temperature=temp,
                             cfg_coef=cfg,
-                            style_description=desc
+                            style_description=desc,
+                            singer_key=st.session_state.get("kids_studio_playback_singer_key", "hi_kids_ananya"),
+                            mode=kids_mode
                         )
                         st.session_state["kids_song_generated_mp3"] = str(out_path)
-                        st.success("🎉 Hindi Kids Rhyme generated successfully using Native Audio Pipeline!")
+                        st.success(f"🎉 Kids {kids_mode} generated successfully using Native Audio Pipeline!")
                         st.rerun()
                     elif lang == "Hinglish":
                         st.write("🔮 Applying advanced phonetic transcription layer for perfect Indian accent...")
@@ -4163,6 +5067,24 @@ def render_frontdoor(settings: Settings) -> None:
             "reference_audio_bank_size": str(st.session_state["reference_audio_bank_size"]),
         },
     )
+
+def clean_style_description_for_instrumental(style_desc: str) -> str:
+    """
+    Cleans a musical style description by stripping out all vocal-specific clauses
+    or terms, leaving only the pure instrumental/structural tags for backing track generators.
+    """
+    if not style_desc:
+        return ""
+    # Split the comma-separated terms
+    parts = [p.strip() for p in style_desc.split(",")]
+    vocal_keywords = ["vocal", "vocals", "singer", "singing", "accent", "pronunciation", "voice", "voices", "male", "female", "performance_mode", "lyric", "lyrics"]
+    cleaned_parts = []
+    for part in parts:
+        part_lower = part.lower()
+        if not any(keyword in part_lower for keyword in vocal_keywords):
+            cleaned_parts.append(part)
+    return ", ".join(cleaned_parts)
+
 def parse_prompt_into_sections(prompt_text: str) -> dict[str, str]:
     import re
     base_patterns = {
@@ -4212,7 +5134,19 @@ def parse_prompt_into_sections(prompt_text: str) -> dict[str, str]:
     return sections
 
 
-def expand_prompt_to_lyrics_and_style(prompt: str, singer_gender: str) -> tuple[str, str]:
+def expand_prompt_to_lyrics_and_style(prompt: str, singer_gender: str, mode: str = "Poem/Rhyme") -> tuple[str, str]:
+    if mode == "Storytelling":
+        lyrics = (
+            "[pause] Once upon a time, in a beautiful green forest, there lived a very wise turtle. "
+            "[pause] In the same forest, there was also a rabbit who was very proud of his speed. "
+            "[pause] One day, they decided to have a race. "
+            "[pause] The rabbit ran very fast and fell asleep halfway. "
+            "[pause] The turtle walked slowly and steadily, and in the end, he won the race. "
+            "[pause] The moral of the story is that slow and steady wins the race."
+        )
+        style = "warm theatrical spoken-word audiobook narrator, gentle bedtime story, calm pacing, soft glockenspiel and warm strings, 0 BPM"
+        return lyrics, style
+
     import re
     p = prompt.lower()
     
@@ -4429,11 +5363,22 @@ def expand_general_prompt_to_lyrics_and_style(prompt: str, singer_gender: str) -
 def expand_general_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, singer_gender: str, language: str) -> tuple[str, str]:
     import os
     import json
+    if "gemini_api_error" in st.session_state:
+        del st.session_state["gemini_api_error"]
+
     keys = list(settings.gemini_api_keys)
     if not keys and settings.gemini_api_key:
         keys = [settings.gemini_api_key]
     if os.environ.get("GEMINI_API_KEY") and os.environ.get("GEMINI_API_KEY") not in keys:
         keys.insert(0, os.environ.get("GEMINI_API_KEY"))
+    
+    # Prioritize Custom User API Key from UI state
+    custom_ui_key = st.session_state.get("custom_gemini_api_key", "").strip()
+    if custom_ui_key:
+        if custom_ui_key in keys:
+            keys.remove(custom_ui_key)
+        keys.insert(0, custom_ui_key)
+
     keys = [k for k in keys if k]
 
     if keys:
@@ -4465,6 +5410,7 @@ def expand_general_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, sin
             "style": "comma-separated musical style description"
         }}
         """
+        errors = []
         for key in keys:
             try:
                 from google import genai
@@ -4481,54 +5427,94 @@ def expand_general_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, sin
                 data = json.loads(response.text)
                 if "lyrics" in data and "style" in data:
                     return data["lyrics"], data["style"]
+                else:
+                    errors.append(f"Invalid JSON returned (missing 'lyrics' or 'style'): {response.text}")
             except Exception as e:
-                pass
-                
+                errors.append(f"API key beginning with '{key[:6]}...': {str(e)}")
+        if errors:
+            st.session_state["gemini_api_error"] = "\n".join(errors)
+    else:
+        st.session_state["gemini_api_error"] = "No Gemini API keys found in Settings or Environment."
+        
     if language == "Hindi":
         return expand_general_prompt_to_lyrics_and_style_hindi_local(prompt, singer_gender)
     else:
         return expand_general_prompt_to_lyrics_and_style(prompt, singer_gender)
 
 
-def expand_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, singer_gender: str, language: str) -> tuple[str, str]:
+def expand_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, singer_gender: str, language: str, mode: str = "Poem/Rhyme") -> tuple[str, str]:
     import os
     import json
+    if "gemini_api_error" in st.session_state:
+        del st.session_state["gemini_api_error"]
+
     keys = list(settings.gemini_api_keys)
     if not keys and settings.gemini_api_key:
         keys = [settings.gemini_api_key]
     if os.environ.get("GEMINI_API_KEY") and os.environ.get("GEMINI_API_KEY") not in keys:
         keys.insert(0, os.environ.get("GEMINI_API_KEY"))
+    
+    # Prioritize Custom User API Key from UI state
+    custom_ui_key = st.session_state.get("custom_gemini_api_key", "").strip()
+    if custom_ui_key:
+        if custom_ui_key in keys:
+            keys.remove(custom_ui_key)
+        keys.insert(0, custom_ui_key)
+
     keys = [k for k in keys if k]
 
     if keys:
-        system_instruction = (
-            "You are a children's song and nursery rhyme composer. Expand the kids' song idea into complete lyrics and style description. "
-            "The output must be JSON with keys 'lyrics' and 'style'."
-        )
-        user_prompt = f"""
-        User Kids Song Idea: "{prompt}"
-        Singer Voice Gender Selection: "{singer_gender}"
-        Target Song Language: "{language}"
-        
-        Requirements:
-        1. If the Target Song Language is 'Hindi', write the lyrics in standard Devanagari script (Hindi characters) like 'जय हनुमान ज्ञान गुन सागर' rather than Romanized/Hinglish (e.g. 'Jai Hanuman'). This forces the neural network to activate its native Indian mouth-shape and dental consonant engines for a perfect native accent. Explicitly mention 'native Indian {singer_gender.lower()} singing voice', 'Bollywood style kids singer', 'natural Indian accent', 'clear native pronunciation', and use appropriate Indian instruments and child-friendly tones (e.g. glockenspiel, bells, sitar, bansuri flute, dholak, tabla, acoustic guitar) in the style description.
-        2. SPECIAL DEVOTIONAL EXCEPTION: If the User Kids Song Idea or prompt contains references to Hindu deities, devotional topics, or prayers (such as 'Hanuman', 'Chalisa', 'bhajan', 'aarti', 'spiritual', 'ram', 'krishna', 'shiva', 'ganesha', 'temple', 'prayer', 'devotional'), then override standard kids pop. Instead, explicitly require:
-           - 'traditional Indian devotional bhajan style adapted for kids'
-           - 'sweet spiritual native Indian {singer_gender.lower()} singer voice'
-           - 'devotional acoustic instrumentation: bansuri flute, harmonium, sitar, dholak, tabla, soft manjira hand cymbals'
-           - 'peaceful and gentle tempo (70-80 BPM)'
-           - 'strictly no heavy synthesizers, no electronic beat drops'
-           - 'warm sacred ambient reverb'
-        3. If the Target Song Language is 'English', write the lyrics in English.
-        4. Structure the lyrics with standard tags like [verse] and [chorus]. Avoid [intro] or [outro] tags. Keep it to 2-3 short verses and 1-2 choruses.
-        5. The 'style' string must be a comma-separated description of instruments, tempo (BPM), vocal qualities, and musical genre suitable for kids/toddlers.
-        
-        Return a raw JSON object matching this schema:
-        {{
-            "lyrics": "verse and chorus text",
-            "style": "comma-separated musical style description"
-        }}
-        """
+        if mode == "Storytelling":
+            system_instruction = (
+                "You are an elite children's audiobook narrator and storyteller. Expand the kids' story idea into a complete, warm, expressive storytelling script and style description. "
+                "The output must be JSON with keys 'lyrics' (containing the story script) and 'style'."
+            )
+            user_prompt = f"""
+            User Kids Story Idea: "{prompt}"
+            Narrator Voice Gender Selection: "{singer_gender}"
+            Target Story Language: "{language}"
+            
+            Requirements:
+            1. If the Target Story Language is 'Hindi', write the script in standard Devanagari script (Hindi characters) like 'एक समय की बात है' rather than Romanized/Hinglish (e.g. 'Ek samay ki baat hai').
+            2. Utilize [pause] tags for natural dramatic pauses in the script. Structure it like an audiobook narration.
+            3. The 'style' string must be a comma-separated description of storytelling background, pacing, vocal qualities, and mood suitable for kids/toddlers.
+            
+            Return a raw JSON object matching this schema:
+            {{
+                "lyrics": "story script with [pause] tags",
+                "style": "comma-separated style description"
+            }}
+            """
+        else:
+            system_instruction = (
+                "You are a children's song and nursery rhyme composer. Expand the kids' song idea into complete lyrics and style description. "
+                "The output must be JSON with keys 'lyrics' and 'style'."
+            )
+            user_prompt = f"""
+            User Kids Song Idea: "{prompt}"
+            Singer Voice Gender Selection: "{singer_gender}"
+            Target Song Language: "{language}"
+            
+            Requirements:
+            1. If the Target Song Language is 'Hindi', write the lyrics in standard Devanagari script (Hindi characters) like 'जय हनुमान ज्ञान गुन सागर' rather than Romanized/Hinglish (e.g. 'Jai Hanuman'). This forces the network to use native accent filters. Explicitly require 'native Indian {singer_gender.lower()} singing voice', 'Bollywood style kids singer', 'natural Indian accent', 'clear native pronunciation', and appropriate kids instruments (glockenspiel, bells, sitar, bansuri flute, dholak, tabla, acoustic guitar).
+            2. SPECIAL DEVOTIONAL EXCEPTION: If the User Kids Song Idea or prompt contains references to Hindu deities, devotional topics, or prayers (such as 'Hanuman', 'Chalisa', 'bhajan', 'aarti', 'spiritual', 'ram', 'krishna', 'shiva', 'ganesha', 'temple', 'prayer', 'devotional'), then override standard kids pop. Instead, explicitly require:
+               - 'traditional Indian devotional bhajan style adapted for kids'
+               - 'sweet spiritual native Indian {singer_gender.lower()} singer voice'
+               - 'devotional acoustic instrumentation: bansuri flute, harmonium, sitar, dholak, tabla, soft manjira hand cymbals'
+               - 'peaceful and gentle tempo (70-80 BPM)'
+               - 'strictly no heavy synthesizers, no electronic beat drops'
+               - 'warm sacred ambient reverb'
+            3. If the Target Song Language is 'English', write the lyrics in English.
+            4. Structure the lyrics with standard tags like [verse] and [chorus]. Avoid [intro] or [outro] tags. Keep it to 2-3 short verses and 1-2 choruses.
+            5. The 'style' string must be a comma-separated description of instruments, tempo (BPM), vocal qualities, and musical genre suitable for kids/toddlers.
+            
+            Return a raw JSON object matching this schema:
+            {{
+                "lyrics": "verse and chorus text",
+                "style": "comma-separated musical style description"
+            }}
+            """
+        errors = []
         for key in keys:
             try:
                 from google import genai
@@ -4545,13 +5531,19 @@ def expand_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, singer_gend
                 data = json.loads(response.text)
                 if "lyrics" in data and "style" in data:
                     return data["lyrics"], data["style"]
+                else:
+                    errors.append(f"Invalid JSON returned (missing 'lyrics' or 'style'): {response.text}")
             except Exception as e:
-                pass
-                
-    if language == "Hindi":
-        return expand_prompt_to_lyrics_and_style_hindi_local(prompt, singer_gender)
+                errors.append(f"API key beginning with '{key[:6]}...': {str(e)}")
+        if errors:
+            st.session_state["gemini_api_error"] = "\n".join(errors)
     else:
-        return expand_prompt_to_lyrics_and_style(prompt, singer_gender)
+        st.session_state["gemini_api_error"] = "No Gemini API keys found in Settings or Environment."
+        
+    if language == "Hindi":
+        return expand_prompt_to_lyrics_and_style_hindi_local(prompt, singer_gender, mode=mode)
+    else:
+        return expand_prompt_to_lyrics_and_style(prompt, singer_gender, mode=mode)
 
 
 def expand_general_prompt_to_lyrics_and_style_hindi_local(prompt: str, singer_gender: str) -> tuple[str, str]:
@@ -4561,189 +5553,201 @@ def expand_general_prompt_to_lyrics_and_style_hindi_local(prompt: str, singer_ge
     if any(k in p for k in ["emotional", "sad", "touch", "heart", "ballad", "acoustic", "slow", "love"]):
         lyrics = (
             "[verse]\n"
-            "Dil ki raahon mein khamoshi hai basi,\n"
-            "Tum bin adhuri hai har ek khushi.\n"
-            "Yaadon ki baarish mein bheegta hoon main,\n"
-            "Aankhon mein chhupi hai wahi bekhudi.\n\n"
+            "दिल की राहों में खामोशी है बसी,\n"
+            "तुम बिन अधूरी है हर एक खुशी।\n"
+            "यादों की बारिश में भीगता हूं मैं,\n"
+            "आँखों में छुपी है वही बेखुदी।\n\n"
             "[chorus]\n"
-            "Aa bhi jaa mere paas, kehde dil ki baat,\n"
-            "Hathoon mein ho tera haath, guzre ye raat.\n"
-            "Har lamha har ghadi, bas tera hi intezar,\n"
-            "Sacha hai mera pyaar, sacha hai mera pyaar.\n\n"
+            "आ भी जा मेरे पास, कहदे दिल की बात,\n"
+            "हाथों में हो तेरा हाथ, गुज़रे ये रात।\n"
+            "हर लम्हा हर घड़ी, बस तेरा ही इंतज़ार,\n"
+            "सच्चा है मेरा प्यार, सच्चा है मेरा प्यार।\n\n"
             "[verse]\n"
-            "Sannaata hai ab to har su yahaan,\n"
-            "Bin tere soona hai mera jahaan.\n"
-            "Taaron ki roshni mein dhoondhe nazar,\n"
-            "Miloge tum kahan, miloge tum kahan."
+            "सन्नाटा है अब तो हर सू यहाँ,\n"
+            "बिन तेरे सूना है मेरा जहाँ।\n"
+            "तारों की रोशनी में ढूँढे नज़र,\n"
+            "मिलोगे तुम कहाँ, मिलोगे तुम कहाँ।"
         )
         style = (
             f"gentle emotional pop ballad, slow acoustic feel, warm piano, soft acoustic guitar, slow building strings, 78 BPM, "
-            f"heart-touching emotional melody, warm clear friendly native Indian {singer_gender.lower()} singing voice, Bollywood style singer, natural Indian accent, expressive vocal delivery, clear Hinglish pronunciation, clean mix."
+            f"heart-touching emotional melody, warm clear friendly native Indian {singer_gender.lower()} singing voice, Bollywood style singer, natural Indian accent, expressive vocal delivery, clear native pronunciation, clean mix."
         )
         
     elif any(k in p for k in ["happy", "fun", "dance", "upbeat", "energetic", "pop", "party", "cheerful"]):
         lyrics = (
             "[verse]\n"
-            "Subah ki dhoop mein hai naya rang chhaya,\n"
-            "Dil ne hamare ek naya geet gaaya.\n"
-            "Chhoro ye baatein jo beeti kal yahaan,\n"
-            "Khushiyon ki mehfil ko humne sajaaya.\n\n"
+            "सुबह की धूप में है नया रंग छाया,\n"
+            "दिल ने हमारे एक नया गीत गाया।\n"
+            "छोड़ो ये बातें जो बीती कल यहाँ,\n"
+            "खुशियों की महफ़िल को हमने सजाया।\n\n"
             "[chorus]\n"
-            "Nachlo saare ab to milke mere yaar,\n"
-            "Mauj manalo aaya din dildaar.\n"
-            "Hawaon mein hai masti, dil hai bekarar,\n"
-            "Zindagi se karlo thoda sa pyaar!\n\n"
+            "नाचलो सारे अब तो मिलके मेरे यार,\n"
+            "मौज मनालो आया दिन दिलदार।\n"
+            "हवाओं में है मस्ती, दिल है बेक़रार,\n"
+            "ज़िंदगी से करलो थोड़ा सा प्यार!\n\n"
             "[verse]\n"
-            "Ek ek kadam pe nayi dhoop khile,\n"
-            "Hum tum jahan bhi ab milte chale.\n"
-            "Piche na dekhna aage hi badhna,\n"
-            "Zindagi ka maza ab humne liya."
+            "एक एक कदम पे नयी धूप खिले,\n"
+            "हम तुम जहाँ भी अब मिलते चलें।\n"
+            "पीछे न देखना आगे ही बढ़ना,\n"
+            "ज़िंदगी का मज़ा अब हमने लिया।"
         )
         style = (
             f"catchy modern pop, upbeat dance rhythm, 120 BPM, driving synth bass, electronic drums, sparkling synthesizers, "
-            f"bright friendly native Indian {singer_gender.lower()} vocals, Bollywood style singer, natural Indian accent, energetic vocal delivery, clear Hinglish pronunciation, clean mix."
+            f"bright friendly native Indian {singer_gender.lower()} vocals, Bollywood style singer, natural Indian accent, energetic vocal delivery, clear native pronunciation, clean mix."
         )
         
     elif any(k in p for k in ["rock", "guitar", "metal", "heavy", "alternative", "band", "drums"]):
         lyrics = (
             "[verse]\n"
-            "Neon roshni mein hum bhaage chale,\n"
-            "Raaton ke andhere se aage chale.\n"
-            "Suno ye garjan badhne lagi,\n"
-            "Aankhon mein aag si jalne lagi.\n\n"
+            "नियोन रोशनी में हम भागे चले,\n"
+            "रातों के अंधेरे से आगे चले।\n"
+            "सुनो ये गर्जन बढ़ने लगी,\n"
+            "आंँखों में आग सी जलने लगी।\n\n"
             "[chorus]\n"
-            "Hum hain wo aawaz jo na rukegi kabhi,\n"
-            "Unche se unche parvat pe chadhenge abhi.\n"
-            "Koi na rok sake is bhaari shor ko,\n"
-            "Badal denge hum is saari dunya ko!\n\n"
+            "हम हैं वो आवाज़ जो न रुकेगी कभी,\n"
+            "ऊँचे से ऊँचे पर्वत पे चढ़ेंगे अभी।\n"
+            "कोई न रोक सके इस भारी शोर को,\n"
+            "बदल देंगे हम इस सारी दुनिया को!\n\n"
             "[verse]\n"
-            "Bijli ki taarein ab rone lagi,\n"
-            "Toofani aasman ke neeche khadi.\n"
-            "Hum apne hausle ko na haarenge kabhi,\n"
-            "Sabse bada sur chhedenge abhi."
+            "बिजली की तारें अब रोने लगीं,\n"
+            "तूफ़ानी आसमान के नीचे खड़ी।\n"
+            "हम अपने हौसले को न हारेंगे कभी,\n"
+            "सबसे बड़ा सुर छेड़ेंगे अभी।"
         )
         style = (
             f"energetic alternative rock, driving electric guitars, powerful bassline, rock drum kit, 112 BPM, "
-            f"strong passionate native Indian {singer_gender.lower()} rock vocals, Bollywood style rock singer, natural Indian accent, clear Hinglish pronunciation, clean professional studio mix."
+            f"strong passionate native Indian {singer_gender.lower()} rock vocals, Bollywood style rock singer, natural Indian accent, clear native pronunciation, clean professional studio mix."
         )
         
     else:
         lyrics = (
             "[verse]\n"
-            "Apna saamaan uthake hum chal diye,\n"
-            "Thandi baarish ko piche chhor diye.\n"
-            "Naye ishaare ki dhoondh mein hain hum,\n"
-            "Apna ek naya rasta bana liye.\n\n"
+            "अपना सामान उठाके हम चल दिए,\n"
+            "ठंडी बारिश को पीछे छोड़ दिए।\n"
+            "नए इशारे की ढूँढ में हैं हम,\n"
+            "अपना एक नया रास्ता बना लिए।\n\n"
             "[chorus]\n"
-            "Ye shuruaat hai aage ke safar ki,\n"
-            "Jahan le chale hume raahein humari.\n"
-            "Har ek kadam pe hai roshni nayi,\n"
-            "Ujaale ki taraf hum badhte chale.\n\n"
+            "ये शुरुआत है आगे के सफर की,\n"
+            "जहाँ ले चलें हमें राहें हमारी।\n"
+            "हर एक कदम पे है रोशनी नयी,\n"
+            "उजाले की तरफ हम बढ़ते चले।\n\n"
             "[verse]\n"
-            "Meelon chale aur parvat uthe,\n"
-            "Aankhon mein teri sapne saje.\n"
-            "Chalte rahenge hum chahe jo ho,\n"
-            "Apna naya raahi aaj banaye."
+            "मीलों चले और पर्वत उठे,\n"
+            "आँखों में तेरी सपने सजे।\n"
+            "चलते रहेंगे हम चाहे जो हो,\n"
+            "अपना नया राही आज बनाएं।"
         )
         style = (
             f"modern acoustic pop songwriter, gentle steady rhythm, 92 BPM, warm piano, soft acoustic guitar, "
-            f"bright acoustic bass, expressive friendly native Indian {singer_gender.lower()} vocal, Bollywood style singer, natural Indian accent, clear Hinglish pronunciation, clean mix."
+            f"bright acoustic bass, expressive friendly native Indian {singer_gender.lower()} vocal, Bollywood style singer, natural Indian accent, clear native pronunciation, clean mix."
         )
         
     return lyrics, style
 
 
-def expand_prompt_to_lyrics_and_style_hindi_local(prompt: str, singer_gender: str) -> tuple[str, str]:
+def expand_prompt_to_lyrics_and_style_hindi_local(prompt: str, singer_gender: str, mode: str = "Poem/Rhyme") -> tuple[str, str]:
+    if mode == "Storytelling":
+        lyrics = (
+            "[pause] एक समय की बात है, एक जंगल में एक बहुत ही बुद्धिमान कछुआ रहता था। "
+            "[pause] उसी जंगल में एक खरगोश भी रहता था, जिसे अपनी गति पर बहुत घमंड था। "
+            "[pause] एक दिन दोनों ने दौड़ लगाने का फैसला किया। "
+            "[pause] खरगोश तेजी से भागा और आधा रास्ता तय करके सो गया। "
+            "[pause] कछुआ धीरे-धीरे बिना रुके चलता रहा और अंत में दौड़ जीत गया। "
+            "[pause] इस कहानी से हमें सीख मिलती है कि धीरे और लगातार चलने वाले ही हमेशा जीतते हैं।"
+        )
+        style = "warm theatrical spoken-word audiobook narrator, gentle bedtime story, calm pacing, soft glockenspiel and warm strings, 0 BPM"
+        return lyrics, style
+
     import re
     p = prompt.lower()
     
     if any(k in p for k in ["emotional", "sad", "touch", "heart", "lullaby", "soft", "peaceful"]):
         lyrics = (
             "[verse]\n"
-            "Chanda mama door ke, taare chamke raat mein,\n"
-            "Sojo mere pyaare ab thandi hawa chal rahi.\n"
-            "Aankhein apni band karo, sapno mein kho jao,\n"
-            "Parion ki kahani mein ab beh jao.\n\n"
+            "चंदा मामा दूर के, तारे चमके रात में,\n"
+            "सो जाओ मेरे प्यारे अब ठंडी हवा चल रही।\n"
+            "आँखें अपनी बंद करो, सपनों में खो जाओ,\n"
+            "परियों की कहानी में अब बह जाओ।\n\n"
             "[chorus]\n"
-            "Sojo mere laale, sojo mere pyaare,\n"
-            "Nindiya aayi re, ankhiyon mein samaayi re.\n"
-            "Godi mein meri tum sada safe rahoge,\n"
-            "Pyaare se chanda mama dhyan rakhenge.\n\n"
+            "सो जाओ मेरे लाडले, सो जाओ मेरे प्यारे,\n"
+            "निंदिया आई रे, अखियों में समाई रे।\n"
+            "गोदी में मेरी तुम सदा सुरक्षित रहोगे,\n"
+            "प्यारे से चंदा मामा ध्यान रखेंगे।\n\n"
             "[verse]\n"
-            "Subah ki dhoop jald hi aayegi,\n"
-            "Saare andhere ko door bhagayegi.\n"
-            "Tab tak ke liye chanda mama rahenge,\n"
-            "Tumhare upar dhyan apna rakhenge."
+            "सुबह की धूप जल्द ही आएगी,\n"
+            "सारे अंधेरे को दूर भगाएगी।\n"
+            "तब तक के लिए चंदा मामा रहेंगे,\n"
+            "तुम्हारे ऊपर ध्यान अपना रखेंगे।"
         )
         style = (
             f"gentle lullaby, warm acoustic guitar, soft emotional piano, delicate glockenspiel, peaceful strings, 80 BPM, "
-            f"heart-touching emotional melody, warm clear friendly native Indian {singer_gender.lower()} singing voice, Bollywood style kids singer, natural Indian accent, clear Hinglish pronunciation, gentle percussion, clean mix."
+            f"heart-touching emotional melody, warm clear friendly native Indian {singer_gender.lower()} singing voice, Bollywood style kids singer, natural Indian accent, clear native pronunciation, gentle percussion, clean mix."
         )
         
     elif any(k in p for k in ["happy", "fun", "playful", "bouncy", "cheerful", "dance", "laugh"]):
         lyrics = (
             "[verse]\n"
-            "Pyaara din aur neela aasmaan,\n"
-            "Titliyan aur chidiya yahaan wahaan.\n"
-            "Koodo rabbit jaise, aasmaan ko chhuo,\n"
-            "Aao saare bacho, milke ab khelo!\n\n"
+            "प्यारा दिन और नीला आसमान,\n"
+            "तितलियाँ और चिड़िया यहाँ वहाँ।\n"
+            "कूदें खरगोश जैसे, आसमान को छुओ,\n"
+            "आओ सारे बच्चों, मिलके अब खेलो!\n\n"
             "[chorus]\n"
-            "Tali bajao aur gol gol ghoomo,\n"
-            "Khushi ki aawaz ko tum ab suno.\n"
-            "Hanso aur joodo khushi se saare,\n"
-            "Touch karlo aasmaan ko hum pyaare!\n\n"
+            "ताली बजाओ और गोल गोल घूमो,\n"
+            "खुशी की आवाज़ को तुम अब सुनो।\n"
+            "हँसो और जुड़ो खुशी से सारे,\n"
+            "छू लो आसमान को हम प्यारे!\n\n"
             "[verse]\n"
-            "Chhota sa puppy punch hilata,\n"
-            "Paper boat pe safar karata.\n"
-            "Gaana gao aur saath mein nacho,\n"
-            "Yahi hai hum sab ki jagah bacho!"
+            "छोटा सा पिल्ला पूँछ हिलाता,\n"
+            "कागज़ की नाव पे सफर कराता।\n"
+            "गाना गाओ और साथ में नाचो,\n"
+            "यही है हम सब की जगह बच्चों!"
         )
         style = (
             f"cheerful kids nursery rhyme, high-energy bouncy happy kids rhythm, 108 BPM, playful animated kids show style, "
             f"ukulele, glockenspiel, hand claps, light acoustic guitar, bright bells, traditional Indian dholak beats, soft tabla, "
-            f"friendly native Indian {singer_gender.lower()} singing voice, Bollywood style kids singer, natural Indian accent, clear Hinglish pronunciation, clean mix."
+            f"friendly native Indian {singer_gender.lower()} singing voice, Bollywood style kids singer, natural Indian accent, clear native pronunciation, clean mix."
         )
         
     elif any(k in p for k in ["educational", "alphabet", "abc", "number", "learn", "school"]):
         lyrics = (
             "[verse]\n"
-            "A B C D E F G,\n"
-            "Aao mere saath seekho tum bhi.\n"
-            "H I J K L M N,\n"
-            "Pen se likho saare letters abhi.\n\n"
+            "ए बी सी डी ई एफ जी,\n"
+            "आओ मेरे साथ सीखो तुम भी।\n"
+            "एच आई जे के एल एम एन,\n"
+            "पेन से लिखो सारे लेटर्स अभी।\n\n"
             "[chorus]\n"
-            "Letters seekhenge ek ek karke,\n"
-            "ABC seekhna hai bada mazedaar!\n"
-            "Zor se gao aur saaf gao,\n"
-            "Seekhte rahenge hum poore saal.\n\n"
+            "लेटर्स सीखेंगे एक एक करके,\n"
+            "एबीसी सीखना है बड़ा मज़ेदार!\n"
+            "ज़ोर से गाओ और साफ़ गाओ,\n"
+            "सीखते रहेंगे हम पूरे साल।\n\n"
             "[verse]\n"
-            "O P Q R S T U,\n"
-            "V W X and Y and Z.\n"
-            "Ab to seekh gaye hum ABC,\n"
-            "Agli baar tum bhi saath gaana ji."
+            "ओ पी क्यू आर एस टी यू,\n"
+            "वी डब्ल्यू एक्स और वाई और ज़ेड।\n"
+            "अब तो सीख गए हम एबीसी,\n"
+            "अगली बार तुम भी साथ गाना जी।"
         )
         style = (
             f"upbeat educational kids song, high-energy bouncy kids rhythm, 105 BPM, cheerful synth melody, "
-            f"clear friendly native Indian {singer_gender.lower()} vocal pronunciation, Bollywood style kids singer, natural Indian accent, clear Hinglish pronunciation, "
+            f"clear friendly native Indian {singer_gender.lower()} vocal pronunciation, Bollywood style kids singer, natural Indian accent, clear native pronunciation, "
             f"traditional Indian dholak beats, glockenspiel, hand claps, bright piano, positive happy mood, clean mix."
         )
         
     else:
         lyrics = (
             "[verse]\n"
-            "Chalo chalo hum chalte hain,\n"
-            "Naye safar pe nikalte hain.\n"
-            "Khelenge aur seekhenge hum,\n"
-            "Khushi khushi din beetenge hum.\n\n"
+            "चलो चलो हम चलते हैं,\n"
+            "नए सफर पे निकलते हैं।\n"
+            "खेलेंगे और सीखेंगे हम,\n"
+            "खुशी खुशी दिन बिताएंगे हम।\n\n"
             "[chorus]\n"
-            "Gao mere saath, ek do teen,\n"
-            "Zindagi hai kitni haseen.\n"
-            "Nachlo ab aur tali bajao,\n"
-            "Dunya ko tum geet sunao!"
+            "गाओ मेरे साथ, एक दो तीन,\n"
+            "ज़िंदगी है कितनी हसीन।\n"
+            "नाचो अब और ताली बजाओ,\n"
+            "दुनिया को तुम गीत सुनाओ!"
         )
         style = (
             f"cheerful kids adventure song, high-energy bouncy kids rhythm, 108 BPM, playful friendly native Indian {singer_gender.lower()} singing voice, Bollywood style kids singer, natural Indian accent, "
-            f"acoustic guitar, traditional Indian dholak beats, soft tabla percussion, glockenspiel, bells, clear Hinglish pronunciation, clean mix."
+            f"acoustic guitar, traditional Indian dholak beats, soft tabla percussion, glockenspiel, bells, clear native pronunciation, clean mix."
         )
         
     return lyrics, style
