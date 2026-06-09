@@ -2771,17 +2771,25 @@ def render_frontdoor(settings: Settings) -> None:
                 if not confirm_proj:
                     if st.button("Create Project", type="secondary", key="btn_create_proj_main", use_container_width=True):
                         import re
+                        import datetime
                         clean_name = re.sub(r'[^a-zA-Z0-9_]', '', new_project_name.strip())
                         if not clean_name:
-                            st.error("Invalid project name. Use alphanumeric characters and underscores.")
+                            # Auto-generate a clean name based on English keywords in topic or a simple timestamp slug
+                            topic_str = new_project_topic.strip()
+                            if topic_str:
+                                english_words = re.findall(r'[a-zA-Z0-9]+', topic_str)
+                                if english_words:
+                                    clean_name = "_".join(english_words[:3]).lower()
+                            if not clean_name:
+                                clean_name = f"story_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                        
+                        new_proj_dir = projects_dir / clean_name
+                        if new_proj_dir.exists():
+                            st.session_state["project_creation_confirm"] = clean_name
+                            st.rerun()
                         else:
-                            new_proj_dir = projects_dir / clean_name
-                            if new_proj_dir.exists():
-                                st.session_state["project_creation_confirm"] = clean_name
-                                st.rerun()
-                            else:
-                                st.session_state["trigger_create_project_forced"] = clean_name
-                                st.rerun()
+                            st.session_state["trigger_create_project_forced"] = clean_name
+                            st.rerun()
 
             project_path = projects_dir / selected_project
             manifest_path = project_path / "scene_manifest.json"
