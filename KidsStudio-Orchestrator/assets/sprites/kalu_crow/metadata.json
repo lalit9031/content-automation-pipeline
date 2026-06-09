@@ -1,0 +1,30 @@
+{
+    "character_key": "KALU_CROW",
+    "dimensions": [
+        746,
+        694
+    ],
+    "anchors": {
+        "mouth_anchor_xy": [
+            180,
+            200
+        ],
+        "feather_pivot_xy": [
+            450,
+            360
+        ]
+    },
+    "cycles": {
+        "idle": {
+            "total_frames": 1,
+            "fps": 12
+        },
+        "walk": {
+            "total_frames": 4,
+            "fps": 12
+        },
+        "talk": {
+            "mapping_type": "phoneme_rhubarb"
+        }
+    }
+}

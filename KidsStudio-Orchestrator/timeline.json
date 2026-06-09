@@ -1,0 +1,163 @@
+{
+  "project_name": "Ghamandi Mor Story",
+  "resolution": "1280x720",
+  "fps": 24,
+  "scenes": [
+    {
+      "scene_id": "scene_01_intro",
+      "background_asset": "assets/character/jungle_bg.png",
+      "camera_effect": "zoom_in",
+      "dialogue": [
+        { "speaker": "Narrator", "text": "एक सुंदर जंगल में एक बहुत ही घमंडी मोर रहता था। वह अपने सुंदर और रंगीन पंखों पर बहुत गर्व करता था।" }
+      ],
+      "characters": [
+        {
+          "id": "peacock",
+          "scale": 350,
+          "motion_path": {
+            "enabled": false,
+            "start_position": [150, 220],
+            "start_scale": 1.0
+          },
+          "states": [
+            { "time_range": [0.0, 100.0], "animation_state": "idle" }
+          ]
+        },
+        {
+          "id": "kalu",
+          "scale": 250,
+          "motion_path": {
+            "enabled": false,
+            "start_position": [850, 320],
+            "start_scale": 1.0
+          },
+          "states": [
+            { "time_range": [0.0, 100.0], "animation_state": "idle" }
+          ]
+        }
+      ]
+    },
+    {
+      "scene_id": "scene_02_dialogue",
+      "background_asset": "assets/character/jungle_bg.png",
+      "camera_effect": "pan_right",
+      "dialogue": [
+        { "speaker": "Peacock", "text": "अरे काले कौए! ज़रा अपने आप को देखो, कितने बदसूरत हो तुम! क्या तुम्हारे पास ऐसे सुंदर रंगीन पंख हैं?" },
+        { "speaker": "Kalu", "text": "मोर भाई, बाहरी सुंदरता ही सब कुछ नहीं होती। घमंड करना अच्छी बात नहीं है, यह कभी भी टूट सकता है।" }
+      ],
+      "characters": [
+        {
+          "id": "peacock",
+          "scale": 350,
+          "motion_path": {
+            "enabled": true,
+            "start_position": [150, 220],
+            "end_position": [220, 220],
+            "start_scale": 1.0,
+            "end_scale": 1.0,
+            "start_time": 0.0,
+            "end_time": 4.0
+          },
+          "states": [
+            { "time_range": [0.0, 5.0], "animation_state": "talking_lip_sync" },
+            { "time_range": [5.0, 100.0], "animation_state": "idle" }
+          ]
+        },
+        {
+          "id": "kalu",
+          "scale": 250,
+          "motion_path": {
+            "enabled": false,
+            "start_position": [850, 320],
+            "start_scale": 1.0
+          },
+          "states": [
+            { "time_range": [0.0, 5.0], "animation_state": "idle" },
+            { "time_range": [5.0, 100.0], "animation_state": "talking_lip_sync" }
+          ]
+        }
+      ]
+    },
+    {
+      "scene_id": "scene_03_trapped",
+      "background_asset": "assets/character/hunter_bg.png",
+      "camera_effect": "zoom_in",
+      "dialogue": [
+        { "speaker": "Narrator", "text": "एक दिन एक शिकारी ने जंगल में जाल बिछाया, और वह घमंडी मोर उस जाल में बुरी तरह फँस गया।" },
+        { "speaker": "Peacock", "text": "बचाओ! बचाओ! कोई मेरी मदद करो! मेरे भारी पंखों की वजह से मैं उड़ भी नहीं सकता!" }
+      ],
+      "characters": [
+        {
+          "id": "peacock",
+          "scale": 350,
+          "motion_path": {
+            "enabled": false,
+            "start_position": [380, 280],
+            "start_scale": 1.0
+          },
+          "states": [
+            { "time_range": [0.0, 5.0], "animation_state": "idle" },
+            { "time_range": [5.0, 100.0], "animation_state": "talking_lip_sync" }
+          ]
+        },
+        {
+          "id": "kalu",
+          "scale": 250,
+          "motion_path": {
+            "enabled": true,
+            "start_position": [1150, 80],
+            "end_position": [780, 240],
+            "start_scale": 0.7,
+            "end_scale": 1.0,
+            "start_time": 5.0,
+            "end_time": 9.0
+          },
+          "states": [
+            { "time_range": [0.0, 5.0], "animation_state": "idle" },
+            { "time_range": [5.0, 9.0], "animation_state": "walking" },
+            { "time_range": [9.0, 100.0], "animation_state": "idle" }
+          ]
+        }
+      ]
+    },
+    {
+      "scene_id": "scene_04_conclusion",
+      "background_asset": "assets/character/jungle_bg.png",
+      "camera_effect": "zoom_out",
+      "dialogue": [
+        { "speaker": "Narrator", "text": "तभी कालू कौए ने अपनी तेज़ चोंच से शिकारी का जाल काट दिया और मोर को आज़ाद कर दिया।" },
+        { "speaker": "Peacock", "text": "कालू भैया, मुझे माफ़ कर दो। मुझे अपने रूप पर बहुत घमंड था, लेकिन आज तुमने मेरी जान बचाई है।" },
+        { "speaker": "Kalu", "text": "कोई बात नहीं मोर भाई। याद रखना, मुसीबत में काम आने वाला ही सच्चा मित्र होता है।" }
+      ],
+      "characters": [
+        {
+          "id": "peacock",
+          "scale": 350,
+          "motion_path": {
+            "enabled": false,
+            "start_position": [220, 220],
+            "start_scale": 1.0
+          },
+          "states": [
+            { "time_range": [0.0, 5.0], "animation_state": "idle" },
+            { "time_range": [5.0, 11.0], "animation_state": "talking_lip_sync" },
+            { "time_range": [11.0, 100.0], "animation_state": "idle" }
+          ]
+        },
+        {
+          "id": "kalu",
+          "scale": 250,
+          "motion_path": {
+            "enabled": false,
+            "start_position": [780, 240],
+            "start_scale": 1.0
+          },
+          "states": [
+            { "time_range": [0.0, 11.0], "animation_state": "idle" },
+            { "time_range": [11.0, 100.0], "animation_state": "talking_lip_sync" }
+          ]
+        }
+      ]
+    }
+  ]
+}

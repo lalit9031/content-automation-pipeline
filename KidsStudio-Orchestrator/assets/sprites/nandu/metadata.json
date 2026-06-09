@@ -1,0 +1,32 @@
+{
+    "character_name": "nandu",
+    "frame_dimensions": [
+        512,
+        512
+    ],
+    "cycles": {
+        "idle": {
+            "loop": true,
+            "fps": 12,
+            "total_frames": 1
+        },
+        "walk": {
+            "loop": true,
+            "fps": 12,
+            "total_frames": 4
+        },
+        "talk": {
+            "loop": false,
+            "mapping_type": "phoneme_rhubarb",
+            "shapes": [
+                "A",
+                "B",
+                "C",
+                "D",
+                "E",
+                "F",
+                "X"
+            ]
+        }
+    }
+}

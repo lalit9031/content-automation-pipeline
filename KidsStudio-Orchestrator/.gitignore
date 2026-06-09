@@ -1,0 +1,23 @@
+# Python files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environment & Virtual Environments
+.venv/
+venv/
+ENV/
+.env
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Project generated assets and large binaries
+output/
+projects/*/output/
+projects/*/render_output/
+projects/*/vocals/
+scratch/
+bin/rhubarb

@@ -2680,11 +2680,25 @@ def render_frontdoor(settings: Settings) -> None:
             unsafe_allow_html=True,
         )
 
-        orchestrator_path = Path("/Users/lalitprasadsingh/.gemini/antigravity/scratch/KidsStudio-Orchestrator")
+        # Check local path first (for local user system development)
+        local_orchestrator = Path("/Users/lalitprasadsingh/.gemini/antigravity/scratch/KidsStudio-Orchestrator")
+        relative_orchestrator = Path(__file__).resolve().parent / "KidsStudio-Orchestrator"
+        
+        if local_orchestrator.exists():
+            orchestrator_path = local_orchestrator
+        elif relative_orchestrator.exists():
+            orchestrator_path = relative_orchestrator
+        else:
+            orchestrator_path = Path("./KidsStudio-Orchestrator")
+            
         projects_dir = orchestrator_path / "projects"
         
+        # Ensure projects directory exists to prevent blocking errors
         if not projects_dir.exists():
-            st.error(f"❌ Projects directory not found at: {projects_dir}")
+            try:
+                projects_dir.mkdir(parents=True, exist_ok=True)
+            except Exception as e:
+                st.error(f"⚠️ Failed to dynamically create projects directory: {e}")
         else:
             available_projects = sorted([p.name for p in projects_dir.iterdir() if p.is_dir()])
             
@@ -3002,7 +3016,7 @@ def render_frontdoor(settings: Settings) -> None:
                         compiler_script = orchestrator_path / "src" / "video_pipeline" / "scene_compiler.py"
                         
                         cmd = [
-                            "/Users/lalitprasadsingh/.gemini/antigravity/scratch/content-automation-pipeline/.venv/bin/python",
+                            sys.executable,
                             "-u",
                             str(compiler_script),
                             f"projects/{selected_project}/scene_manifest.json"

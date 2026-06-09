@@ -1,0 +1,30 @@
+{
+    "character_key": "PROUD_PEACOCK",
+    "dimensions": [
+        811,
+        876
+    ],
+    "anchors": {
+        "mouth_anchor_xy": [
+            730,
+            230
+        ],
+        "feather_pivot_xy": [
+            300,
+            776
+        ]
+    },
+    "cycles": {
+        "idle": {
+            "total_frames": 1,
+            "fps": 12
+        },
+        "walk": {
+            "total_frames": 4,
+            "fps": 12
+        },
+        "talk": {
+            "mapping_type": "phoneme_rhubarb"
+        }
+    }
+}
