@@ -114,8 +114,9 @@ class GeminiImageProvider:
         self.clients = clients
         self.model = settings.imagen_model
         if self.model in ("imagen-4.0-generate-001", "imagen-3.0-generate-002"):
-            # Use the currently supported active model imagen-4.0-generate-001
-            self.model = "imagen-4.0-generate-001"
+            # Use the widely supported imagen-3.0-generate-002 model for developer keys
+            self.model = "imagen-3.0-generate-002"
+
         self.fallback_provider = _fallback_image_provider(settings)
         state_path = settings.output_dir / ".runtime" / "gemini_image_rate_limit.json"
         self.limiter = limiter or GeminiImageLimiter(
@@ -153,11 +154,27 @@ class GeminiImageProvider:
                         aspect_ratio=variant.aspect_ratio,
                         output_mime_type="image/png",
                     )
-                response = client.models.generate_images(
-                    model=self.model,
-                    prompt=prompt,
-                    config=config,
-                )
+                try:
+                    response = client.models.generate_images(
+                        model=self.model,
+                        prompt=prompt,
+                        config=config,
+                    )
+                except Exception as model_exc:
+                    msg = str(model_exc).lower()
+                    if "not found" in msg or "not supported" in msg or "404" in msg:
+                        if self.model != "imagen-3.0-generate-002":
+                            import logging
+                            logging.warning(f"Model {self.model} failed or is not found. Retrying with imagen-3.0-generate-002...")
+                            response = client.models.generate_images(
+                                model="imagen-3.0-generate-002",
+                                prompt=prompt,
+                                config=config,
+                            )
+                        else:
+                            raise
+                    else:
+                        raise
                 image_bytes = _response_image_bytes(response)
                 if image_bytes is None:
                     raise RuntimeError("Gemini image generation did not return an image asset.")
@@ -723,13 +740,7 @@ class PollinationsImageProvider:
                         free_last_error = e
                         break # Break model-loading loop to try next option if not a loading warning
 
-        # Attempt 4: Gemini background fallback (silent backup attempt)
-        try:
-            from content_pipeline.bots.image import GeminiImageProvider
-            gemini_prov = GeminiImageProvider(self.settings)
-            return gemini_prov.create(prompt, variant)
-        except Exception:
-            pass
+        # Attempt 4 skipped (removed recursive Gemini fallback to prevent infinite loops)
 
         # Attempt 5: Absolute Placeholder Fallback (to guarantee compilation never breaks)
         import logging

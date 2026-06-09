@@ -2742,7 +2742,22 @@ def render_frontdoor(settings: Settings) -> None:
             elif "ghamandi_mor" in available_projects:
                 default_index = available_projects.index("ghamandi_mor")
                 
-            selected_project = st.selectbox("Select Project Workspace", options=available_projects, index=default_index)
+            setup_cols = st.columns([2, 1])
+            with setup_cols[0]:
+                selected_project = st.selectbox("Select Project Workspace", options=available_projects, index=default_index)
+            with setup_cols[1]:
+                current_val = st.session_state.get("image_provider_choice", "free-ai")
+                if current_val not in ("free-ai", "gemini", "openai"):
+                    current_val = "free-ai"
+                options = ("free-ai", "gemini", "openai")
+                selected_provider = st.selectbox(
+                    "Image Provider",
+                    options=options,
+                    index=options.index(current_val),
+                    key="image_provider_choice_2d_studio"
+                )
+                st.session_state["image_provider_choice"] = selected_provider
+
             
             # Create Project Expander
             with st.expander("➕ Create New Project Workspace", expanded=False):
