@@ -829,6 +829,8 @@ def generate_manifest_from_scratch(topic: str, video_id: str, settings) -> dict:
     """
     
     for key in keys:
+        if key.startswith("AQ."):
+            continue
         try:
             from google import genai
             from google.genai import types
@@ -846,7 +848,33 @@ def generate_manifest_from_scratch(topic: str, video_id: str, settings) -> dict:
         except Exception as e:
             pass
             
-    raise RuntimeError("Gemini failed to generate manifest from topic.")
+    # Try OpenAI fallback if Gemini keys failed or if none were valid
+    openai_keys = list(settings.openai_api_keys)
+    if not openai_keys and settings.openai_api_key:
+        openai_keys = [settings.openai_api_key]
+    if os.environ.get("OPENAI_API_KEY") and os.environ.get("OPENAI_API_KEY") not in openai_keys:
+        openai_keys.insert(0, os.environ.get("OPENAI_API_KEY"))
+    openai_keys = [k for k in openai_keys if k]
+
+    for o_key in openai_keys:
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=o_key)
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "user", "content": prompt}
+                ],
+                response_format={"type": "json_object"}
+            )
+            data = json.loads(response.choices[0].message.content)
+            if "timeline_scenes" in data:
+                return data
+        except Exception as e:
+            pass
+
+    raise RuntimeError("AI model (Gemini/OpenAI) failed to generate manifest from topic. Please check your keys.")
+
 
 
 def apply_manifest_suggestions(manifest_data: dict, user_suggestion: str, settings) -> dict:
@@ -885,6 +913,8 @@ def apply_manifest_suggestions(manifest_data: dict, user_suggestion: str, settin
     """
     
     for key in keys:
+        if key.startswith("AQ."):
+            continue
         try:
             from google import genai
             from google.genai import types
@@ -901,8 +931,33 @@ def apply_manifest_suggestions(manifest_data: dict, user_suggestion: str, settin
                 return data
         except Exception as e:
             pass
-            
-    raise RuntimeError("Gemini failed to process manifest update suggestions.")
+
+    # Try OpenAI fallback if Gemini keys failed or if none were valid
+    openai_keys = list(settings.openai_api_keys)
+    if not openai_keys and settings.openai_api_key:
+        openai_keys = [settings.openai_api_key]
+    if os.environ.get("OPENAI_API_KEY") and os.environ.get("OPENAI_API_KEY") not in openai_keys:
+        openai_keys.insert(0, os.environ.get("OPENAI_API_KEY"))
+    openai_keys = [k for k in openai_keys if k]
+
+    for o_key in openai_keys:
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=o_key)
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "user", "content": prompt}
+                ],
+                response_format={"type": "json_object"}
+            )
+            data = json.loads(response.choices[0].message.content)
+            if "timeline_scenes" in data:
+                return data
+        except Exception as e:
+            pass
+
+    raise RuntimeError("AI model (Gemini/OpenAI) failed to process manifest update suggestions.")
 
 
 def generate_missing_assets(manifest_data: dict, orchestrator_path: Path, settings) -> list[str]:
@@ -5395,60 +5450,93 @@ def expand_general_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, sin
 
     keys = [k for k in keys if k]
 
-    if keys:
-        system_instruction = (
-            "You are a music composer and lyricist. Expand the user's idea into complete lyrics and style description. "
-            "The output must be JSON with keys 'lyrics' and 'style'."
-        )
-        user_prompt = f"""
-        User Song Idea: "{prompt}"
-        Singer Voice Gender Selection: "{singer_gender}"
-        Target Song Language: "{language}"
-        
-        Requirements:
-        1. If the Target Song Language is 'Hindi', write the lyrics in standard Devanagari script (Hindi characters) like 'जय हनुमान ज्ञान गुन सागर' rather than Romanized/Hinglish (e.g. 'Jai Hanuman'). This forces the neural network to activate its native Indian mouth-shape and dental consonant engines for a perfect native accent. Explicitly mention 'native Indian {singer_gender.lower()} singing voice with natural Indian accent', 'Bollywood style playback singer (e.g. Arijit Singh/Atif Aslam style male, Shreya Ghoshal style female)', 'expressive emotional delivery with traditional vocal ornamentations (gamaq and murki)', 'clear native pronunciation', 'traditional Indian instruments (sitar, bansuri flute, dholak, tabla, acoustic guitar)', and 'highly polished T-Series/Saregama style commercial pop mix with grand cinematic reverb and spacious stereo delay' in the style description.
-        2. SPECIAL DEVOTIONAL EXCEPTION: If the User Song Idea or prompt contains references to Hindu deities, devotional topics, or prayers (such as 'Hanuman', 'Chalisa', 'bhajan', 'aarti', 'spiritual', 'ram', 'krishna', 'shiva', 'ganesha', 'temple', 'prayer', 'devotional'), then override the modern commercial pop styles. Instead, explicitly require:
-           - 'authentic traditional Indian devotional bhajan/kirtan mood'
-           - 'deeply spiritual native Indian {singer_gender.lower()} devotional singer voice'
-           - 'traditional acoustic instrumentation: bansuri flute, harmonium, sitar, dholak, tabla, manjira hand cymbals'
-           - 'peaceful and prayerful tempo (65-75 BPM)'
-           - 'strictly no modern electronic dance drums, no heavy synthesizers, no modern EDM elements'
-           - 'sacred temple hall acoustics with warm ambient reverb'
-        3. If the Target Song Language is 'English', write the lyrics in English.
-        4. Structure the lyrics with standard tags like [verse] and [chorus]. Avoid [intro] or [outro] tags. Keep it to 2-3 short verses and 1-2 choruses.
-        5. The 'style' string must be a comma-separated description of instruments, tempo (BPM), vocal qualities, and musical genre. Make it match the song idea.
-        
-        Return a raw JSON object matching this schema:
-        {{
-            "lyrics": "verse and chorus text",
-            "style": "comma-separated musical style description"
-        }}
-        """
-        errors = []
-        for key in keys:
-            try:
-                from google import genai
-                from google.genai import types
-                client = genai.Client(api_key=key)
-                response = client.models.generate_content(
-                    model="gemini-2.5-flash",
-                    contents=user_prompt,
-                    config=types.GenerateContentConfig(
-                        response_mime_type="application/json",
-                        system_instruction=system_instruction
-                    )
+    system_instruction = (
+        "You are a music composer and lyricist. Expand the user's idea into complete lyrics and style description. "
+        "The output must be JSON with keys 'lyrics' and 'style'."
+    )
+    user_prompt = f"""
+    User Song Idea: "{prompt}"
+    Singer Voice Gender Selection: "{singer_gender}"
+    Target Song Language: "{language}"
+    
+    Requirements:
+    1. If the Target Song Language is 'Hindi', write the lyrics in standard Devanagari script (Hindi characters) like 'जय हनुमान ज्ञान गुन सागर' rather than Romanized/Hinglish (e.g. 'Jai Hanuman'). This forces the neural network to activate its native Indian mouth-shape and dental consonant engines for a perfect native accent. Explicitly mention 'native Indian {singer_gender.lower()} singing voice with natural Indian accent', 'Bollywood style playback singer (e.g. Arijit Singh/Atif Aslam style male, Shreya Ghoshal style female)', 'expressive emotional delivery with traditional vocal ornamentations (gamaq and murki)', 'clear native pronunciation', 'traditional Indian instruments (sitar, bansuri flute, dholak, tabla, acoustic guitar)', and 'highly polished T-Series/Saregama style commercial pop mix with grand cinematic reverb and spacious stereo delay' in the style description.
+    2. SPECIAL DEVOTIONAL EXCEPTION: If the User Song Idea or prompt contains references to Hindu deities, devotional topics, or prayers (such as 'Hanuman', 'Chalisa', 'bhajan', 'aarti', 'spiritual', 'ram', 'krishna', 'shiva', 'ganesha', 'temple', 'prayer', 'devotional'), then override the modern commercial pop styles. Instead, explicitly require:
+       - 'authentic traditional Indian devotional bhajan/kirtan mood'
+       - 'deeply spiritual native Indian {singer_gender.lower()} devotional singer voice'
+       - 'traditional acoustic instrumentation: bansuri flute, harmonium, sitar, dholak, tabla, manjira hand cymbals'
+       - 'peaceful and prayerful tempo (65-75 BPM)'
+       - 'strictly no modern electronic dance drums, no heavy synthesizers, no modern EDM elements'
+       - 'sacred temple hall acoustics with warm ambient reverb'
+    3. If the Target Song Language is 'English', write the lyrics in English.
+    4. Structure the lyrics with standard tags like [verse] and [chorus]. Avoid [intro] or [outro] tags. Keep it to 2-3 short verses and 1-2 choruses.
+    5. The 'style' string must be a comma-separated description of instruments, tempo (BPM), vocal qualities, and musical genre. Make it match the song idea.
+    
+    Return a raw JSON object matching this schema:
+    {{
+        "lyrics": "verse and chorus text",
+        "style": "comma-separated musical style description"
+    }}
+    """
+    errors = []
+
+    # 1. Try Gemini
+    for key in keys:
+        if key.startswith("AQ."):
+            errors.append(f"API key beginning with '{key[:6]}...': Starts with 'AQ.', which is an OAuth 2.0 developer access token instead of a standard Gemini API key starting with 'AIzaSy'. Standard API keys should be generated from Google AI Studio (https://aistudio.google.com).")
+            continue
+        try:
+            from google import genai
+            from google.genai import types
+            client = genai.Client(api_key=key)
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=user_prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    system_instruction=system_instruction
                 )
-                data = json.loads(response.text)
-                if "lyrics" in data and "style" in data:
-                    return data["lyrics"], data["style"]
-                else:
-                    errors.append(f"Invalid JSON returned (missing 'lyrics' or 'style'): {response.text}")
-            except Exception as e:
-                errors.append(f"API key beginning with '{key[:6]}...': {str(e)}")
-        if errors:
-            st.session_state["gemini_api_error"] = "\n".join(errors)
+            )
+            data = json.loads(response.text)
+            if "lyrics" in data and "style" in data:
+                return data["lyrics"], data["style"]
+            else:
+                errors.append(f"Gemini returned invalid JSON (missing 'lyrics' or 'style'): {response.text}")
+        except Exception as e:
+            errors.append(f"API key beginning with '{key[:6]}...': {str(e)}")
+
+    # 2. Try OpenAI Fallback
+    openai_keys = list(settings.openai_api_keys)
+    if not openai_keys and settings.openai_api_key:
+        openai_keys = [settings.openai_api_key]
+    if os.environ.get("OPENAI_API_KEY") and os.environ.get("OPENAI_API_KEY") not in openai_keys:
+        openai_keys.insert(0, os.environ.get("OPENAI_API_KEY"))
+    openai_keys = [k for k in openai_keys if k]
+
+    for o_key in openai_keys:
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=o_key)
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": system_instruction},
+                    {"role": "user", "content": user_prompt}
+                ],
+                response_format={"type": "json_object"}
+            )
+            data = json.loads(response.choices[0].message.content)
+            if "lyrics" in data and "style" in data:
+                return data["lyrics"], data["style"]
+            else:
+                errors.append(f"OpenAI returned invalid JSON: {response.choices[0].message.content}")
+        except Exception as e:
+            errors.append(f"OpenAI key beginning with '{o_key[:7] if o_key else ''}...': {str(e)}")
+
+    if errors:
+        st.session_state["gemini_api_error"] = "\n".join(errors)
     else:
-        st.session_state["gemini_api_error"] = "No Gemini API keys found in Settings or Environment."
+        st.session_state["gemini_api_error"] = "No API keys found in Settings or Environment."
         
     if language == "Hindi":
         return expand_general_prompt_to_lyrics_and_style_hindi_local(prompt, singer_gender)
@@ -5477,82 +5565,116 @@ def expand_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, singer_gend
 
     keys = [k for k in keys if k]
 
-    if keys:
-        if mode == "Storytelling":
-            system_instruction = (
-                "You are an elite children's audiobook narrator and storyteller. Expand the kids' story idea into a complete, warm, expressive storytelling script and style description. "
-                "The output must be JSON with keys 'lyrics' (containing the story script) and 'style'."
-            )
-            user_prompt = f"""
-            User Kids Story Idea: "{prompt}"
-            Narrator Voice Gender Selection: "{singer_gender}"
-            Target Story Language: "{language}"
-            
-            Requirements:
-            1. If the Target Story Language is 'Hindi', write the script in standard Devanagari script (Hindi characters) like 'एक समय की बात है' rather than Romanized/Hinglish (e.g. 'Ek samay ki baat hai').
-            2. Utilize [pause] tags for natural dramatic pauses in the script. Structure it like an audiobook narration.
-            3. The 'style' string must be a comma-separated description of storytelling background, pacing, vocal qualities, and mood suitable for kids/toddlers.
-            
-            Return a raw JSON object matching this schema:
-            {{
-                "lyrics": "story script with [pause] tags",
-                "style": "comma-separated style description"
-            }}
-            """
-        else:
-            system_instruction = (
-                "You are a children's song and nursery rhyme composer. Expand the kids' song idea into complete lyrics and style description. "
-                "The output must be JSON with keys 'lyrics' and 'style'."
-            )
-            user_prompt = f"""
-            User Kids Song Idea: "{prompt}"
-            Singer Voice Gender Selection: "{singer_gender}"
-            Target Song Language: "{language}"
-            
-            Requirements:
-            1. If the Target Song Language is 'Hindi', write the lyrics in standard Devanagari script (Hindi characters) like 'जय हनुमान ज्ञान गुन सागर' rather than Romanized/Hinglish (e.g. 'Jai Hanuman'). This forces the network to use native accent filters. Explicitly require 'native Indian {singer_gender.lower()} singing voice', 'Bollywood style kids singer', 'natural Indian accent', 'clear native pronunciation', and appropriate kids instruments (glockenspiel, bells, sitar, bansuri flute, dholak, tabla, acoustic guitar).
-            2. SPECIAL DEVOTIONAL EXCEPTION: If the User Kids Song Idea or prompt contains references to Hindu deities, devotional topics, or prayers (such as 'Hanuman', 'Chalisa', 'bhajan', 'aarti', 'spiritual', 'ram', 'krishna', 'shiva', 'ganesha', 'temple', 'prayer', 'devotional'), then override standard kids pop. Instead, explicitly require:
-               - 'traditional Indian devotional bhajan style adapted for kids'
-               - 'sweet spiritual native Indian {singer_gender.lower()} singer voice'
-               - 'devotional acoustic instrumentation: bansuri flute, harmonium, sitar, dholak, tabla, soft manjira hand cymbals'
-               - 'peaceful and gentle tempo (70-80 BPM)'
-               - 'strictly no heavy synthesizers, no electronic beat drops'
-               - 'warm sacred ambient reverb'
-            3. If the Target Song Language is 'English', write the lyrics in English.
-            4. Structure the lyrics with standard tags like [verse] and [chorus]. Avoid [intro] or [outro] tags. Keep it to 2-3 short verses and 1-2 choruses.
-            5. The 'style' string must be a comma-separated description of instruments, tempo (BPM), vocal qualities, and musical genre suitable for kids/toddlers.
-            
-            Return a raw JSON object matching this schema:
-            {{
-                "lyrics": "verse and chorus text",
-                "style": "comma-separated musical style description"
-            }}
-            """
-        errors = []
-        for key in keys:
-            try:
-                from google import genai
-                from google.genai import types
-                client = genai.Client(api_key=key)
-                response = client.models.generate_content(
-                    model="gemini-2.5-flash",
-                    contents=user_prompt,
-                    config=types.GenerateContentConfig(
-                        response_mime_type="application/json",
-                        system_instruction=system_instruction
-                    )
-                )
-                data = json.loads(response.text)
-                if "lyrics" in data and "style" in data:
-                    return data["lyrics"], data["style"]
-                else:
-                    errors.append(f"Invalid JSON returned (missing 'lyrics' or 'style'): {response.text}")
-            except Exception as e:
-                errors.append(f"API key beginning with '{key[:6]}...': {str(e)}")
-        if errors:
-            st.session_state["gemini_api_error"] = "\n".join(errors)
+    if mode == "Storytelling":
+        system_instruction = (
+            "You are an elite children's audiobook narrator and storyteller. Expand the kids' story idea into a complete, warm, expressive storytelling script and style description. "
+            "The output must be JSON with keys 'lyrics' (containing the story script) and 'style'."
+        )
+        user_prompt = f"""
+        User Kids Story Idea: "{prompt}"
+        Narrator Voice Gender Selection: "{singer_gender}"
+        Target Story Language: "{language}"
+        
+        Requirements:
+        1. If the Target Story Language is 'Hindi', write the script in standard Devanagari script (Hindi characters) like 'एक समय की बात है' rather than Romanized/Hinglish (e.g. 'Ek samay ki baat hai').
+        2. Utilize [pause] tags for natural dramatic pauses in the script. Structure it like an audiobook narration.
+        3. The 'style' string must be a comma-separated description of storytelling background, pacing, vocal qualities, and mood suitable for kids/toddlers.
+        
+        Return a raw JSON object matching this schema:
+        {{
+            "lyrics": "story script with [pause] tags",
+            "style": "comma-separated style description"
+        }}
+        """
     else:
-        st.session_state["gemini_api_error"] = "No Gemini API keys found in Settings or Environment."
+        system_instruction = (
+            "You are a children's song and nursery rhyme composer. Expand the kids' song idea into complete lyrics and style description. "
+            "The output must be JSON with keys 'lyrics' and 'style'."
+        )
+        user_prompt = f"""
+        User Kids Song Idea: "{prompt}"
+        Singer Voice Gender Selection: "{singer_gender}"
+        Target Song Language: "{language}"
+        
+        Requirements:
+        1. If the Target Song Language is 'Hindi', write the lyrics in standard Devanagari script (Hindi characters) like 'जय हनुमान ज्ञान गुन सागर' rather than Romanized/Hinglish (e.g. 'Jai Hanuman'). This forces the network to use native accent filters. Explicitly require 'native Indian {singer_gender.lower()} singing voice', 'Bollywood style kids singer', 'natural Indian accent', 'clear native pronunciation', and appropriate kids instruments (glockenspiel, bells, sitar, bansuri flute, dholak, tabla, acoustic guitar).
+        2. SPECIAL DEVOTIONAL EXCEPTION: If the User Kids Song Idea or prompt contains references to Hindu deities, devotional topics, or prayers (such as 'Hanuman', 'Chalisa', 'bhajan', 'aarti', 'spiritual', 'ram', 'krishna', 'shiva', 'ganesha', 'temple', 'prayer', 'devotional'), then override standard kids pop. Instead, explicitly require:
+           - 'traditional Indian devotional bhajan style adapted for kids'
+           - 'sweet spiritual native Indian {singer_gender.lower()} singer voice'
+           - 'devotional acoustic instrumentation: bansuri flute, harmonium, sitar, dholak, tabla, soft manjira hand cymbals'
+           - 'peaceful and gentle tempo (70-80 BPM)'
+           - 'strictly no heavy synthesizers, no electronic beat drops'
+           - 'warm sacred ambient reverb'
+        3. If the Target Song Language is 'English', write the lyrics in English.
+        4. Structure the lyrics with standard tags like [verse] and [chorus]. Avoid [intro] or [outro] tags. Keep it to 2-3 short verses and 1-2 choruses.
+        5. The 'style' string must be a comma-separated description of instruments, tempo (BPM), vocal qualities, and musical genre suitable for kids/toddlers.
+        
+        Return a raw JSON object matching this schema:
+        {{
+            "lyrics": "verse and chorus text",
+            "style": "comma-separated musical style description"
+        }}
+        """
+
+    errors = []
+
+    # 1. Try Gemini
+    for key in keys:
+        if key.startswith("AQ."):
+            errors.append(f"API key beginning with '{key[:6]}...': Starts with 'AQ.', which is an OAuth 2.0 developer access token instead of a standard Gemini API key starting with 'AIzaSy'. Standard API keys should be generated from Google AI Studio (https://aistudio.google.com).")
+            continue
+        try:
+            from google import genai
+            from google.genai import types
+            client = genai.Client(api_key=key)
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=user_prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    system_instruction=system_instruction
+                )
+            )
+            data = json.loads(response.text)
+            if "lyrics" in data and "style" in data:
+                return data["lyrics"], data["style"]
+            else:
+                errors.append(f"Gemini returned invalid JSON (missing 'lyrics' or 'style'): {response.text}")
+        except Exception as e:
+            errors.append(f"API key beginning with '{key[:6]}...': {str(e)}")
+
+    # 2. Try OpenAI Fallback
+    openai_keys = list(settings.openai_api_keys)
+    if not openai_keys and settings.openai_api_key:
+        openai_keys = [settings.openai_api_key]
+    if os.environ.get("OPENAI_API_KEY") and os.environ.get("OPENAI_API_KEY") not in openai_keys:
+        openai_keys.insert(0, os.environ.get("OPENAI_API_KEY"))
+    openai_keys = [k for k in openai_keys if k]
+
+    for o_key in openai_keys:
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=o_key)
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": system_instruction},
+                    {"role": "user", "content": user_prompt}
+                ],
+                response_format={"type": "json_object"}
+            )
+            data = json.loads(response.choices[0].message.content)
+            if "lyrics" in data and "style" in data:
+                return data["lyrics"], data["style"]
+            else:
+                errors.append(f"OpenAI returned invalid JSON: {response.choices[0].message.content}")
+        except Exception as e:
+            errors.append(f"OpenAI key beginning with '{o_key[:7] if o_key else ''}...': {str(e)}")
+
+    if errors:
+        st.session_state["gemini_api_error"] = "\n".join(errors)
+    else:
+        st.session_state["gemini_api_error"] = "No API keys found in Settings or Environment."
         
     if language == "Hindi":
         return expand_prompt_to_lyrics_and_style_hindi_local(prompt, singer_gender, mode=mode)
