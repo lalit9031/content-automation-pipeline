@@ -1,0 +1,229 @@
+{
+  "video_id": "TheThirstyCrow",
+  "canvas_dimensions": [
+    1280,
+    720
+  ],
+  "fps": 24,
+  "global_bgm": "assets/character/bg_music.mp3",
+  "voice_presets": {
+    "Narrator": "Rasalgethi",
+    "Character1_Name": "Charon",
+    "Character2_Name": "Puck"
+  },
+  "timeline_scenes": [
+    {
+      "scene_sequence": 1,
+      "background_asset": "assets/environments/thirsty_crow_hot_field_bg.png",
+      "camera_effect": "zoom_out",
+      "dialogue": [
+        {
+          "speaker": "Narrator",
+          "text": "गर्मी का एक बहुत गरम दिन था। सूरज आग बरसा रहा था।"
+        },
+        {
+          "speaker": "Narrator",
+          "text": "एक प्यासा कौआ पानी की तलाश में खेतों में उड़ रहा था।"
+        }
+      ],
+      "scene_characters": [
+        {
+          "folder_name": "crow",
+          "scale_factor": 250,
+          "motion_path": {
+            "enabled": true,
+            "start_position": [
+              1200,
+              200
+            ],
+            "end_position": [
+              300,
+              350
+            ],
+            "start_scale": 0.8,
+            "end_scale": 1.0,
+            "duration": 7.0
+          },
+          "states": [
+            {
+              "time_range": [
+                0.0,
+                7.0
+              ],
+              "animation_state": "flying_weakly"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scene_sequence": 2,
+      "background_asset": "assets/environments/thirsty_crow_parched_land_bg.png",
+      "camera_effect": "pan_left",
+      "dialogue": [
+        {
+          "speaker": "Narrator",
+          "text": "उसे बहुत देर तक कहीं पानी नहीं मिला।"
+        },
+        {
+          "speaker": "Narrator",
+          "text": "वह बहुत कमज़ोर महसूस करने लगा और प्यास से मरने से डरने लगा।"
+        },
+        {
+          "speaker": "Character1_Name",
+          "text": "पानी... पानी कहाँ है? मैं और नहीं उड़ सकता।"
+        }
+      ],
+      "scene_characters": [
+        {
+          "folder_name": "crow",
+          "scale_factor": 250,
+          "motion_path": {
+            "enabled": true,
+            "start_position": [
+              1000,
+              400
+            ],
+            "end_position": [
+              500,
+              550
+            ],
+            "start_scale": 1.0,
+            "end_scale": 1.1,
+            "duration": 5.0
+          },
+          "states": [
+            {
+              "time_range": [
+                0.0,
+                5.0
+              ],
+              "animation_state": "flying_to_land"
+            },
+            {
+              "time_range": [
+                5.0,
+                12.0
+              ],
+              "animation_state": "panting_looking_around"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scene_sequence": 3,
+      "background_asset": "assets/environments/thirsty_crow_distant_pot_bg.png",
+      "camera_effect": "zoom_in",
+      "dialogue": [
+        {
+          "speaker": "Narrator",
+          "text": "तभी, उसकी नज़र दूर एक चीज़ पर पड़ी।"
+        },
+        {
+          "speaker": "Character1_Name",
+          "text": "अरे! वह क्या है? शायद पानी!"
+        },
+        {
+          "speaker": "Narrator",
+          "text": "कमज़ोर होते हुए भी, उसने उस ओर उड़ने की हिम्मत जुटाई।"
+        }
+      ],
+      "scene_characters": [
+        {
+          "folder_name": "crow",
+          "scale_factor": 250,
+          "motion_path": {
+            "enabled": true,
+            "start_position": [
+              300,
+              500
+            ],
+            "end_position": [
+              900,
+              300
+            ],
+            "start_scale": 1.1,
+            "end_scale": 0.9,
+            "duration": 8.0
+          },
+          "states": [
+            {
+              "time_range": [
+                0.0,
+                3.0
+              ],
+              "animation_state": "idle_looking_hopeful"
+            },
+            {
+              "time_range": [
+                3.0,
+                8.0
+              ],
+              "animation_state": "flying_with_effort"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "scene_sequence": 4,
+      "background_asset": "assets/environments/thirsty_crow_pot_close_up_bg.png",
+      "camera_effect": "pan_right",
+      "dialogue": [
+        {
+          "speaker": "Narrator",
+          "text": "कौआ किसी तरह उस मटके तक पहुँच गया।"
+        },
+        {
+          "speaker": "Narrator",
+          "text": "लेकिन अफ़सोस! मटके में पानी बहुत कम था।"
+        },
+        {
+          "speaker": "Character1_Name",
+          "text": "ओह नहीं! इतना कम पानी... मैं इसे कैसे पिऊँगा?"
+        },
+        {
+          "speaker": "Narrator",
+          "text": "प्यासे कौए ने अब क्या किया होगा?"
+        }
+      ],
+      "scene_characters": [
+        {
+          "folder_name": "crow",
+          "scale_factor": 250,
+          "motion_path": {
+            "enabled": true,
+            "start_position": [
+              1000,
+              250
+            ],
+            "end_position": [
+              600,
+              450
+            ],
+            "start_scale": 0.9,
+            "end_scale": 1.2,
+            "duration": 3.0
+          },
+          "states": [
+            {
+              "time_range": [
+                0.0,
+                3.0
+              ],
+              "animation_state": "flying_to_land"
+            },
+            {
+              "time_range": [
+                3.0,
+                11.0
+              ],
+              "animation_state": "looking_into_pot_disappointed"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
