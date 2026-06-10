@@ -676,82 +676,15 @@ class PollinationsImageProvider:
 
         errors: dict[str, str] = {}
 
-        # ── Tier 1: Pollinations.ai  (100% free, no key, FLUX quality) ───────────
-        # 3 models x 3 seeds = 9 attempts across different queues / servers
-        poll_models = ["flux", "sana", "turbo"]
-        encoded_prompt = urllib.parse.quote(prompt)
-        for p_model in poll_models:
-            for seed in [42, 1337, 999]:
-                try:
-                    p_url = (
-                        f"https://image.pollinations.ai/prompt/{encoded_prompt}"
-                        f"?width={variant.width}&height={variant.height}"
-                        f"&model={p_model}&nologo=true&seed={seed}"
-                    )
-                    r = requests.get(p_url, timeout=90,
-                                     headers={"User-Agent": "Mozilla/5.0"})
-                    if r.status_code == 200 and len(r.content) > 5000:
-                        print(f"\u2705 [Image] Pollinations/{p_model} seed={seed}")
-                        return self._process_image(r.content, variant)
-                    if r.status_code == 402:
-                        time.sleep(3)   # queue full — brief pause, try next model
-                        break
-                except Exception as exc:
-                    errors[f"pollinations/{p_model}"] = str(exc)
-
-        # ── Tier 2: HuggingFace Serverless  (free, no credits needed) ────────────
-        hf_headers = {}
-        if self.settings.hf_token:
-            hf_headers["Authorization"] = f"Bearer {self.settings.hf_token}"
-        for free_model in ["Lykon/dreamshaper-8", "runwayml/stable-diffusion-v1-5"]:
-            for domain in ["api-inference.huggingface.co", "api-inference.hf.co"]:
-                hf_url = f"https://{domain}/models/{free_model}"
-                for attempt in range(3):
-                    try:
-                        r = requests.post(hf_url, headers=hf_headers,
-                                          json={"inputs": prompt}, timeout=60)
-                        if r.status_code == 200 and len(r.content) > 5000:
-                            print(f"\u2705 [Image] HF Serverless/{free_model}")
-                            return self._process_image(r.content, variant)
-                        elif r.status_code == 503:
-                            time.sleep(min(r.json().get("estimated_time", 10.0), 20.0))
-                        else:
-                            break
-                    except Exception as exc:
-                        errors[f"hf_free/{free_model}"] = str(exc)
-                        break
-
-        # ── Tier 3: HuggingFace FLUX.1-schnell  (paid, HF_TOKEN) ─────────────────
-        if self.settings.hf_token:
-            flux_url = (
-                "https://router.huggingface.co/hf-inference/models"
-                "/black-forest-labs/FLUX.1-schnell"
-            )
-            flux_delay = 2
-            for _ in range(3):
-                try:
-                    time.sleep(flux_delay)
-                    r = requests.post(
-                        flux_url,
-                        headers={"Authorization": f"Bearer {self.settings.hf_token}"},
-                        json={"inputs": prompt}, timeout=120,
-                    )
-                    if r.status_code == 200 and len(r.content) > 5000:
-                        print("\u2705 [Image] HF FLUX.1-schnell (paid)")
-                        return self._process_image(r.content, variant)
-                    if r.status_code == 402:
-                        break   # credits exhausted — skip to Gemini
-                    flux_delay *= 2
-                except Exception as exc:
-                    errors["hf_flux"] = str(exc)
-                    flux_delay *= 2
-
-        # ── Tier 4: Gemini REST API  (free AI Studio quota, all 7 keys rotated) ──
+        # ── Tier 1: Gemini REST API  (free AI Studio quota, keys 1-6 rotated) ──────
+        # Fastest & highest quality. Free quota ~1500 img/day per key (6 keys = ~9000/day).
+        # Only AQ.Ab8... format keys work — AIzaSy... type excluded.
         # Direct REST — no SDK required. Free quota ~1500 img/day per key.
+        # Note: only AQ.Ab8... format keys work with AI Studio image API
+        # GEMINI_API_KEY_7 is AIzaSy... format (different type) — excluded
         gemini_slots = [
             "GEMINI_API_KEY", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3",
             "GEMINI_API_KEY_4", "GEMINI_API_KEY_5", "GEMINI_API_KEY_6",
-            "GEMINI_API_KEY_7",
         ]
         gemini_model = (
             getattr(self.settings, "gemini_image_model", None)
@@ -795,6 +728,72 @@ class PollinationsImageProvider:
                     continue
             except Exception as exc:
                 errors[f"gemini/{slot}"] = str(exc)
+
+        # ── Tier 2: HuggingFace Serverless  (free, no credits, ~20-40s) ─────────
+        # Uses api-inference.hf.co (resolves OK on this network).
+        # api-inference.huggingface.co DNS fails on Excitel — excluded.
+        hf_headers = {}
+        if self.settings.hf_token:
+            hf_headers["Authorization"] = f"Bearer {self.settings.hf_token}"
+        for free_model in ["Lykon/dreamshaper-8", "runwayml/stable-diffusion-v1-5"]:
+            hf_url = f"https://api-inference.hf.co/models/{free_model}"
+            for attempt in range(3):
+                try:
+                    r = requests.post(hf_url, headers=hf_headers,
+                                      json={"inputs": prompt}, timeout=60)
+                    if r.status_code == 200 and len(r.content) > 5000:
+                        print(f"\u2705 [Image] HF Serverless/{free_model.split('/')[1]}")
+                        return self._process_image(r.content, variant)
+                    elif r.status_code == 503:
+                        time.sleep(min(r.json().get("estimated_time", 10.0), 20.0))
+                    else:
+                        break
+                except Exception as exc:
+                    errors[f"hf/{free_model}"] = str(exc)
+                    break
+
+        # ── Tier 3: HuggingFace FLUX.1-schnell  (paid, HF_TOKEN credits) ────────
+        if self.settings.hf_token:
+            flux_url = (
+                "https://router.huggingface.co/hf-inference/models"
+                "/black-forest-labs/FLUX.1-schnell"
+            )
+            for attempt in range(2):
+                try:
+                    r = requests.post(
+                        flux_url,
+                        headers={"Authorization": f"Bearer {self.settings.hf_token}"},
+                        json={"inputs": prompt}, timeout=120,
+                    )
+                    if r.status_code == 200 and len(r.content) > 5000:
+                        print("\u2705 [Image] HF FLUX.1-schnell (paid)")
+                        return self._process_image(r.content, variant)
+                    if r.status_code == 402:
+                        break   # credits exhausted
+                    time.sleep(5)
+                except Exception as exc:
+                    errors["hf_flux"] = str(exc)
+
+        # ── Tier 4: Pollinations.ai  (last resort, throttled on some IPs) ────────
+        encoded_prompt = urllib.parse.quote(prompt)
+        for p_model in ["flux", "sana", "turbo"]:
+            for seed in [42, 1337, 999]:
+                try:
+                    p_url = (
+                        f"https://image.pollinations.ai/prompt/{encoded_prompt}"
+                        f"?width={variant.width}&height={variant.height}"
+                        f"&model={p_model}&nologo=true&seed={seed}"
+                    )
+                    r = requests.get(p_url, timeout=60,
+                                     headers={"User-Agent": "Mozilla/5.0"})
+                    if r.status_code == 200 and len(r.content) > 5000:
+                        print(f"\u2705 [Image] Pollinations/{p_model} seed={seed}")
+                        return self._process_image(r.content, variant)
+                    if r.status_code == 402:
+                        time.sleep(5)
+                        break
+                except Exception as exc:
+                    errors[f"pollinations/{p_model}"] = str(exc)
 
         # ── Tier 5: Grey placeholder  (compilation never hard-crashes) ────────────
         import logging
