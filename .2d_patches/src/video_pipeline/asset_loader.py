@@ -109,23 +109,43 @@ def load_dynamic_character_bundle(character_folder_name: str, base_sprites_dir: 
     }
 
     for layer_name in (
+        # Modular human face/hair/eyes
         "face_base",
         "hair",
         "eyes",
         "eyes_blink",
         "accessories",
+        # Bird wing layers
         "wing_left",
         "wing_right",
         "wings",
         "feathers",
+        # 3/4 view rigging layers (pivot-based arm animation)
+        "near_arm",
+        "far_arm",
+        "torso",
+        "head",
     ):
         layer_img = _load_rgba(target_path / f"{layer_name}.png")
         if layer_img is not None:
             bundle["layers"][layer_name] = layer_img
 
-    for alias_name in ("face_base", "hair", "eyes", "eyes_blink", "accessories", "wing_left", "wing_right", "wings", "feathers"):
+    _ALL_LAYER_ALIASES = (
+        "face_base", "hair", "eyes", "eyes_blink", "accessories",
+        "wing_left", "wing_right", "wings", "feathers",
+        "near_arm", "far_arm", "torso", "head",
+    )
+    for alias_name in _ALL_LAYER_ALIASES:
         if alias_name in bundle["layers"]:
             bundle[alias_name] = bundle["layers"][alias_name]
+
+    # Also expose joint data at top level for easy access
+    joints = meta_data.get("joints") or {}
+    if joints:
+        bundle["joints"] = {k: tuple(v) for k, v in joints.items()}
+    gesture_limits = meta_data.get("gesture_limits") or {}
+    if gesture_limits:
+        bundle["gesture_limits"] = gesture_limits
 
     if "feathers" not in bundle["layers"]:
         feathers = _load_rgba(target_path / "feathers.png")

@@ -5,6 +5,34 @@ from typing import Any
 
 from PIL import Image, ImageDraw, ImageFilter
 
+# Lazy-load rigging engine to avoid circular imports
+_rigging_engine = None
+
+
+def _get_rigging_engine():
+    global _rigging_engine
+    if _rigging_engine is None:
+        try:
+            from src.video_pipeline import rigging_engine as _re
+            _rigging_engine = _re
+        except ImportError:
+            try:
+                import importlib, pathlib, sys
+                _path = str(pathlib.Path(__file__).resolve().parents[2])
+                if _path not in sys.path:
+                    sys.path.insert(0, _path)
+                from src.video_pipeline import rigging_engine as _re
+                _rigging_engine = _re
+            except ImportError:
+                _rigging_engine = False  # mark as unavailable
+    return _rigging_engine if _rigging_engine is not False else None
+
+
+def _has_arm_rig(bundle: dict) -> bool:
+    """Return True if the bundle has near_arm or far_arm layers for pivot rigging."""
+    layers = bundle.get("layers", {})
+    return "near_arm" in layers or "far_arm" in layers
+
 
 def _resample() -> int:
     return getattr(Image, "Resampling", Image).LANCZOS
@@ -576,6 +604,29 @@ def compile_cinematic_story_frame(
         if base is None:
             continue
 
+        # ── 3/4 View Rigging Engine path (near_arm/far_arm present) ───────────
+        if _has_arm_rig(bundle):
+            rig = _get_rigging_engine()
+            if rig is not None:
+                animation_state = str(actor.get("animation_state", "idle")).lower()
+                character_canvas = rig.render_articulated_puppet(
+                    frame_index=frame_index,
+                    fps=fps,
+                    bundle=bundle,
+                    gesture_state=animation_state,
+                    actor=actor,
+                )
+                character_canvas = _apply_ambient_light_match(character_canvas, bg_img, bundle, actor)
+                shadow = _build_character_shadow(character_canvas, actor, bundle, frame_index, fps)
+                if shadow is not None:
+                    coords = actor.get("current_coords", (0, 0))
+                    sx = float(coords[0]) - shadow.width / 2.0
+                    sy = float(coords[1]) - max(8, shadow.height // 2)
+                    _paste(frame_canvas, shadow, sx, sy)
+                _place_character(frame_canvas, character_canvas, actor)
+                continue
+
+        # ── Legacy modular layer-stack path ───────────────────────────────────
         if bundle.get("assembly_mode") in {"modular_human", "modular_bird"} or any(
             layer_name in bundle.get("layers", {}) for layer_name in ("face_base", "hair", "eyes", "eyes_blink", "wing_left", "wing_right")
         ):
@@ -595,7 +646,7 @@ def compile_cinematic_story_frame(
             _place_character(frame_canvas, character_canvas, actor)
             continue
 
-        # Legacy fallback: draw the original body image at the requested position.
+        # ── Pure legacy fallback ──────────────────────────────────────────────
         legacy_canvas = base if base.mode == "RGBA" else base.convert("RGBA")
         legacy_actor = dict(actor)
         legacy_actor.setdefault("placement_mode", "legacy")
@@ -612,6 +663,10 @@ def render_dynamic_character_frame(
 ) -> Image.Image:
     """
     Render a character on a transparent canvas for the external 2D compiler.
+
+    Routes to the rigging engine (pivot-based 3/4 view arm rotation) when
+    near_arm / far_arm layers are present; otherwise falls back to the
+    legacy layer-stack renderer.
     """
     bundle = character_assets.get("bundle") if isinstance(character_assets.get("bundle"), dict) else character_assets
     if not isinstance(bundle, dict):
@@ -620,10 +675,31 @@ def render_dynamic_character_frame(
     if base is None:
         return Image.new("RGBA", (1, 1), (0, 0, 0, 0))
 
-    actor = dict(character_assets)
+    actor: dict[str, Any] = dict(character_assets)
     if active_mouth_shape:
         actor["active_mouth_shape"] = active_mouth_shape
 
+    # ── 3/4 View Rigging Engine path ──────────────────────────────────────────
+    if _has_arm_rig(bundle):
+        rig = _get_rigging_engine()
+        if rig is not None:
+            # Map animation_state → gesture_state for the rigging engine
+            animation_state = str(
+                actor.get("animation_state")
+                or character_assets.get("animation_state")
+                or "idle"
+            ).lower()
+            gesture_state = animation_state  # rigging engine accepts same tokens
+            puppet = rig.render_articulated_puppet(
+                frame_index=frame_index,
+                fps=fps,
+                bundle=bundle,
+                gesture_state=gesture_state,
+                actor=actor,
+            )
+            return puppet
+
+    # ── Legacy layer-stack path ───────────────────────────────────────────────
     character_canvas = Image.new("RGBA", base.size, (0, 0, 0, 0))
     _apply_layer_stack(character_canvas, bundle, actor, frame_index, fps)
     character_canvas = _apply_body_realism(character_canvas, actor, bundle, frame_index, fps)
