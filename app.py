@@ -2581,7 +2581,7 @@ def render_frontdoor(settings: Settings) -> None:
 
                     st.write("🎵 Dispatching song generation request to Hugging Face...")
                     try:
-                        client = Client("tencent/SongGeneration", token=settings.hf_token, httpx_kwargs={"timeout": 600.0})
+                        client = Client("tencent/SongGeneration", token=settings.hf_token if settings.hf_token else None, httpx_kwargs={"timeout": 600.0})
                         
                         # Translate UI-only genres (Folk, Traditional) to valid Lyria Space genres
                         valid_genres = ['Auto', 'Pop', 'Latin', 'Rock', 'Electronic', 'Metal', 'Country', 'R&B/Soul', 'Ballad', 'Jazz', 'World', 'Hip-Hop', 'Funk', 'Soundtrack']
@@ -4012,7 +4012,7 @@ def render_frontdoor(settings: Settings) -> None:
 
                     st.write("🎵 Dispatching song generation request to Hugging Face...")
                     try:
-                        client = Client("tencent/SongGeneration", token=settings.hf_token, httpx_kwargs={"timeout": 600.0})
+                        client = Client("tencent/SongGeneration", token=settings.hf_token if settings.hf_token else None, httpx_kwargs={"timeout": 600.0})
                         
                         # Translate UI-only genres (Folk, Traditional) to valid Lyria Space genres
                         valid_genres = ['Auto', 'Pop', 'Latin', 'Rock', 'Electronic', 'Metal', 'Country', 'R&B/Soul', 'Ballad', 'Jazz', 'World', 'Hip-Hop', 'Funk', 'Soundtrack']
