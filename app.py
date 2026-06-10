@@ -2020,10 +2020,15 @@ def render_frontdoor(settings: Settings) -> None:
                 st.session_state["music_studio_playback_singer_key"] = "arijit_singh" if one_click_gender == "Male" else "shreya_ghoshal"
             
             if st.session_state.get("gemini_api_error"):
-                st.error("⚠️ **Gemini API Call Failed (Offline Fallback Active)**\n\n"
-                         "The application fell back to the local offline template song because the Gemini API keys failed:\n"
-                         f"```\n{st.session_state['gemini_api_error']}\n```\n"
-                         "Please check your `.env` or system environment keys.")
+                lang = st.session_state.get("music_studio_language", "English")
+                if lang in ["Hindi", "Hinglish"]:
+                    st.error("⚠️ **Gemini API Call Failed (Offline Fallback Active)**\n\n"
+                             "The application fell back to the local offline template song because the Gemini API keys failed:\n"
+                             f"```\n{st.session_state['gemini_api_error']}\n```\n"
+                             "Please check your `.env` or system environment keys.")
+                else:
+                    st.info("ℹ️ **Dynamic lyric generation offline fallback active.**\n\n"
+                            "Using local offline template song for English music (Gemini key not configured or failed, but not required for English).")
 
             if st.button("🚀 Create & Generate Song Draft", type="primary", use_container_width=True, key="music_studio_btn_one_click"):
                 if not one_click_prompt.strip():
@@ -3579,10 +3584,15 @@ def render_frontdoor(settings: Settings) -> None:
             one_click_gender = st.session_state.get("kids_song_singer_gender", "Female")
             
             if st.session_state.get("gemini_api_error"):
-                st.error("⚠️ **Gemini API Call Failed (Offline Fallback Active)**\n\n"
-                         "The application fell back to the local offline template because the Gemini API keys failed:\n"
-                         f"```\n{st.session_state['gemini_api_error']}\n```\n"
-                         "Please check your `.env` or system environment keys.")
+                kids_lang = st.session_state.get("kids_studio_language", "English")
+                if kids_lang in ["Hindi", "Hinglish"]:
+                    st.error("⚠️ **Gemini API Call Failed (Offline Fallback Active)**\n\n"
+                             "The application fell back to the local offline template because the Gemini API keys failed:\n"
+                             f"```\n{st.session_state['gemini_api_error']}\n```\n"
+                             "Please check your `.env` or system environment keys.")
+                else:
+                    st.info("ℹ️ **Dynamic generation offline fallback active.**\n\n"
+                            "Using local offline template for English content (Gemini key not configured or failed, but not required for English).")
 
             btn_label = "🚀 Create & Generate Story" if kids_mode == "Storytelling" else "🚀 Create & Generate Song"
             if st.button(btn_label, type="primary", use_container_width=True):
