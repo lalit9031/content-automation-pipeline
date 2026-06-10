@@ -29,6 +29,39 @@ SRC_DIR = PROJECT_ROOT / "src"
 if SRC_DIR.exists() and str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
+
+def resolve_2d_orchestrator_root() -> Path:
+    """
+    Prefer the external drive for 2D video work, then fall back to the local
+    checked-in copy if the drive is unavailable.
+    """
+    env_root = os.getenv("KIDS_STUDIO_ORCHESTRATOR_ROOT", "").strip()
+    candidates = []
+    if env_root:
+        candidates.append(Path(env_root).expanduser())
+    candidates.append(Path("/Volumes/Crucial X9/Mac/2D_Video/KidsStudio-Orchestrator"))
+    candidates.append(Path("/Volumes/Crucial X9/Mac/2D_Video/story_studio"))
+    candidates.append(PROJECT_ROOT / "KidsStudio-Orchestrator")
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+
+    preferred = candidates[0]
+    try:
+        preferred.mkdir(parents=True, exist_ok=True)
+        return preferred
+    except Exception:
+        fallback = PROJECT_ROOT / "KidsStudio-Orchestrator"
+        fallback.mkdir(parents=True, exist_ok=True)
+        return fallback
+
+
+def resolve_2d_patch_root() -> Path:
+    patch_root = PROJECT_ROOT / ".2d_patches"
+    patch_root.mkdir(parents=True, exist_ok=True)
+    return patch_root
+
 import streamlit as st
 
 from content_pipeline.bots.audio import audio_status, render_audio_status_html
@@ -842,6 +875,7 @@ def generate_manifest_from_scratch(topic: str, video_id: str, settings) -> dict:
             )
             data = json.loads(response.text)
             if "timeline_scenes" in data:
+                normalize_2d_scene_manifest(data)
                 return data
         except Exception as e:
             pass
@@ -898,11 +932,92 @@ def apply_manifest_suggestions(manifest_data: dict, user_suggestion: str, settin
             )
             data = json.loads(response.text)
             if "timeline_scenes" in data:
+                normalize_2d_scene_manifest(data)
                 return data
         except Exception as e:
             pass
             
     raise RuntimeError("Gemini failed to process manifest update suggestions.")
+
+
+def _normalize_2d_text_token(value: str) -> str:
+    return re.sub(r"[^\w\u0900-\u097f]+", "", value.lower().strip())
+
+
+def _scene_character_speaks(dialogue: list[dict[str, str]], folder_name: str) -> bool:
+    folder_norm = _normalize_2d_text_token(folder_name)
+    if not folder_norm:
+        return False
+    for line in dialogue:
+        speaker = _normalize_2d_text_token(str(line.get("speaker", "")))
+        if not speaker or speaker == "narrator":
+            continue
+        if speaker in folder_norm or folder_norm in speaker:
+            return True
+    return False
+
+
+def normalize_2d_scene_manifest(manifest_data: dict) -> bool:
+    """
+    Ensure the 2D story manifest is ready for lip-sync aware rendering.
+
+    The compiler already knows how to map Rhubarb mouth timings, but it only
+    activates that path when a character state is marked as
+    ``talking_lip_sync``. Gemini often returns idle-only states, so we upgrade
+    speaking characters to a full-scene talking state and add a tiny motion
+    path if the character is otherwise static. This keeps the final video more
+    alive without changing the story beats.
+    """
+    changed = False
+    for scene in manifest_data.get("timeline_scenes", []):
+        dialogue = scene.get("dialogue", [])
+        for character in scene.get("scene_characters", []):
+            folder_name = str(character.get("folder_name", "")).strip()
+            if not folder_name:
+                continue
+            if _scene_character_speaks(dialogue, folder_name):
+                desired_states = [
+                    {
+                        "time_range": [0.0, 100.0],
+                        "animation_state": "talking_lip_sync",
+                    }
+                ]
+                if character.get("states") != desired_states:
+                    character["states"] = desired_states
+                    changed = True
+
+                motion_path = character.get("motion_path")
+                if isinstance(motion_path, dict) and not motion_path.get("enabled", False):
+                    start_position = motion_path.get("start_position", [0, 0])
+                    try:
+                        start_x = int(start_position[0])
+                        start_y = int(start_position[1])
+                    except Exception:
+                        start_x, start_y = 0, 0
+                    motion_path["enabled"] = True
+                    motion_path["start_position"] = [start_x, start_y]
+                    motion_path["end_position"] = [start_x + 8, start_y + 3]
+                    motion_path["start_scale"] = float(motion_path.get("start_scale", 1.0))
+                    motion_path["end_scale"] = round(
+                        float(motion_path.get("start_scale", 1.0)) * 1.01,
+                        3,
+                    )
+                    motion_path["start_time"] = float(motion_path.get("start_time", 0.0))
+                    motion_path["end_time"] = float(motion_path.get("end_time", 100.0))
+                    changed = True
+            elif not character.get("states"):
+                character["states"] = [
+                    {
+                        "time_range": [0.0, 100.0],
+                        "animation_state": "idle",
+                    }
+                ]
+                changed = True
+
+        if not scene.get("camera_effect"):
+            scene["camera_effect"] = "zoom_in"
+            changed = True
+    return changed
 
 
 def generate_missing_assets(manifest_data: dict, orchestrator_path: Path, settings) -> list[str]:
@@ -2680,7 +2795,7 @@ def render_frontdoor(settings: Settings) -> None:
             unsafe_allow_html=True,
         )
 
-        orchestrator_path = Path("/Users/lalitprasadsingh/.gemini/antigravity/scratch/KidsStudio-Orchestrator")
+        orchestrator_path = resolve_2d_orchestrator_root()
         projects_dir = orchestrator_path / "projects"
         
         if not projects_dir.exists():
@@ -2704,6 +2819,7 @@ def render_frontdoor(settings: Settings) -> None:
                     with st.spinner(f"Generating brand new story for '{topic}'..."):
                         try:
                             new_manifest = generate_manifest_from_scratch(topic, clean_name, settings)
+                            normalize_2d_scene_manifest(new_manifest)
                             with open(new_proj_dir / "scene_manifest.json", "w", encoding="utf-8") as f:
                                 json.dump(new_manifest, f, indent=2, ensure_ascii=False)
                             manifest_created = True
@@ -2725,6 +2841,7 @@ def render_frontdoor(settings: Settings) -> None:
                         with open(new_proj_dir / "scene_manifest.json", "r", encoding="utf-8") as f:
                             new_manifest = json.load(f)
                         new_manifest["video_id"] = clean_name
+                        normalize_2d_scene_manifest(new_manifest)
                         with open(new_proj_dir / "scene_manifest.json", "w", encoding="utf-8") as f:
                             json.dump(new_manifest, f, indent=2, ensure_ascii=False)
                     else:
@@ -2816,6 +2933,10 @@ def render_frontdoor(settings: Settings) -> None:
                 try:
                     with open(manifest_path, "r", encoding="utf-8") as f:
                         manifest_data = json.load(f)
+                    manifest_changed = normalize_2d_scene_manifest(manifest_data)
+                    if manifest_changed:
+                        with open(manifest_path, "w", encoding="utf-8") as f:
+                            json.dump(manifest_data, f, indent=2, ensure_ascii=False)
                 except Exception as e:
                     st.error(f"Error reading manifest: {e}")
                     manifest_data = None
@@ -3003,6 +3124,7 @@ def render_frontdoor(settings: Settings) -> None:
                                 with st.spinner("Analyzing suggestions and updating scene manifest..."):
                                     try:
                                         updated_manifest = apply_manifest_suggestions(manifest_data, user_suggestion, settings)
+                                        normalize_2d_scene_manifest(updated_manifest)
                                         with open(manifest_path, "w", encoding="utf-8") as f:
                                             json.dump(updated_manifest, f, indent=2, ensure_ascii=False)
                                         st.success("Manifest updated successfully!")
@@ -3028,7 +3150,7 @@ def render_frontdoor(settings: Settings) -> None:
                             compiler_script = orchestrator_path / "src" / "video_pipeline" / "scene_compiler.py"
                             
                             cmd = [
-                                "/Users/lalitprasadsingh/.gemini/antigravity/scratch/content-automation-pipeline/.venv/bin/python",
+                                sys.executable,
                                 "-u",
                                 str(compiler_script),
                                 f"projects/{selected_project}/scene_manifest.json"
@@ -3042,7 +3164,8 @@ def render_frontdoor(settings: Settings) -> None:
                                 try:
                                     # Set PYTHONPATH so it can import from KidsStudio-Orchestrator root
                                     env = os.environ.copy()
-                                    env["PYTHONPATH"] = str(orchestrator_path)
+                                    env["KIDS_STUDIO_ORCHESTRATOR_ROOT"] = str(orchestrator_path)
+                                    env["PYTHONPATH"] = os.pathsep.join([str(resolve_2d_patch_root()), str(orchestrator_path)])
                                     
                                     process = subprocess.Popen(
                                         cmd,
@@ -3084,7 +3207,7 @@ def render_frontdoor(settings: Settings) -> None:
                                                 if selected_project == "ghamandi_mor":
                                                     shutil.copy(target_video, central_output_dir / "ghamandi_mor_final.mp4")
                                                     
-                                                st.info(f"💾 Copied compiled video to orchestrator output: `/Users/lalitprasadsingh/.gemini/antigravity/scratch/KidsStudio-Orchestrator/output/{selected_project}_final.mp4`")
+                                                st.info(f"💾 Copied compiled video to orchestrator output: `{central_output_dir / f'{selected_project}_final.mp4'}`")
                                         except Exception as copy_err:
                                             st.warning(f"⚠️ Failed to copy compiled video to central output: {copy_err}")
                                         
@@ -3142,7 +3265,7 @@ def render_frontdoor(settings: Settings) -> None:
                                     shutil.copy(output_video, central_output_dir / f"{selected_project}_final.mp4")
                                     if selected_project == "ghamandi_mor":
                                         shutil.copy(output_video, central_output_dir / "ghamandi_mor_final.mp4")
-                                    st.success(f"✨ Compiled Gold Master is saved at: `/Users/lalitprasadsingh/.gemini/antigravity/scratch/KidsStudio-Orchestrator/output/{selected_project}_final.mp4`")
+                                    st.success(f"✨ Compiled Gold Master is saved at: `{central_final_path}`")
                                 except Exception:
                                     pass
                             
