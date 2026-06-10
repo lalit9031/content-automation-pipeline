@@ -35,7 +35,7 @@ def _has_arm_rig(bundle: dict) -> bool:
 
 
 def _resample() -> int:
-    return getattr(Image, "Resampling", Image).LANCZOS
+    return getattr(Image, "Resampling", Image).BICUBIC
 
 
 def _scale_size(size: tuple[int, int], scale: float) -> tuple[int, int]:
@@ -73,12 +73,24 @@ def _paste_centered(canvas: Image.Image, layer: Image.Image | None, anchor_x: fl
     canvas.paste(crop, (x, y), crop)
 
 
+_RESIZE_CACHE: dict[tuple[int, int, int], Image.Image] = {}
+
 def _resize(layer: Image.Image | None, size: tuple[int, int]) -> Image.Image | None:
     if layer is None:
         return None
     if layer.size == size:
         return layer
-    return layer.resize(size, _resample())
+    cache_key = (id(layer), size[0], size[1])
+    if cache_key in _RESIZE_CACHE:
+        return _RESIZE_CACHE[cache_key]
+    
+    # Simple bounds check to prevent memory leak
+    if len(_RESIZE_CACHE) > 1000:
+        _RESIZE_CACHE.clear()
+        
+    res = layer.resize(size, _resample())
+    _RESIZE_CACHE[cache_key] = res
+    return res
 
 
 def _get_actor_value(actor: dict[str, Any], key: str, default: Any = None) -> Any:
@@ -189,13 +201,20 @@ def _mouth_scale(actor: dict[str, Any], bundle: dict[str, Any]) -> float:
     return max(0.4, min(1.15, scale * 0.52))
 
 
+_BG_PALETTE_CACHE: dict[int, tuple[int, int, int]] = {}
+
 def _sample_background_palette(bg_img: Image.Image) -> tuple[int, int, int]:
+    img_id = id(bg_img)
+    if img_id in _BG_PALETTE_CACHE:
+        return _BG_PALETTE_CACHE[img_id]
     sample = bg_img.convert("RGBA")
     # Focus on the lower half where warm sunrise light and environment color are strongest.
     crop = sample.crop((0, int(sample.height * 0.35), sample.width, sample.height))
     pixels = list(crop.getdata())
     if not pixels:
-        return (190, 170, 150)
+        res = (190, 170, 150)
+        _BG_PALETTE_CACHE[img_id] = res
+        return res
     total_r = total_g = total_b = count = 0
     for r, g, b, a in pixels:
         if a <= 10:
@@ -205,12 +224,16 @@ def _sample_background_palette(bg_img: Image.Image) -> tuple[int, int, int]:
         total_b += b
         count += 1
     if not count:
-        return (190, 170, 150)
-    return (
+        res = (190, 170, 150)
+        _BG_PALETTE_CACHE[img_id] = res
+        return res
+    res = (
         int(total_r / count),
         int(total_g / count),
         int(total_b / count),
     )
+    _BG_PALETTE_CACHE[img_id] = res
+    return res
 
 
 def _apply_ambient_light_match(character_canvas: Image.Image, bg_img: Image.Image, bundle: dict[str, Any], actor: dict[str, Any]) -> Image.Image:
@@ -325,19 +348,36 @@ def _apply_body_realism(
 
     if assembly_mode == "modular_bird":
         sway = math.sin((frame_index / max(1.0, fps * 0.8)) + phase) * (1.0 if talking else 0.55)
-        if abs(sway) > 0.01:
-            return character_canvas.rotate(sway, resample=Image.Resampling.BICUBIC, expand=False, center=(character_canvas.width / 2.0, character_canvas.height / 2.0))
+        breathing = 1.0 + (0.005 if talking else 0.003) * math.sin(frame_index / max(1.0, fps / 2.0))
+        if abs(sway) > 0.01 or abs(breathing - 1.0) > 0.0005:
+            scaled_w = max(1, int(round(character_canvas.width * breathing)))
+            scaled_h = max(1, int(round(character_canvas.height * breathing)))
+            transformed = character_canvas.resize((scaled_w, scaled_h), _resample())
+            rotated = transformed.rotate(sway, resample=Image.Resampling.BICUBIC, expand=False, center=(transformed.width / 2.0, transformed.height / 2.0))
+            if rotated.size != character_canvas.size:
+                result = Image.new("RGBA", character_canvas.size, (0, 0, 0, 0))
+                x = (result.width - rotated.width) // 2
+                y = (result.height - rotated.height) // 2
+                _paste(result, rotated, x, y)
+                return result
+            return rotated
 
     return character_canvas
 
 
+_COLOR_CACHE: dict[int, tuple[int, int, int, int]] = {}
+
 def _sample_color(layer: Image.Image | None, fallback: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
     if layer is None:
         return fallback
+    layer_id = id(layer)
+    if layer_id in _COLOR_CACHE:
+        return _COLOR_CACHE[layer_id]
     rgba = layer.convert("RGBA")
     alpha = rgba.getchannel("A")
     bbox = alpha.getbbox()
     if bbox is None:
+        _COLOR_CACHE[layer_id] = fallback
         return fallback
     sample = rgba.crop(bbox)
     pixels = list(sample.getdata())
@@ -352,8 +392,11 @@ def _sample_color(layer: Image.Image | None, fallback: tuple[int, int, int, int]
         total[3] += a
         count += 1
     if count == 0:
+        _COLOR_CACHE[layer_id] = fallback
         return fallback
-    return tuple(int(total[i] / count) for i in range(4))
+    res = tuple(int(total[i] / count) for i in range(4))
+    _COLOR_CACHE[layer_id] = res
+    return res
 
 
 def _draw_soft_limb(draw: ImageDraw.ImageDraw, start_xy: tuple[float, float], end_xy: tuple[float, float], width: int, fill: tuple[int, int, int, int]) -> None:
@@ -503,12 +546,6 @@ def _apply_layer_stack(character_canvas: Image.Image, bundle: dict[str, Any], ac
     assembly_mode = str(bundle.get("assembly_mode", "legacy")).lower()
     talking = "talk" in str(actor.get("animation_state", "")).lower() or "lip" in str(actor.get("animation_state", "")).lower() or actor.get("is_talking")
     bob = int(round(math.sin((frame_index / max(1.0, fps / 6.0)) + float(actor.get("motion_phase", 0.0))) * (2.0 if talking else 1.0)))
-    breathing = 1.0 + (0.005 if talking else 0.003) * math.sin(frame_index / max(1.0, fps / 2.0))
-    if breathing != 1.0:
-        target_size = _scale_size(target_size, breathing)
-        scaled_base = _resize(base, target_size)
-        if scaled_base is None:
-            return
 
     _paste(character_canvas, scaled_base, 0, 0)
 

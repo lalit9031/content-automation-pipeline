@@ -30,7 +30,7 @@ def stitch_scene_segments_procedurally(input_dir: str, output_file: str) -> None
 
     concat_list = scene_dir / "concat_list.txt"
     concat_list.write_text(
-        "\n".join(f"file '{path.as_posix()}'" for path in candidates) + "\n",
+        "\n".join(f"file '{path.resolve().as_posix()}'" for path in candidates) + "\n",
         encoding="utf-8",
     )
 

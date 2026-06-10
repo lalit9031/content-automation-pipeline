@@ -665,6 +665,171 @@ class OpenAIImageProvider:
         raise RuntimeError(f"OpenAI image generation failed for all configured keys: {last_error}")
 
 
+class NvidiaQwenImageProvider:
+    """Qwen-Image provider with three-path fallback strategy:
+
+    Path 1 (primary): Together.ai — api.together.xyz
+      - $0.0058 per image, serverless, OpenAI-compatible
+      - Requires TOGETHER_API_KEY from api.together.ai
+      - Model: Qwen/Qwen-Image  →  response.data[0].b64_json
+
+    Path 2: NVIDIA NIM cloud — nim.api.nvidia.com/v1/genai/qwen/qwen-image
+      - Uses Visual GenAI NIM endpoint (artifacts[0].base64 response format)
+      - Requires NVIDIA_API_KEY from build.nvidia.com/qwen/qwen-image
+
+    Path 3 (fallback): HuggingFace fal-ai router
+      - Uses HF_TOKEN with provider='fal-ai'
+      - Requires HuggingFace Pro or paid fal-ai credits
+    """
+
+    extension = ".png"
+
+    TOGETHER_BASE_URL = "https://api.together.xyz/v1"
+    TOGETHER_MODEL    = "Qwen/Qwen-Image"
+    NVIDIA_NIM_URL    = "https://nim.api.nvidia.com/v1/genai/qwen/qwen-image"
+    HF_MODEL          = "Qwen/Qwen-Image"
+
+    def __init__(self, settings: Settings) -> None:
+        self.together_api_key = getattr(settings, "together_api_key", "")
+        self.nvidia_api_key   = settings.nvidia_api_key
+        self.hf_token         = settings.hf_token
+        nim_model = (settings.nvidia_image_model or "").strip().lower()
+        self.nim_url = (
+            self.NVIDIA_NIM_URL if nim_model in ("", "qwen/qwen-image", "qwen-image")
+            else f"https://nim.api.nvidia.com/v1/genai/{nim_model}"
+        )
+
+    # ── Path 1: Together.ai ────────────────────────────────────────────────
+    def _try_together(self, prompt: str) -> bytes | None:
+        """Generate via Together.ai ($0.0058/image, OpenAI-compatible API)."""
+        if not self.together_api_key:
+            return None
+        try:
+            from openai import OpenAI
+        except ImportError:
+            return None
+        try:
+            client = OpenAI(
+                api_key=self.together_api_key,
+                base_url=self.TOGETHER_BASE_URL,
+            )
+            response = client.images.generate(
+                model=self.TOGETHER_MODEL,
+                prompt=prompt,
+                n=1,
+                response_format="b64_json",
+            )
+            b64 = getattr(response.data[0], "b64_json", None)
+            if b64:
+                return base64.b64decode(b64)
+            url = getattr(response.data[0], "url", None)
+            if url:
+                import urllib.request
+                with urllib.request.urlopen(url, timeout=60) as r:
+                    return r.read()
+        except Exception as exc:
+            print(f"[Qwen/Together] Error: {exc}")
+        return None
+
+    # ── Path 2: NVIDIA NIM cloud ───────────────────────────────────────────
+    def _try_nvidia_nim(self, prompt: str) -> bytes | None:
+        """Call NVIDIA NIM cloud endpoint (artifacts[0].base64 format)."""
+        if not self.nvidia_api_key:
+            return None
+        import urllib.request, urllib.error, json as _json
+        payload = {"prompt": prompt, "seed": 0}
+        req = urllib.request.Request(
+            self.nim_url,
+            data=_json.dumps(payload).encode(),
+            headers={
+                "Authorization": f"Bearer {self.nvidia_api_key}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=120) as res:
+                data = _json.loads(res.read())
+                artifacts = data.get("artifacts", [])
+                if artifacts and artifacts[0].get("base64"):
+                    return base64.b64decode(artifacts[0]["base64"])
+                img_data = (data.get("data") or [{}])[0]
+                if img_data.get("b64_json"):
+                    return base64.b64decode(img_data["b64_json"])
+                if img_data.get("url"):
+                    import urllib.request as _ur
+                    with _ur.urlopen(img_data["url"], timeout=60) as r:
+                        return r.read()
+        except urllib.error.HTTPError as e:
+            body = ""
+            try: body = e.read().decode()[:200]
+            except: pass
+            print(f"[Qwen/NIM] HTTP {e.code}: {body}")
+        except Exception as exc:
+            print(f"[Qwen/NIM] Error: {exc}")
+        return None
+
+    # ── Path 3: HuggingFace fal-ai ─────────────────────────────────────────
+    def _try_hf_fal(self, prompt: str) -> bytes | None:
+        """Call Qwen-Image via HuggingFace fal-ai router."""
+        if not self.hf_token:
+            return None
+        try:
+            from huggingface_hub import InferenceClient
+        except ImportError:
+            return None
+        try:
+            client = InferenceClient(provider="fal-ai", api_key=self.hf_token)
+            pil_image = client.text_to_image(prompt, model=self.HF_MODEL)
+            import io
+            buf = io.BytesIO()
+            pil_image.save(buf, format="PNG")
+            return buf.getvalue()
+        except Exception as exc:
+            print(f"[Qwen/HF-fal] Error: {exc}")
+        return None
+
+    # ── Main entry ─────────────────────────────────────────────────────────
+    def create(self, prompt: str, variant: ImageVariant) -> bytes:
+        # 1. Together.ai (cheapest + serverless)
+        image_bytes = self._try_together(prompt)
+
+        # 2. NVIDIA NIM cloud
+        if image_bytes is None:
+            print("[Qwen] Together.ai unavailable, trying NVIDIA NIM...")
+            image_bytes = self._try_nvidia_nim(prompt)
+
+        # 3. HuggingFace fal-ai
+        if image_bytes is None:
+            print("[Qwen] NVIDIA NIM unavailable, trying HuggingFace fal-ai...")
+            image_bytes = self._try_hf_fal(prompt)
+
+        if image_bytes is None:
+            raise RuntimeError(
+                "Qwen-Image generation failed on all providers.\n"
+                "  - Together.ai: set TOGETHER_API_KEY in .env (get free key at api.together.ai)\n"
+                "  - NVIDIA NIM: check NVIDIA_API_KEY (nim.api.nvidia.com)\n"
+                "  - HuggingFace fal-ai: check HF_TOKEN / add fal-ai credits"
+            )
+
+        # Bicubic resize to exact requested dimensions
+        try:
+            from PIL import Image
+            import io
+            img = Image.open(io.BytesIO(image_bytes))
+            if img.width != variant.width or img.height != variant.height:
+                resample_filter = getattr(Image, "Resampling", Image).BICUBIC
+                img = img.resize((variant.width, variant.height), resample=resample_filter)
+                out_buffer = io.BytesIO()
+                img.save(out_buffer, format="PNG")
+                image_bytes = out_buffer.getvalue()
+        except Exception:
+            pass
+
+        return image_bytes
+
+
 class PollinationsImageProvider:
     extension = ".png"
 
@@ -831,17 +996,136 @@ class PollinationsImageProvider:
         return image_bytes
 
 
+class NvidiaFluxImageProvider:
+    """FLUX image generation via NVIDIA's free cloud genai API.
+
+    Available models (all FREE, ai.api.nvidia.com/v1/genai/):
+      - flux.2-klein-4b  → 1.8s, steps=4  (FASTEST, default)
+      - flux.1-schnell   → 2.2s, steps=4
+      - flux.1-dev       → 4-10s, steps=20 (highest quality)
+
+    Each key gets 25 free requests/day. Multiple keys are rotated automatically.
+    Keys from: build.nvidia.com/black-forest-labs/<model> → Get API Key
+    Response: {artifacts: [{base64: "...", seed: 0}]}
+    """
+
+    extension = ".jpg"
+
+    FLUX_URLS = {
+        "flux.2-klein-4b": ("https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.2-klein-4b", 4),
+        "flux.1-schnell":  ("https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-schnell",  4),
+        "flux.1-dev":      ("https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-dev",      20),
+    }
+    DEFAULT_MODEL = "flux.2-klein-4b"
+
+    def __init__(self, settings: Settings) -> None:
+        self.api_keys = list(settings.nvidia_api_keys or ([settings.nvidia_api_key] if settings.nvidia_api_key else []))
+        # De-duplicate while preserving order
+        seen = set()
+        self.api_keys = [k for k in self.api_keys if k and not (k in seen or seen.add(k))]
+        if not self.api_keys:
+            raise ValueError("NVIDIA_API_KEY is required for IMAGE_PROVIDER=nvidia-flux")
+        # Pick model from NVIDIA_IMAGE_MODEL env (e.g. 'flux.1-dev')
+        model_key = (settings.nvidia_image_model or self.DEFAULT_MODEL).lower().strip()
+        if model_key not in self.FLUX_URLS:
+            # Try fuzzy match (e.g. 'schnell' → 'flux.1-schnell')
+            for k in self.FLUX_URLS:
+                if model_key in k:
+                    model_key = k
+                    break
+            else:
+                model_key = self.DEFAULT_MODEL
+        self.url, self.steps = self.FLUX_URLS[model_key]
+        self.model_key = model_key
+        self._key_index = 0
+
+    def _next_key(self) -> str:
+        key = self.api_keys[self._key_index % len(self.api_keys)]
+        self._key_index += 1
+        return key
+
+    def create(self, prompt: str, variant: ImageVariant) -> bytes:
+        import urllib.request, urllib.error, json as _json
+        last_error: Exception | None = None
+
+        for attempt in range(len(self.api_keys)):
+            api_key = self._next_key()
+            payload = {
+                "prompt": prompt,
+                "mode": "base",
+                "seed": 0,
+                "steps": self.steps,
+                # cfg_scale only for dev model
+                **({
+                    "cfg_scale": 3.5,
+                    "width": variant.width,
+                    "height": variant.height,
+                } if "dev" in self.model_key else {}),
+            }
+            req = urllib.request.Request(
+                self.url,
+                data=_json.dumps(payload).encode(),
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                },
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=120) as res:
+                    data = _json.loads(res.read())
+                    artifacts = data.get("artifacts", [])
+                    if not artifacts or not artifacts[0].get("base64"):
+                        raise RuntimeError(f"No image in response: {list(data.keys())}")
+                    image_bytes = base64.b64decode(artifacts[0]["base64"])
+
+                    # Resize to exact dimensions if needed
+                    try:
+                        from PIL import Image
+                        import io
+                        img = Image.open(io.BytesIO(image_bytes))
+                        if img.width != variant.width or img.height != variant.height:
+                            resample_filter = getattr(Image, "Resampling", Image).LANCZOS
+                            img = img.resize((variant.width, variant.height), resample=resample_filter)
+                            out_buffer = io.BytesIO()
+                            img.save(out_buffer, format="JPEG", quality=95)
+                            image_bytes = out_buffer.getvalue()
+                    except Exception:
+                        pass
+
+                    return image_bytes
+            except urllib.error.HTTPError as e:
+                body = ""
+                try: body = e.read().decode()[:200]
+                except: pass
+                last_error = RuntimeError(f"HTTP {e.code}: {body}")
+                if e.code in (429, 503):  # rate limit — try next key
+                    continue
+                break
+            except Exception as exc:
+                last_error = exc
+                break
+
+        raise RuntimeError(f"FLUX ({self.model_key}) generation failed: {last_error}")
+
+
 def image_provider(settings: Settings) -> ImageProvider:
     provider_name = _resolved_image_provider_name(settings)
-    if provider_name in {"free-ai", "pollinations", "flux"}:
+    if provider_name in {"free-ai", "pollinations"}:
         return PollinationsImageProvider(settings)
+    if provider_name in {"flux", "nvidia-flux", "flux-dev", "flux-schnell"}:
+        return NvidiaFluxImageProvider(settings)
     if provider_name == "imagen":
         return ImagenProvider(settings)
     if provider_name == "gemini":
         return GeminiImageProvider(settings)
     if provider_name in {"openai", "chatgpt", "gpt-image"}:
         return OpenAIImageProvider(settings)
+    if provider_name in {"nvidia", "qwen", "nvidia-qwen"}:
+        return NvidiaQwenImageProvider(settings)
     raise ValueError(f"Unsupported IMAGE_PROVIDER: {settings.image_provider}")
+
 
 
 def _resolved_image_provider_name(settings: Settings) -> str:

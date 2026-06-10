@@ -1,26 +1,25 @@
 """
 rigging_engine.py — Procedural joint-pivot rigging for 3/4 view modular puppets.
 
-Layer compositing order (back → front):
-  1. far_arm   — rotates around far_shoulder_xy (sits BEHIND torso)
-  2. torso     — rigid body / clothes mesh
-  3. head      — head plate with face, hair, eyes, blink
-  4. mouth     — Rhubarb lip-sync frame, center-anchored on mouth_anchor_xy
-  5. near_arm  — rotates around near_shoulder_xy (sits IN FRONT of torso)
+Layer compositing order (back -> front):
+  1. far_arm   -- rotates around far_shoulder_xy (sits BEHIND torso)
+  2. torso     -- rigid body / clothes mesh
+  3. head      -- head plate with face, hair, eyes, blink
+  4. mouth     -- Rhubarb lip-sync frame, center-anchored on mouth_anchor_xy
+  5. near_arm  -- rotates around near_shoulder_xy (sits IN FRONT of torso)
 
 Gesture states accepted:
-  "idle"   — gentle breathing sway
-  "talk"   — animated arm lift + faster sway
-  "wave"   — rapid oscillation between wave_angle_bounds
-  "point"  — snaps near arm to point_angle
-  "walk"   — step-stride arm swing opposite legs
+  idle, talk/talking_lip_sync, wave, point, walk, pranaam
+
+Ambient lighting: pass ambient_tint=(R,G,B,alpha) in actor dict to tint
+  the puppet to match scene lighting (night=dark-blue, sunset=warm-orange).
 """
 from __future__ import annotations
 
 import math
 from typing import Any
 
-from PIL import Image, ImageFilter
+from PIL import Image, ImageDraw, ImageFilter
 
 
 def _resample() -> int:
@@ -29,6 +28,48 @@ def _resample() -> int:
 
 def _clamp(v: float, lo: float, hi: float) -> float:
     return max(lo, min(hi, v))
+
+
+def apply_ambient_tint(puppet: Image.Image, tint_rgba: tuple) -> Image.Image:
+    """
+    Overlay a semi-transparent solid colour on the puppet to simulate
+    scene ambient lighting (e.g. blue for night, orange for sunset).
+    tint_rgba = (R, G, B, alpha)  where alpha 0-255 (0=no tint, 80=subtle).
+    """
+    if tint_rgba is None or tint_rgba[3] == 0:
+        return puppet
+    r, g, b, a = tint_rgba
+    tint_layer = Image.new("RGBA", puppet.size, (r, g, b, 0))
+    # Apply tint only where puppet has visible pixels
+    puppet_alpha = puppet.getchannel("A")
+    # Scale tint alpha by puppet alpha using a fast lookup table
+    lut = [int(x * a / 255.0) for x in range(256)]
+    tint_a = puppet_alpha.point(lut)
+    tint_layer.putalpha(tint_a)
+    result = puppet.copy()
+    result.alpha_composite(tint_layer)
+    return result
+
+
+
+def draw_foot_shadow(canvas: Image.Image, cx: int, feet_y: int,
+                     width: int = 80, opacity: int = 60) -> None:
+    """
+    Draw a soft elliptical drop-shadow under character feet.
+    Call on the SCENE canvas (not puppet) BEFORE pasting the puppet.
+    """
+    draw = ImageDraw.Draw(canvas, "RGBA")
+    hw = width // 2
+    hh = max(6, width // 8)
+    box = [cx - hw, feet_y - hh, cx + hw, feet_y + hh]
+    # Draw 3 progressively lighter ellipses for soft falloff
+    for i in range(3, 0, -1):
+        exp = i * 6
+        alpha = opacity // i
+        draw.ellipse(
+            [box[0]-exp, box[1]-exp//3, box[2]+exp, box[3]+exp//3],
+            fill=(0, 0, 0, alpha)
+        )
 
 
 def _paste(canvas: Image.Image, layer: Image.Image | None, x: float, y: float) -> None:
@@ -75,28 +116,16 @@ def _rotate_around_pivot(
     if abs(angle_deg) < 0.05:
         return layer
 
-    # PIL rotate uses centre of the image; we shift pivot to centre manually.
-    cw, ch = canvas_size
-    # Offset so the real pivot lands at the image centre
-    shift_x = cw / 2.0 - pivot_x
-    shift_y = ch / 2.0 - pivot_y
-
-    # Create a canvas big enough to avoid clipping during rotation
-    pad = int(max(cw, ch) * 0.6)
-    big_w, big_h = cw + 2 * pad, ch + 2 * pad
-    big = Image.new("RGBA", (big_w, big_h), (0, 0, 0, 0))
-    big.paste(layer, (pad, pad), layer)
-
-    # Rotate around image centre (which is now our real pivot)
-    rotated = big.rotate(
+    # Rotate directly around pivot using PIL's center argument
+    if layer.mode != "RGBA":
+        layer = layer.convert("RGBA")
+    return layer.rotate(
         -angle_deg,  # PIL is counter-clockwise positive
         resample=Image.Resampling.BICUBIC,
-        center=(pad + pivot_x, pad + pivot_y),
+        center=(pivot_x, pivot_y),
         expand=False,
     )
 
-    # Crop back to original canvas size
-    return rotated.crop((pad, pad, pad + cw, pad + ch))
 
 
 def _needs_blink(actor: dict[str, Any], frame_index: int, fps: int) -> bool:
@@ -178,6 +207,8 @@ def _get_gesture_limits(bundle: dict[str, Any]) -> dict[str, Any]:
         "idle_sway_bounds": [-3.0, 3.0],
         "point_angle": -65.0,
         "wave_angle_bounds": [15.0, 55.0],
+        "pranaam_near_angle": 55.0,   # near arm bows forward
+        "pranaam_far_angle":  45.0,   # far arm matches
     }
     limits = meta.get("gesture_limits") or bundle.get("gesture_limits") or {}
     return {**defaults, **limits}
@@ -228,10 +259,13 @@ def render_articulated_puppet(
     # ── Arm angle calculation ─────────────────────────────────────────────────
     gs = str(gesture_state).lower()
 
-    # Far arm (behind torso) — gentle passive sway
+    # Far arm (behind torso)
     far_sway = limits["idle_sway_bounds"][0] * idle_osc * (2.0 if talking else 1.2)
     if "walk" in gs:
         far_sway = 22.0 * math.sin(2.0 * math.pi * t * 1.5 + phase)
+    elif "pranaam" in gs:
+        # Both arms come together forward for pranam bow
+        far_sway = float(limits["pranaam_far_angle"])
 
     # Near arm (in front of torso)
     if "point" in gs:
@@ -243,6 +277,8 @@ def render_articulated_puppet(
         near_angle = mid + amp * math.sin(2.0 * math.pi * 4.0 * t)
     elif "walk" in gs:
         near_angle = -22.0 * math.sin(2.0 * math.pi * t * 1.5 + phase)
+    elif "pranaam" in gs:
+        near_angle = float(limits["pranaam_near_angle"])
     elif talking:
         near_angle = limits["idle_sway_bounds"][1] * idle_osc * 2.2
     else:
@@ -327,6 +363,13 @@ def render_articulated_puppet(
     accessories = layers.get("accessories")
     if accessories is not None:
         canvas.alpha_composite(accessories)
+
+    # 9. Ambient lighting tint — must come LAST so it covers all layers uniformly
+    #    Pass ambient_tint=(R, G, B, alpha) in actor dict or bundle metadata.
+    #    Presets: night=(20,40,80,65)  sunset=(255,140,60,45)  morning=(255,220,160,30)
+    tint = actor.get("ambient_tint") or bundle.get("ambient_tint")
+    if tint:
+        canvas = apply_ambient_tint(canvas, tuple(tint))
 
     return canvas
 

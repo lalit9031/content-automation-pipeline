@@ -63,6 +63,10 @@ class Settings:
     instagram_user_id: str = ""
     instagram_client_id: str = ""
     instagram_client_secret: str = ""
+    nvidia_api_key: str = ""
+    nvidia_api_keys: tuple[str, ...] = ()
+    nvidia_image_model: str = "qwen/qwen-image"
+    together_api_key: str = ""
     dotenv_path: Path | None = None
 
     @classmethod
@@ -144,6 +148,10 @@ class Settings:
             instagram_user_id=os.getenv("INSTAGRAM_USER_ID", ""),
             instagram_client_id=os.getenv("INSTAGRAM_CLIENT_ID", ""),
             instagram_client_secret=os.getenv("INSTAGRAM_CLIENT_SECRET", ""),
+            nvidia_api_keys=(_nvidia_keys := _read_key_pool("NVIDIA_API_KEY", 5)),
+            nvidia_api_key=_first_key(_nvidia_keys, os.getenv("NVIDIA_API_KEY", "")),
+            nvidia_image_model=os.getenv("NVIDIA_IMAGE_MODEL", "qwen/qwen-image"),
+            together_api_key=os.getenv("TOGETHER_API_KEY", ""),
             dotenv_path=project_dir / ".env",
         )
 
