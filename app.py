@@ -2788,8 +2788,289 @@ def render_frontdoor(settings: Settings) -> None:
                 scene_img_file = antigravity_output_dir / "images" / f"scene_{selected_scene_num:02d}.png"
                 if scene_img_file.exists():
                     st.image(str(scene_img_file), caption=f"Pristine slide illustration", use_container_width=True)
-
     elif active_p == "2DVideo":
+        def render_storyboard_cinematic_tabs(project_path, selected_project, orchestrator_path, settings, manifest_data, manifest_path):
+            import sys
+            import os
+            import json
+            import shutil
+            import subprocess
+            from pathlib import Path
+            
+            st.markdown("### 🎬 Fun Video Studio (Cinematic Storyboard Mode)")
+            
+            tab1, tab2 = st.tabs(["1. Setup & Script Editor", "2. Compile & Playback"])
+            
+            with tab1:
+                col_left, col_right = st.columns(2)
+                
+                with col_left:
+                    st.markdown("#### 💡 Draft Story & Script")
+                    story_topic_cin = st.text_input(
+                        "Story Topic / Moral Lesson",
+                        value="An honest boy returning a lost gold watch",
+                        key=f"topic_cin_{selected_project}"
+                    )
+                    
+                    # Load config to get defaults
+                    config_path = project_path / "project_config.json"
+                    config_data = {}
+                    if config_path.exists():
+                        try:
+                            with open(config_path, "r", encoding="utf-8") as f:
+                                config_data = json.load(f)
+                        except Exception:
+                            pass
+                            
+                    audience_list = ["Kids", "Adults"]
+                    default_aud = config_data.get("audience", "Kids")
+                    if default_aud not in audience_list:
+                        default_aud = "Kids"
+                        
+                    audience_choice = st.selectbox(
+                        "Target Audience",
+                        options=audience_list,
+                        index=audience_list.index(default_aud),
+                        key=f"aud_choice_{selected_project}"
+                    )
+                    
+                    if audience_choice == "Kids":
+                        genre_list = ["Moral Story", "Learning Story", "Poem Teaching Video"]
+                        default_genre = config_data.get("genre", "Moral Story")
+                        if default_genre not in genre_list:
+                            default_genre = "Moral Story"
+                        genre_choice = st.selectbox(
+                            "Genre",
+                            options=genre_list,
+                            index=genre_list.index(default_genre),
+                            key=f"genre_choice_{selected_project}"
+                        )
+                        
+                        lang_list = ["English", "Hindi"]
+                        default_lang = config_data.get("language", "Hindi")
+                        if default_lang not in lang_list:
+                            default_lang = "Hindi"
+                        lang_choice = st.selectbox(
+                            "Language",
+                            options=lang_list,
+                            index=lang_list.index(default_lang),
+                            key=f"lang_choice_{selected_project}"
+                        )
+                    else:
+                        genre_list = ["Suspense & Thrill", "Drama & Emotional"]
+                        default_genre = config_data.get("genre", "Suspense & Thrill")
+                        if default_genre not in genre_list:
+                            default_genre = "Suspense & Thrill"
+                        genre_choice = st.selectbox(
+                            "Genre",
+                            options=genre_list,
+                            index=genre_list.index(default_genre),
+                            key=f"genre_choice_{selected_project}"
+                        )
+                        lang_choice = "Hindi"
+                        st.info("ℹ️ Adults / Seniors stories are locked to Hindi language.")
+                    
+                    # API Key resolution
+                    active_key = st.session_state.get("custom_gemini_api_key", "").strip()
+                    if not active_key:
+                        active_key = os.environ.get("GEMINI_API_KEY", "")
+                    if not active_key and hasattr(settings, "gemini_api_key"):
+                        active_key = settings.gemini_api_key
+                        
+                    if st.button("🚀 Draft Script via Gemini", key=f"btn_draft_cin_{selected_project}", use_container_width=True):
+                        if not active_key:
+                            st.error("Please configure your Gemini API Key in the settings first.")
+                        else:
+                            # Save selected options to project_config.json
+                            config_data["audience"] = audience_choice
+                            config_data["genre"] = genre_choice
+                            config_data["language"] = lang_choice
+                            try:
+                                with open(config_path, "w", encoding="utf-8") as f:
+                                    json.dump(config_data, f, indent=4)
+                            except Exception:
+                                pass
+                                
+                            with st.spinner("AI drafting moral story and prompts..."):
+                                if str(orchestrator_path) not in sys.path:
+                                    sys.path.insert(0, str(orchestrator_path))
+                                try:
+                                    from src.core.story_agent import AICreativeAgent
+                                    agent = AICreativeAgent(active_key)
+                                    res = agent.generate_story_from_topic(story_topic_cin, audience_choice, genre_choice, lang_choice)
+                                    if res["status"] == "success":
+                                        st.session_state[f"script_blueprint_{selected_project}"] = res["script"]
+                                        st.success("Drafting complete! Review and edit on the right.")
+                                        st.rerun()
+                                    else:
+                                        st.error(res["message"])
+                                except Exception as e:
+                                    st.error(f"Failed to draft script: {e}")
+                
+                with col_right:
+                    st.markdown("#### 📋 Inspect & Edit Script Blueprint")
+                    script_file_path = project_path / "script.txt"
+                    current_script_val = ""
+                    if script_file_path.exists():
+                        try:
+                            with open(script_file_path, "r", encoding="utf-8") as f:
+                                current_script_val = f.read()
+                        except Exception:
+                            pass
+                            
+                    if not current_script_val:
+                        current_script_val = st.session_state.get(f"script_blueprint_{selected_project}", (
+                            "--- SCENE 01 ---\n"
+                            "[CHARACTER] nandu_boy\n"
+                            "[ACTION] wandering aimlessly down a dusty village dirt road, looking bored\n"
+                            "[AUDIO] बहुत समय पहले की बात है, एक गाँव में नंदू नाम का लड़का रहता था जो बहुत आलसी था।\n"
+                        ))
+                    
+                    edited_script_cin = st.text_area(
+                        "Script Text (script.txt)",
+                        value=current_script_val,
+                        height=350,
+                        key=f"script_area_cin_{selected_project}"
+                    )
+                    
+                    if st.button("💾 Save Script File", key=f"btn_save_script_cin_{selected_project}", use_container_width=True):
+                        try:
+                            with open(script_file_path, "w", encoding="utf-8") as f:
+                                f.write(edited_script_cin)
+                            st.toast("✅ script.txt saved successfully!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Failed to save script: {e}")
+                            
+            with tab2:
+                st.markdown("### 🚀 Compile Storyboard Video")
+                
+                if st.button("🎬 Compile Video Master", type="primary", use_container_width=True, key=f"btn_compile_cin_master_{selected_project}"):
+                    st.info("Compiling cinematic storyboard video... Downloading backgrounds, synthesizing TTS vocals, applying Ken Burns zoom filters and mixing background music.")
+                    
+                    compiler_script = orchestrator_path / "batch_story_compiler.py"
+                    cmd = [
+                        sys.executable,
+                        "-u",
+                        str(compiler_script),
+                        selected_project
+                    ]
+                    
+                    with st.expander("🛠️ Live Compilation Terminal Logs", expanded=True):
+                        log_placeholder = st.empty()
+                        log_content = []
+                        
+                        try:
+                            env = os.environ.copy()
+                            env["KIDS_STUDIO_ORCHESTRATOR_ROOT"] = str(orchestrator_path)
+                            env["PYTHONPATH"] = os.pathsep.join([str(PROJECT_ROOT / ".2d_patches"), str(orchestrator_path)])
+                            
+                            process = subprocess.Popen(
+                                cmd,
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT,
+                                text=True,
+                                bufsize=1,
+                                cwd=str(orchestrator_path),
+                                env=env
+                            )
+                            
+                            while True:
+                                line = process.stdout.readline()
+                                if not line and process.poll() is not None:
+                                    break
+                                if line:
+                                    log_content.append(line)
+                                    log_placeholder.code("".join(log_content[-20:]), language="bash")
+                                    
+                            rc = process.poll()
+                            if rc == 0:
+                                st.success("🎉 Video compiled successfully!")
+                                st.toast("Success!")
+                                
+                                # Copy compiled video to orchestrator's central output folder
+                                try:
+                                    target_video = project_path / "output" / "final_studio_master.mp4"
+                                    if target_video.exists():
+                                        central_output_dir = orchestrator_path / "output"
+                                        central_output_dir.mkdir(exist_ok=True)
+                                        shutil.copy(target_video, central_output_dir / f"{selected_project}_final.mp4")
+                                        st.info(f"💾 Copied compiled video to orchestrator output: `{central_output_dir / f'{selected_project}_final.mp4'}`")
+                                except Exception as copy_err:
+                                    st.warning(f"⚠️ Failed to copy compiled video to central output: {copy_err}")
+                                    
+                                # Google Drive Upload
+                                st.info("📤 Uploading compiled video to Google Drive...")
+                                try:
+                                    target_video = project_path / "output" / "final_studio_master.mp4"
+                                    if target_video.exists():
+                                        from content_pipeline.bots.google_drive import upload_to_google_drive
+                                        drive_folder = os.getenv("GOOGLE_DRIVE_FOLDER_ID", "").strip()
+                                        drive_link = upload_to_google_drive(target_video, drive_folder, settings)
+                                        
+                                        # Save the link to manifest
+                                        manifest_data["google_drive_link"] = drive_link
+                                        with open(manifest_path, "w", encoding="utf-8") as f:
+                                            json.dump(manifest_data, f, indent=2, ensure_ascii=False)
+                                        st.success(f"Uploaded to Google Drive successfully: {drive_link}")
+                                    else:
+                                        st.error("Compiled video output file not found on disk.")
+                                except Exception as drive_err:
+                                    st.warning(f"⚠️ Google Drive upload failed: {drive_err}")
+                                    
+                                st.rerun()
+                            else:
+                                st.error(f"❌ Compiler failed with exit code: {rc}")
+                        except Exception as e:
+                            st.error(f"Execution error: {e}")
+                            
+                # Render video preview
+                output_video = project_path / "output" / "final_studio_master.mp4"
+                if output_video.exists():
+                    st.markdown("---")
+                    st.markdown("### 📺 Compiled Video Preview")
+                    st.video(str(output_video))
+                    
+                    central_final_path = orchestrator_path / "output" / f"{selected_project}_final.mp4"
+                    if central_final_path.exists():
+                        st.success(f"✨ Compiled Gold Master is saved at: `{central_final_path}`")
+                        
+                    # Google Drive Link display
+                    drive_link = manifest_data.get("google_drive_link", "")
+                    if drive_link:
+                        st.link_button(
+                            "📥 Download Compiled Video (Google Drive)",
+                            url=drive_link,
+                            use_container_width=True
+                        )
+                    else:
+                        st.warning("⚠️ This video has not been uploaded to Google Drive yet.")
+                        btn_col1, btn_col2 = st.columns(2)
+                        with btn_col1:
+                            with open(output_video, "rb") as video_file:
+                                st.download_button(
+                                    label="📥 Download Compiled Video (Local)",
+                                    data=video_file,
+                                    file_name=f"{selected_project}_final.mp4",
+                                    mime="video/mp4",
+                                    use_container_width=True,
+                                    key=f"download_btn_cin_{selected_project}"
+                                )
+                        with btn_col2:
+                            if st.button("📤 Sync/Upload to Google Drive", use_container_width=True, key=f"upload_drive_btn_cin_{selected_project}"):
+                                with st.spinner("Uploading to Google Drive..."):
+                                    try:
+                                        from content_pipeline.bots.google_drive import upload_to_google_drive
+                                        drive_folder = os.getenv("GOOGLE_DRIVE_FOLDER_ID", "").strip()
+                                        new_drive_link = upload_to_google_drive(output_video, drive_folder, settings)
+                                        manifest_data["google_drive_link"] = new_drive_link
+                                        with open(manifest_path, "w", encoding="utf-8") as f:
+                                            json.dump(manifest_data, f, indent=2, ensure_ascii=False)
+                                        st.success("Uploaded successfully!")
+                                        st.rerun()
+                                    except Exception as err:
+                                        st.error(f"Google Drive upload failed: {err}")
+
         st.markdown(
             """
             <div class="hero" style="background: linear-gradient(135deg, rgba(236,72,153,0.15), rgba(168,85,247,0.15)); border: 1px solid rgba(236,72,153,0.3); margin-bottom: 24px;">
@@ -2947,8 +3228,84 @@ def render_frontdoor(settings: Settings) -> None:
                     manifest_data = None
                     
                 if manifest_data:
-                    # Global config info
-                    st.caption(f"Video ID: **{manifest_data.get('video_id')}** | Resolution: **{manifest_data.get('canvas_dimensions')}** | FPS: **{manifest_data.get('fps')}**")
+                    # Load/initialize project_config.json
+                    config_path = project_path / "project_config.json"
+                    config_data = {
+                        "project_id": selected_project,
+                        "canvas_dimensions": manifest_data.get("canvas_dimensions", [1920, 1080]),
+                        "fps": manifest_data.get("fps", 24),
+                        "pipeline_mode": "PUPPET_2D",
+                        "active_style_preset": "PREMIUM_STORYBOOK",
+                        "generation_seed": 42
+                    }
+                    if config_path.exists():
+                        try:
+                            with open(config_path, "r", encoding="utf-8") as f:
+                                config_data.update(json.load(f))
+                        except Exception:
+                            pass
+                    else:
+                        try:
+                            with open(config_path, "w", encoding="utf-8") as f:
+                                json.dump(config_data, f, indent=4)
+                        except Exception:
+                            pass
+
+                    st.markdown("### ⚙️ Production Engine Configuration")
+                    cfg_cols = st.columns(3)
+                    with cfg_cols[0]:
+                        modes = ["PUPPET_2D", "STORYBOARD_CINEMATIC"]
+                        current_mode = config_data.get("pipeline_mode", "PUPPET_2D")
+                        if current_mode not in modes:
+                            current_mode = "PUPPET_2D"
+                        pipeline_mode = st.selectbox(
+                            "Pipeline Mode",
+                            options=modes,
+                            index=modes.index(current_mode),
+                            key=f"pipeline_mode_sel_{selected_project}"
+                        )
+                    with cfg_cols[1]:
+                        presets = ["PREMIUM_STORYBOOK", "CINEMATIC_STORYBOOK"]
+                        current_preset = config_data.get("active_style_preset", "PREMIUM_STORYBOOK")
+                        if current_preset not in presets:
+                            current_preset = "PREMIUM_STORYBOOK"
+                        style_preset = st.selectbox(
+                            "Style Preset",
+                            options=presets,
+                            index=presets.index(current_preset),
+                            key=f"style_preset_sel_{selected_project}"
+                        )
+                    with cfg_cols[2]:
+                        generation_seed = st.number_input(
+                            "Generation Seed",
+                            min_value=0,
+                            max_value=999999,
+                            value=int(config_data.get("generation_seed", 42)),
+                            key=f"generation_seed_input_{selected_project}"
+                        )
+                    
+                    # Save project_config.json if changed
+                    if (pipeline_mode != config_data.get("pipeline_mode") or
+                        style_preset != config_data.get("active_style_preset") or
+                        generation_seed != config_data.get("generation_seed")):
+                        config_data["pipeline_mode"] = pipeline_mode
+                        config_data["active_style_preset"] = style_preset
+                        config_data["generation_seed"] = generation_seed
+                        try:
+                            with open(config_path, "w", encoding="utf-8") as f:
+                                json.dump(config_data, f, indent=4)
+                            st.toast("⚙️ Configuration updated!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Failed to update project_config.json: {e}")
+
+                    # Branch based on pipeline mode
+                    if pipeline_mode == "STORYBOARD_CINEMATIC":
+                        render_storyboard_cinematic_tabs(project_path, selected_project, orchestrator_path, settings, manifest_data, manifest_path)
+                        st.stop()
+
+                    # Global config info (for PUPPET_2D)
+                    st.caption(f"Video ID: **{manifest_data.get('video_id')}** | Mode: **{pipeline_mode}** | Resolution: **{manifest_data.get('canvas_dimensions')}** | FPS: **{manifest_data.get('fps')}**")
                     
                     # Create step-by-step navigation tabs
                     tab1, tab2, tab3 = st.tabs(["1. Setup & Storyboard", "2. Script & Voices", "3. Compile & Playback"])
