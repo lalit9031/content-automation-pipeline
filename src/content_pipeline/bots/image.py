@@ -1044,9 +1044,36 @@ class NvidiaFluxImageProvider:
         self._key_index += 1
         return key
 
+    def _map_flux_dimensions(self, width: int, height: int) -> tuple[int, int]:
+        supported = [768, 832, 896, 960, 1024, 1088, 1152, 1216, 1280, 1344]
+        target_ratio = width / height
+        best_w, best_h = 1024, 1024
+        min_diff = float("inf")
+        max_area = 0
+        for w_candidate in supported:
+            for h_candidate in supported:
+                if w_candidate * h_candidate > 1050000:
+                    continue
+                ratio = w_candidate / h_candidate
+                diff = abs(ratio - target_ratio)
+                if diff < min_diff - 1e-4:
+                    min_diff = diff
+                    best_w = w_candidate
+                    best_h = h_candidate
+                    max_area = w_candidate * h_candidate
+                elif abs(diff - min_diff) < 1e-4:
+                    area = w_candidate * h_candidate
+                    if area > max_area:
+                        best_w = w_candidate
+                        best_h = h_candidate
+                        max_area = area
+        return best_w, best_h
+
     def create(self, prompt: str, variant: ImageVariant) -> bytes:
         import urllib.request, urllib.error, json as _json
         last_error: Exception | None = None
+
+        flux_w, flux_h = self._map_flux_dimensions(variant.width, variant.height)
 
         for attempt in range(len(self.api_keys)):
             api_key = self._next_key()
@@ -1055,11 +1082,11 @@ class NvidiaFluxImageProvider:
                 "mode": "base",
                 "seed": 0,
                 "steps": self.steps,
+                "width": flux_w,
+                "height": flux_h,
                 # cfg_scale only for dev model
                 **({
                     "cfg_scale": 3.5,
-                    "width": variant.width,
-                    "height": variant.height,
                 } if "dev" in self.model_key else {}),
             }
             req = urllib.request.Request(

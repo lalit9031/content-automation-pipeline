@@ -148,7 +148,7 @@ class Settings:
             instagram_user_id=os.getenv("INSTAGRAM_USER_ID", ""),
             instagram_client_id=os.getenv("INSTAGRAM_CLIENT_ID", ""),
             instagram_client_secret=os.getenv("INSTAGRAM_CLIENT_SECRET", ""),
-            nvidia_api_keys=(_nvidia_keys := _read_key_pool("NVIDIA_API_KEY", 5)),
+            nvidia_api_keys=(_nvidia_keys := _read_key_pool("NVIDIA_API_KEY", 20)),
             nvidia_api_key=_first_key(_nvidia_keys, os.getenv("NVIDIA_API_KEY", "")),
             nvidia_image_model=os.getenv("NVIDIA_IMAGE_MODEL", "qwen/qwen-image"),
             together_api_key=os.getenv("TOGETHER_API_KEY", ""),
