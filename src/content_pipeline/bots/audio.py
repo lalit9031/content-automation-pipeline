@@ -3148,7 +3148,13 @@ def generate_hindi_song_via_native_audio(
     except Exception:
         pass
 
-    if not status["limit_reached"]:
+    # English audio: always use free Edge-TTS (block Gemini keys for English)
+    # Hindi audio: use Gemini first, fallback to Edge-TTS
+    is_english_voice = singer_key.upper().startswith("EN_")
+    if is_english_voice:
+        print("🔒 [Audio] English voice detected — Gemini blocked. Using free Edge-TTS.")
+
+    if not is_english_voice and not status["limit_reached"]:
 
         try:
             # Increment and generate

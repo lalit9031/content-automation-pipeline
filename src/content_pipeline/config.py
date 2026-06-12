@@ -68,6 +68,9 @@ class Settings:
     nvidia_image_model: str = "qwen/qwen-image"
     nvidia_nim_model: str = "microsoft/phi-4-mini-instruct"
     together_api_key: str = ""
+    pollinations_api_key: str = ""
+    local_llm_url: str = "http://localhost:11434/v1"
+    local_llm_model: str = "llama3"
     dotenv_path: Path | None = None
 
     @classmethod
@@ -163,6 +166,9 @@ class Settings:
             nvidia_image_model=os.getenv("NVIDIA_IMAGE_MODEL", "qwen/qwen-image"),
             nvidia_nim_model=os.getenv("NVIDIA_NIM_MODEL", "microsoft/phi-4-mini-instruct"),
             together_api_key=os.getenv("TOGETHER_API_KEY", ""),
+            pollinations_api_key=os.getenv("POLLINATIONS_API_KEY", ""),
+            local_llm_url=os.getenv("LOCAL_LLM_URL", "http://localhost:11434/v1"),
+            local_llm_model=os.getenv("LOCAL_LLM_MODEL", "llama3"),
             dotenv_path=project_dir / ".env",
         )
 

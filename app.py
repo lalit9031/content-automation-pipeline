@@ -202,17 +202,29 @@ def _apply_streamlit_secrets() -> None:
     except Exception:
         pass
 
+    channel_keys = {
+        "TechWithLalit": "techwithlalit",
+        "Studio_MagicTales": "magictales",
+        "LittleBubbles TV": "littlebubbles"
+    }
+    c_key = channel_keys.get(selected_channel, "techwithlalit")
+
     token_secret_key = "YOUTUBE_TOKEN_JSON"
     drive_folder_secret_key = "GOOGLE_DRIVE_FOLDER_ID"
+    client_secrets_secret_key = "YOUTUBE_CLIENT_SECRETS_JSON"
+
     if selected_channel == "LittleBubbles TV":
         token_secret_key = "YOUTUBE_TOKEN_JSON_LITTLEBUBBLES"
         drive_folder_secret_key = "GOOGLE_DRIVE_FOLDER_ID_LITTLEBUBBLES"
+        client_secrets_secret_key = "YOUTUBE_CLIENT_SECRETS_JSON_LITTLEBUBBLES"
     elif selected_channel == "Studio_MagicTales":
         token_secret_key = "YOUTUBE_TOKEN_JSON_MAGICTALES"
         drive_folder_secret_key = "GOOGLE_DRIVE_FOLDER_ID_MAGICTALES"
+        client_secrets_secret_key = "YOUTUBE_CLIENT_SECRETS_JSON_MAGICTALES"
     elif selected_channel == "TechWithLalit":
         token_secret_key = "YOUTUBE_TOKEN_JSON_TECHWITHLALIT"
         drive_folder_secret_key = "GOOGLE_DRIVE_FOLDER_ID_TECHWITHLALIT"
+        client_secrets_secret_key = "YOUTUBE_CLIENT_SECRETS_JSON_TECHWITHLALIT"
 
     # Fall back to default keys if channel-specific keys are not set, and use the user's default mappings as pre-programmed fallbacks
     channel_drive_folders = {
@@ -225,22 +237,21 @@ def _apply_streamlit_secrets() -> None:
     token_json = _secret(token_secret_key) or _secret("YOUTUBE_TOKEN_JSON")
     drive_folder_val = _secret(drive_folder_secret_key) or _secret("GOOGLE_DRIVE_FOLDER_ID") or smart_default_folder
 
-
     if token_json:
         token_dir = PROJECT_ROOT / ".secrets"
         token_dir.mkdir(parents=True, exist_ok=True)
-        token_path = token_dir / "youtube_token.json"
+        token_path = token_dir / f"youtube_token_{c_key}.json"
         token_path.write_text(token_json, encoding="utf-8")
         os.environ["YOUTUBE_TOKEN_FILE"] = str(token_path)
 
     if drive_folder_val:
         os.environ["GOOGLE_DRIVE_FOLDER_ID"] = drive_folder_val
 
-    client_secrets_json = _secret("YOUTUBE_CLIENT_SECRETS_JSON")
+    client_secrets_json = _secret(client_secrets_secret_key) or _secret("YOUTUBE_CLIENT_SECRETS_JSON")
     if client_secrets_json:
         scripts_dir = PROJECT_ROOT / "scripts"
         scripts_dir.mkdir(parents=True, exist_ok=True)
-        client_secrets_path = scripts_dir / "youtube_client_secrets.json"
+        client_secrets_path = scripts_dir / f"client_secret_{c_key}.json"
         client_secrets_path.write_text(client_secrets_json, encoding="utf-8")
         os.environ["YOUTUBE_CLIENT_SECRETS_FILE"] = str(client_secrets_path)
 
@@ -1999,6 +2010,33 @@ def render_frontdoor(settings: Settings) -> None:
             key="music_studio_language",
             help="Choose the language for the song generation. This filters the reference audio files and guides the dynamic lyric generator."
         )
+        
+        # Script Generator Selector
+        st.session_state.setdefault("music_studio_script_generator", "NVIDIA Llama 3.3")
+        st.selectbox(
+            "Choose Script Generator",
+            options=["Gemini", "NVIDIA Llama 3.3", "Local LLM (Ollama/LM Studio)"],
+            index=1,
+            key="music_studio_script_generator",
+            help="Select the AI brain used to write lyrics and musical styles."
+        )
+        
+        # Dynamic inputs for Local LLM
+        if st.session_state.get("music_studio_script_generator") == "Local LLM (Ollama/LM Studio)":
+            m_col1, m_col2 = st.columns(2)
+            with m_col1:
+                m_url = st.text_input(
+                    "Local LLM API Endpoint:",
+                    value=os.getenv("LOCAL_LLM_URL", "http://localhost:11434/v1"),
+                    key="music_studio_local_llm_url"
+                )
+            with m_col2:
+                m_model = st.text_input(
+                    "Local LLM Model Name:",
+                    value=os.getenv("LOCAL_LLM_MODEL", "llama3"),
+                    key="music_studio_local_llm_model"
+                )
+            settings = replace(settings, local_llm_url=m_url, local_llm_model=m_model)
 
         # One-Click Creator
         with st.expander("⚡ One-Click Song Creator", expanded=True):
@@ -4104,6 +4142,33 @@ def render_frontdoor(settings: Settings) -> None:
             key="kids_studio_language",
             help="Choose the language for the song generation. This filters the reference audio files and guides the dynamic lyric generator."
         )
+        
+        # Script Generator Selector
+        st.session_state.setdefault("kids_studio_script_generator", "NVIDIA Llama 3.3")
+        st.selectbox(
+            "Choose Script Generator",
+            options=["Gemini", "NVIDIA Llama 3.3", "Local LLM (Ollama/LM Studio)"],
+            index=1,
+            key="kids_studio_script_generator",
+            help="Select the AI brain used to write stanzas and storytelling scripts."
+        )
+        
+        # Dynamic inputs for Local LLM
+        if st.session_state.get("kids_studio_script_generator") == "Local LLM (Ollama/LM Studio)":
+            k_col1, k_col2 = st.columns(2)
+            with k_col1:
+                k_url = st.text_input(
+                    "Local LLM API Endpoint:",
+                    value=os.getenv("LOCAL_LLM_URL", "http://localhost:11434/v1"),
+                    key="kids_studio_local_llm_url"
+                )
+            with k_col2:
+                k_model = st.text_input(
+                    "Local LLM Model Name:",
+                    value=os.getenv("LOCAL_LLM_MODEL", "llama3"),
+                    key="kids_studio_local_llm_model"
+                )
+            settings = replace(settings, local_llm_url=k_url, local_llm_model=k_model)
 
         # Determine kids voice options based on the selected language and mode
         import importlib
@@ -5606,73 +5671,370 @@ def render_frontdoor(settings: Settings) -> None:
 
         left, right = st.columns([1.2, 0.8])
         with left:
-            st.subheader("Run the daily pipeline")
-            st.write("This triggers the same daily content generation flow your CLI uses.")
-            st.caption(
-                f"Latest day: {latest_day or 'none yet'} · Files in latest run: {latest_overview['file_count']}"
+            pipeline_type = st.radio(
+                "Select Active Pipeline:",
+                options=["LinkedIn Daily MVP", "YouTube Video Automation"],
+                horizontal=True,
+                key="run_pipeline_type_select"
             )
+            
+            if pipeline_type == "LinkedIn Daily MVP":
+                st.subheader("Run the daily pipeline")
+                st.write("This triggers the same daily content generation flow your CLI uses.")
+                st.caption(
+                    f"Latest day: {latest_day or 'none yet'} · Files in latest run: {latest_overview['file_count']}"
+                )
 
-            # Action cards & run button
-            action_cols = st.columns(3)
-            with action_cols[0]:
-                st.markdown(
-                    """
-                    <div class="action-card">
-                      <h3>Run the pipeline</h3>
-                      <p>Generate today’s daily artifacts with the same flow used by the CLI.</p>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-                if st.button("🚀 Run Pipeline", type="primary", use_container_width=True, key="btn_run_pipeline"):
-                    with st.spinner(f"Running daily LinkedIn package generation for {run_date}..."):
-                        try:
-                            result = run_linkedin_mvp(run_date, ui_settings)
-                            st.session_state["last_run_result"] = result
-                            st.success(f"Pipeline successfully run for {run_date}!")
-                            st.rerun()
-                        except Exception as e:
-                            st.session_state["last_run_error"] = str(e)
-                            st.error(f"Pipeline failed: {e}")
-            with action_cols[1]:
-                st.markdown(
-                    """
-                    <div class="action-card">
-                      <h3>Latest dashboard</h3>
-                      <p>Open the newest dashboard if a run already exists in the output folder.</p>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-                if latest_dashboard and latest_dashboard.exists():
+                # Action cards & run button
+                action_cols = st.columns(3)
+                with action_cols[0]:
                     st.markdown(
-                        f'<div class="action-link"><a href="{latest_dashboard.as_uri()}" target="_blank">Open latest dashboard</a></div>',
+                        """
+                        <div class="action-card">
+                          <h3>Run the pipeline</h3>
+                          <p>Generate today’s daily artifacts with the same flow used by the CLI.</p>
+                        </div>
+                        """,
                         unsafe_allow_html=True,
                     )
-                else:
-                    st.caption("No dashboard yet.")
-            with action_cols[2]:
-                st.markdown(
-                    """
-                    <div class="action-card">
-                      <h3>Audio front door</h3>
-                      <p>Jump straight into voice, science audio, and PM audio status.</p>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-                if latest_audio and latest_audio.exists():
+                    if st.button("🚀 Run Pipeline", type="primary", use_container_width=True, key="btn_run_pipeline"):
+                        with st.spinner(f"Running daily LinkedIn package generation for {run_date}..."):
+                            try:
+                                result = run_linkedin_mvp(run_date, ui_settings)
+                                st.session_state["last_run_result"] = result
+                                st.success(f"Pipeline successfully run for {run_date}!")
+                                st.rerun()
+                            except Exception as e:
+                                st.session_state["last_run_error"] = str(e)
+                                st.error(f"Pipeline failed: {e}")
+                with action_cols[1]:
                     st.markdown(
-                        f'<div class="action-link"><a href="{latest_audio.as_uri()}" target="_blank">Open audio front door</a></div>',
+                        """
+                        <div class="action-card">
+                          <h3>Latest dashboard</h3>
+                          <p>Open the newest dashboard if a run already exists in the output folder.</p>
+                        </div>
+                        """,
                         unsafe_allow_html=True,
                     )
+                    if latest_dashboard and latest_dashboard.exists():
+                        st.markdown(
+                            f'<div class="action-link"><a href="{latest_dashboard.as_uri()}" target="_blank">Open latest dashboard</a></div>',
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        st.caption("No dashboard yet.")
+                with action_cols[2]:
+                    st.markdown(
+                        """
+                        <div class="action-card">
+                          <h3>Audio front door</h3>
+                          <p>Jump straight into voice, science audio, and PM audio status.</p>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                    if latest_audio and latest_audio.exists():
+                        st.markdown(
+                            f'<div class="action-link"><a href="{latest_audio.as_uri()}" target="_blank">Open audio front door</a></div>',
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        st.caption("No audio front door yet.")
+            else:
+                st.subheader("YouTube Automation Pipeline")
+                st.write("Generate high-quality video content and upload it as a **private** video to your YouTube channel.")
+                
+                # Channel options radio
+                channel_options = ["TechWithLalit", "Studio_MagicTales", "LittleBubbles TV"]
+                active_chan = st.session_state.get("active_youtube_channel", "TechWithLalit")
+                channel_index = channel_options.index(active_chan) if active_chan in channel_options else 0
+                selected_youtube_channel = st.radio(
+                    "Target YouTube Channel:",
+                    options=channel_options,
+                    index=channel_index,
+                    horizontal=True,
+                    key="run_pipeline_youtube_channel"
+                )
+                if selected_youtube_channel != st.session_state.get("active_youtube_channel"):
+                    st.session_state["active_youtube_channel"] = selected_youtube_channel
+                    st.rerun()
+                    
+                # Format options radio
+                selected_youtube_format = st.radio(
+                    "Choose Video Format:",
+                    options=["Shorts (Vertical 9:16)", "Full Video (Landscape 16:9)"],
+                    horizontal=True,
+                    key="run_pipeline_youtube_format"
+                )
+                
+                is_kids_chan = selected_youtube_channel in ("LittleBubbles TV", "Studio_MagicTales")
+                if is_kids_chan:
+                    st.write("👶 **Kids Channel Options**")
+                    col_kids1, col_kids2 = st.columns(2)
+                    with col_kids1:
+                        selected_kids_lang = st.radio(
+                            "Choose Kids Rhyme Language:",
+                            options=["English", "Hindi"],
+                            horizontal=True,
+                            key="run_pipeline_youtube_lang"
+                        )
+                    with col_kids2:
+                        selected_kids_speed = st.radio(
+                            "Choose Kids Rhyme Speed / Tempo:",
+                            options=["Slow", "Mid", "High"],
+                            index=1,
+                            horizontal=True,
+                            key="run_pipeline_youtube_speed"
+                        )
+                    selected_topic_mode = st.radio(
+                        "Topic Selection Mode:",
+                        options=["Random Nursery Rhyme", "Manual Idea Input"],
+                        horizontal=True,
+                        key="run_pipeline_youtube_topic_mode"
+                    )
                 else:
-                    st.caption("No audio front door yet.")
+                    selected_topic_mode = "Manual Idea Input"
+                    selected_kids_lang = "English"
+                    selected_kids_speed = "Mid"
+                
+                auto_topic = ""
+                if selected_topic_mode == "Random Nursery Rhyme":
+                    st.info("🔮 **Random Rhyme Mode Enabled**: A popular children's rhyme will be selected randomly when you click Run.")
+                    auto_topic = "Random Topic"
+                else:
+                    # Dynamic default topic based on channel
+                    if selected_youtube_channel == "LittleBubbles TV":
+                        default_topic = "Baa Baa Black Sheep nursery rhyme"
+                    elif selected_youtube_channel == "Studio_MagicTales":
+                        default_topic = "A magical fairytale about a wizard and a little dragon"
+                    else:
+                        default_topic = "3 AI tools that will 10x your coding speed"
+                    auto_topic = st.text_input(
+                        "Video Topic / Story Idea:",
+                        value=default_topic,
+                        placeholder="Enter the main topic or script prompt...",
+                        key="run_pipeline_youtube_topic"
+                    )
+                
+                # Vocal reference selector
+                lalit_audio_dir = PROJECT_ROOT / "output" / "reference_audio"
+                if not lalit_audio_dir.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/Lalit Audio").exists():
+                    lalit_audio_dir = Path("/Users/lalitprasadsingh/Desktop/antigravity/Lalit Audio")
+                
+                wav_files = []
+                if lalit_audio_dir.exists():
+                    wav_files = sorted([f.name for f in lalit_audio_dir.glob("*.wav")])
+                if not wav_files:
+                    wav_files = ["shirt_color_voice.wav"]
+                    
+                selected_voice = st.selectbox(
+                    "Choose Vocal Reference Track:",
+                    options=wav_files,
+                    index=0,
+                    key="run_pipeline_youtube_voice"
+                )
+                
+                # Intro avatar selector
+                brand_dir = PROJECT_ROOT / "assets" / "brand"
+                if not brand_dir.exists():
+                    brand_dir = Path("/Users/lalitprasadsingh/.gemini/antigravity/scratch/content-automation-pipeline/assets/brand")
+                
+                avatar_options = ["talking_avatar.gif", "tech_with_lalit_logo.png", "Upload Custom Avatar..."]
+                selected_avatar = st.selectbox(
+                    "Choose Intro Avatar Slide format:",
+                    options=avatar_options,
+                    index=0,
+                    key="run_pipeline_youtube_avatar"
+                )
+                
+                custom_avatar_temp_path = None
+                if selected_avatar == "Upload Custom Avatar...":
+                    uploaded_custom_avatar = st.file_uploader(
+                        "Upload custom avatar image (PNG/JPG):",
+                        type=["png", "jpg", "jpeg"],
+                        key="run_pipeline_youtube_avatar_uploader"
+                    )
+                    if uploaded_custom_avatar:
+                        custom_avatar_temp_path = lalit_audio_dir / uploaded_custom_avatar.name
+                        with open(custom_avatar_temp_path, "wb") as f:
+                            f.write(uploaded_custom_avatar.getbuffer())
+                            
+                # Visual Prompt Style Selector
+                style_options = ["Pixar Claymation", "Photorealistic", "Cinematic Fantasy"]
+                selected_style = st.selectbox(
+                    "Choose Image Prompt Style:",
+                    options=style_options,
+                    index=0,
+                    key="run_pipeline_youtube_image_style"
+                )
+                
+                # Script Generator Selector
+                generator_options = ["Gemini", "NVIDIA Llama 3.3", "Local LLM (Ollama/LM Studio)"]
+                selected_generator = st.selectbox(
+                    "Choose Script Generator:",
+                    options=generator_options,
+                    index=1,
+                    key="run_pipeline_youtube_script_generator"
+                )
+                
+                # Dynamic inputs for Local LLM
+                local_llm_url_val = ui_settings.local_llm_url
+                local_llm_model_val = ui_settings.local_llm_model
+                if selected_generator == "Local LLM (Ollama/LM Studio)":
+                    col_lurl, col_lmodel = st.columns(2)
+                    with col_lurl:
+                        local_llm_url_val = st.text_input(
+                            "Local LLM API Endpoint:",
+                            value=os.getenv("LOCAL_LLM_URL", "http://localhost:11434/v1"),
+                            key="run_pipeline_local_llm_url"
+                        )
+                    with col_lmodel:
+                        local_llm_model_val = st.text_input(
+                            "Local LLM Model Name:",
+                            value=os.getenv("LOCAL_LLM_MODEL", "llama3"),
+                            key="run_pipeline_local_llm_model"
+                        )
+                    ui_settings = replace(ui_settings, local_llm_url=local_llm_url_val, local_llm_model=local_llm_model_val)
+                            
+                # Cloud sync & notifications configurations
+                with st.expander("📂 Cloud Sync & Telegram Notifications Configuration", expanded=False):
+                    env_hf_token = os.getenv("HF_TOKEN", "") or os.getenv("HF_API_KEY", "")
+                    hf_token_input = st.text_input(
+                        "Hugging Face API Token:",
+                        value=env_hf_token,
+                        placeholder="e.g. hf_ABCdefGhI...",
+                        type="password",
+                        key="run_pipeline_youtube_hf_token"
+                    )
+                    
+                    env_drive_folder = os.getenv("GOOGLE_DRIVE_FOLDER_ID", "")
+                    drive_folder_id = st.text_input(
+                        "Google Drive Folder ID:",
+                        value=env_drive_folder,
+                        placeholder="e.g. 1A2b3C4d5E6f7G...",
+                        key="run_pipeline_youtube_drive_folder"
+                    )
+                    
+                    env_tg_token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+                    env_tg_chat = os.getenv("TELEGRAM_CHAT_ID", "")
+                    
+                    tg_col1, tg_col2 = st.columns(2)
+                    with tg_col1:
+                        telegram_bot_token = st.text_input(
+                            "Telegram Bot Token:",
+                            value=env_tg_token,
+                            placeholder="e.g. 123456789:ABCdefGhI...",
+                            type="password",
+                            key="run_pipeline_youtube_tg_token"
+                        )
+                    with tg_col2:
+                        telegram_chat_id = st.text_input(
+                            "Telegram Chat ID:",
+                            value=env_tg_chat,
+                            placeholder="e.g. 987654321",
+                            key="run_pipeline_youtube_tg_chat"
+                        )
+                
+                # Run button
+                if st.button("🚀 Run YouTube Pipeline", type="primary", use_container_width=True, key="btn_run_youtube_pipeline"):
+                    # Generate random topic if Random Rhyme Mode is selected
+                    actual_topic = auto_topic
+                    if selected_topic_mode == "Random Nursery Rhyme":
+                        import random
+                        if selected_kids_lang == "Hindi":
+                            RANDOM_KIDS_TOPICS_HINDI = [
+                                "Chanda Mama Door Ke bal geet",
+                                "Lakdi Ki Kathi kathi pe ghoda geet",
+                                "Machli Jal Ki Rani Hai",
+                                "Titli Udi Bus Pe Chadi",
+                                "Chun Chun Karti Aayi Chidiya",
+                                "Haathi Raja Kahan Chale",
+                                "Aloo Kachaloo Beta Kahan Gaye The",
+                                "Ek Chidiya Anek Chidiya"
+                            ]
+                            actual_topic = random.choice(RANDOM_KIDS_TOPICS_HINDI)
+                        else:
+                            RANDOM_KIDS_TOPICS = [
+                                "Baa Baa Black Sheep nursery rhyme",
+                                "Twinkle Twinkle Little Star nursery rhyme",
+                                "Humpty Dumpty sat on a wall rhyme",
+                                "Wheels on the Bus go round and round",
+                                "Five Little Monkeys jumping on the bed",
+                                "Old MacDonald Had a Farm",
+                                "Johny Johny Yes Papa nursery rhyme",
+                                "Itsy Bitsy Spider climbing the waterspout",
+                                "Row Row Row Your Boat gently down the stream",
+                                "Mary Had a Little Lamb nursery rhyme",
+                                "Hickory Dickory Dock clock rhyme",
+                                "Jack and Jill went up the hill rhyme"
+                            ]
+                            actual_topic = random.choice(RANDOM_KIDS_TOPICS)
+
+                    if not actual_topic.strip() or actual_topic == "Random Topic":
+                        st.error("Please enter a valid video topic.")
+                    else:
+                        hf_token_val = hf_token_input.strip()
+                        if hf_token_val:
+                            dotenv_path = PROJECT_ROOT / ".env"
+                            update_dotenv_file(dotenv_path, "HF_TOKEN", hf_token_val)
+                            os.environ["HF_TOKEN"] = hf_token_val
+                            ui_settings = replace(ui_settings, hf_token=hf_token_val)
+                            
+                        from content_pipeline.bots.auto_youtube import run_autonomous_creator_and_upload
+                        
+                        with st.status(f"🚀 Launching YouTube Video Automation for {actual_topic}...", expanded=True) as status:
+                            def update_status(msg: str):
+                                st.write(msg)
+                                
+                            try:
+                                aspect_arg = "Vertical Short (9:16)" if "Shorts" in selected_youtube_format else "Landscape Explainer (16:9)"
+                                res = run_autonomous_creator_and_upload(
+                                    topic=actual_topic,
+                                    voice_ref_name=selected_voice,
+                                    avatar_choice=selected_avatar,
+                                    custom_avatar_path=custom_avatar_temp_path,
+                                    aspect=aspect_arg,
+                                    settings=ui_settings,
+                                    log_callback=update_status,
+                                    drive_folder_id=drive_folder_id,
+                                    telegram_bot_token=telegram_bot_token,
+                                    telegram_chat_id=telegram_chat_id,
+                                    speed=selected_kids_speed,
+                                    language=selected_kids_lang,
+                                    channel=selected_youtube_channel,
+                                    image_style=selected_style,
+                                    script_generator=selected_generator
+                                )
+                                
+                                status.update(label=f"🎉 Video Successfully Created & Uploaded to YouTube!", state="complete", expanded=False)
+                                st.success(f"🎉 SUCCESS! Video compiled and uploaded to YouTube.")
+                                st.session_state["last_run_result"] = res
+                                st.rerun()
+                            except Exception as e:
+                                status.update(label="❌ Pipeline Failed!", state="error", expanded=True)
+                                st.error(f"Error executing YouTube pipeline: {e}")
 
             if "last_run_error" in st.session_state:
                 st.error(st.session_state["last_run_error"])
             if "last_run_result" in st.session_state:
-                st.json(st.session_state["last_run_result"])
+                res = st.session_state["last_run_result"]
+                if isinstance(res, dict) and "youtube_id" in res:
+                    with st.container(border=True):
+                        st.markdown(f"### 🏷️ Title: **{res['youtube_title']}**")
+                        st.markdown(f"🎥 **YouTube Video ID (Private):** `{res['youtube_id']}`")
+                        st.markdown(f"🔗 **YouTube Link:** [https://youtu.be/{res['youtube_id']}](https://youtu.be/{res['youtube_id']})")
+                        if res.get('drive_link'):
+                            st.markdown(f"📂 **Google Drive Direct Link:** [{res['drive_link']}]({res['drive_link']})")
+                        
+                        st.subheader("📝 YouTube Description")
+                        st.text_area("YouTube Description:", value=res['youtube_description'], height=150, key="auto_yt_desc_view_run")
+                        
+                        if os.path.exists(res['video_path']):
+                            st.subheader("🎬 Final Video Review")
+                            st.video(res['video_path'])
+                else:
+                    st.json(res)
 
         with right:
             st.subheader("Quick launch")
@@ -6079,6 +6441,41 @@ def render_frontdoor(settings: Settings) -> None:
             with tg_col2:
                 telegram_chat_id = st.text_input("Telegram Chat ID:", value=env_tg_chat, placeholder="e.g. 987654321", key="auto_tg_chat")
 
+        # Selectors for Style and Generator
+        col_st, col_gen = st.columns(2)
+        with col_st:
+            auto_style = st.selectbox(
+                "Choose Image Prompt Style:",
+                options=["Pixar Claymation", "Photorealistic", "Cinematic Fantasy"],
+                index=0,
+                key="auto_image_style_select"
+            )
+        with col_gen:
+            auto_generator = st.selectbox(
+                "Choose Script Generator:",
+                options=["Gemini", "NVIDIA Llama 3.3", "Local LLM (Ollama/LM Studio)"],
+                index=1,
+                key="auto_script_generator_select"
+            )
+            
+        auto_local_llm_url_val = settings.local_llm_url
+        auto_local_llm_model_val = settings.local_llm_model
+        if auto_generator == "Local LLM (Ollama/LM Studio)":
+            col_lurl, col_lmodel = st.columns(2)
+            with col_lurl:
+                auto_local_llm_url_val = st.text_input(
+                    "Local LLM API Endpoint:",
+                    value=os.getenv("LOCAL_LLM_URL", "http://localhost:11434/v1"),
+                    key="auto_local_llm_url"
+                )
+            with col_lmodel:
+                auto_local_llm_model_val = st.text_input(
+                    "Local LLM Model Name:",
+                    value=os.getenv("LOCAL_LLM_MODEL", "llama3"),
+                    key="auto_local_llm_model"
+                )
+            settings = replace(settings, local_llm_url=auto_local_llm_url_val, local_llm_model=auto_local_llm_model_val)
+
         # Format selector
         auto_format = st.radio("Choose Output format:", ["Landscape Explainer (16:9)", "Vertical Short (9:16)"], horizontal=True, key="auto_format_select")
         
@@ -6111,7 +6508,9 @@ def render_frontdoor(settings: Settings) -> None:
                             log_callback=update_status,
                             drive_folder_id=drive_folder_id,
                             telegram_bot_token=telegram_bot_token,
-                            telegram_chat_id=telegram_chat_id
+                            telegram_chat_id=telegram_chat_id,
+                            image_style=auto_style,
+                            script_generator=auto_generator
                         )
                         
                         status.update(label="🎉 Video Successfully Created & Uploaded to YouTube!", state="complete", expanded=False)
@@ -7376,110 +7775,23 @@ def expand_general_prompt_to_lyrics_and_style(prompt: str, singer_gender: str) -
     return lyrics, style
 
 
-def expand_general_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, singer_gender: str, language: str) -> tuple[str, str]:
+def generate_lyrics_and_style_unified(
+    settings,
+    prompt: str,
+    singer_gender: str,
+    language: str,
+    mode: str = "Poem/Rhyme",
+    is_kids: bool = False,
+    script_generator: str = "NVIDIA Llama 3.3"
+) -> tuple[str, str]:
     import os
     import json
+    import requests
+    
     if "gemini_api_error" in st.session_state:
         del st.session_state["gemini_api_error"]
 
-    keys = list(settings.gemini_api_keys)
-    if not keys and settings.gemini_api_key:
-        keys = [settings.gemini_api_key]
-    if os.environ.get("GEMINI_API_KEY") and os.environ.get("GEMINI_API_KEY") not in keys:
-        keys.insert(0, os.environ.get("GEMINI_API_KEY"))
-    
-    # Prioritize Custom User API Key from UI state
-    custom_ui_key = st.session_state.get("custom_gemini_api_key", "").strip()
-    if custom_ui_key:
-        if custom_ui_key in keys:
-            keys.remove(custom_ui_key)
-        keys.insert(0, custom_ui_key)
-
-    keys = [k for k in keys if k]
-
-    if keys:
-        system_instruction = (
-            "You are a music composer and lyricist. Expand the user's idea into complete lyrics and style description. "
-            "The output must be JSON with keys 'lyrics' and 'style'."
-        )
-        user_prompt = f"""
-        User Song Idea: "{prompt}"
-        Singer Voice Gender Selection: "{singer_gender}"
-        Target Song Language: "{language}"
-        
-        Requirements:
-        1. If the Target Song Language is 'Hindi', write the lyrics in standard Devanagari script (Hindi characters) like 'जय हनुमान ज्ञान गुन सागर' rather than Romanized/Hinglish (e.g. 'Jai Hanuman'). This forces the neural network to activate its native Indian mouth-shape and dental consonant engines for a perfect native accent. Explicitly mention 'native Indian {singer_gender.lower()} singing voice with natural Indian accent', 'Bollywood style playback singer (e.g. Arijit Singh/Atif Aslam style male, Shreya Ghoshal style female)', 'expressive emotional delivery with traditional vocal ornamentations (gamaq and murki)', 'clear native pronunciation', 'traditional Indian instruments (sitar, bansuri flute, dholak, tabla, acoustic guitar)', and 'highly polished T-Series/Saregama style commercial pop mix with grand cinematic reverb and spacious stereo delay' in the style description.
-        2. SPECIAL DEVOTIONAL EXCEPTION: If the User Song Idea or prompt contains references to Hindu deities, devotional topics, or prayers (such as 'Hanuman', 'Chalisa', 'bhajan', 'aarti', 'spiritual', 'ram', 'krishna', 'shiva', 'ganesha', 'temple', 'prayer', 'devotional'), then override the modern commercial pop styles. Instead, explicitly require:
-           - 'authentic traditional Indian devotional bhajan/kirtan mood'
-           - 'deeply spiritual native Indian {singer_gender.lower()} devotional singer voice'
-           - 'traditional acoustic instrumentation: bansuri flute, harmonium, sitar, dholak, tabla, manjira hand cymbals'
-           - 'peaceful and prayerful tempo (65-75 BPM)'
-           - 'strictly no modern electronic dance drums, no heavy synthesizers, no modern EDM elements'
-           - 'sacred temple hall acoustics with warm ambient reverb'
-        3. If the Target Song Language is 'English', write the lyrics in English.
-        4. Structure the lyrics with standard tags like [verse] and [chorus]. Avoid [intro] or [outro] tags. Keep it to 2-3 short verses and 1-2 choruses.
-        5. The 'style' string must be a comma-separated description of instruments, tempo (BPM), vocal qualities, and musical genre. Make it match the song idea.
-        
-        Return a raw JSON object matching this schema:
-        {{
-            "lyrics": "verse and chorus text",
-            "style": "comma-separated musical style description"
-        }}
-        """
-        errors = []
-        for key in keys:
-            try:
-                from google import genai
-                from google.genai import types
-                client = genai.Client(api_key=key)
-                response = client.models.generate_content(
-                    model="gemini-2.5-flash",
-                    contents=user_prompt,
-                    config=types.GenerateContentConfig(
-                        response_mime_type="application/json",
-                        system_instruction=system_instruction
-                    )
-                )
-                data = json.loads(response.text)
-                if "lyrics" in data and "style" in data:
-                    return data["lyrics"], data["style"]
-                else:
-                    errors.append(f"Invalid JSON returned (missing 'lyrics' or 'style'): {response.text}")
-            except Exception as e:
-                errors.append(f"API key beginning with '{key[:6]}...': {str(e)}")
-        if errors:
-            st.session_state["gemini_api_error"] = "\n".join(errors)
-    else:
-        st.session_state["gemini_api_error"] = "No Gemini API keys found in Settings or Environment."
-        
-    if language == "Hindi":
-        return expand_general_prompt_to_lyrics_and_style_hindi_local(prompt, singer_gender)
-    else:
-        return expand_general_prompt_to_lyrics_and_style(prompt, singer_gender)
-
-
-def expand_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, singer_gender: str, language: str, mode: str = "Poem/Rhyme") -> tuple[str, str]:
-    import os
-    import json
-    if "gemini_api_error" in st.session_state:
-        del st.session_state["gemini_api_error"]
-
-    keys = list(settings.gemini_api_keys)
-    if not keys and settings.gemini_api_key:
-        keys = [settings.gemini_api_key]
-    if os.environ.get("GEMINI_API_KEY") and os.environ.get("GEMINI_API_KEY") not in keys:
-        keys.insert(0, os.environ.get("GEMINI_API_KEY"))
-    
-    # Prioritize Custom User API Key from UI state
-    custom_ui_key = st.session_state.get("custom_gemini_api_key", "").strip()
-    if custom_ui_key:
-        if custom_ui_key in keys:
-            keys.remove(custom_ui_key)
-        keys.insert(0, custom_ui_key)
-
-    keys = [k for k in keys if k]
-
-    if keys:
+    if is_kids:
         if mode == "Storytelling":
             system_instruction = (
                 "You are an elite children's audiobook narrator and storyteller. Expand the kids' story idea into a complete, warm, expressive storytelling script and style description. "
@@ -7535,36 +7847,172 @@ def expand_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, singer_gend
                 "style": "comma-separated musical style description"
             }}
             """
-        errors = []
-        for key in keys:
-            try:
-                from google import genai
-                from google.genai import types
-                client = genai.Client(api_key=key)
-                response = client.models.generate_content(
-                    model="gemini-2.5-flash",
-                    contents=user_prompt,
-                    config=types.GenerateContentConfig(
-                        response_mime_type="application/json",
-                        system_instruction=system_instruction
-                    )
-                )
-                data = json.loads(response.text)
-                if "lyrics" in data and "style" in data:
-                    return data["lyrics"], data["style"]
-                else:
-                    errors.append(f"Invalid JSON returned (missing 'lyrics' or 'style'): {response.text}")
-            except Exception as e:
-                errors.append(f"API key beginning with '{key[:6]}...': {str(e)}")
-        if errors:
-            st.session_state["gemini_api_error"] = "\n".join(errors)
     else:
-        st.session_state["gemini_api_error"] = "No Gemini API keys found in Settings or Environment."
+        system_instruction = (
+            "You are a music composer and lyricist. Expand the user's idea into complete lyrics and style description. "
+            "The output must be JSON with keys 'lyrics' and 'style'."
+        )
+        user_prompt = f"""
+        User Song Idea: "{prompt}"
+        Singer Voice Gender Selection: "{singer_gender}"
+        Target Song Language: "{language}"
         
-    if language == "Hindi":
-        return expand_prompt_to_lyrics_and_style_hindi_local(prompt, singer_gender, mode=mode)
+        Requirements:
+        1. If the Target Song Language is 'Hindi', write the lyrics in standard Devanagari script (Hindi characters) like 'जय हनुमान ज्ञान गुन सागर' rather than Romanized/Hinglish (e.g. 'Jai Hanuman'). This forces the neural network to activate its native Indian mouth-shape and dental consonant engines for a perfect native accent. Explicitly mention 'native Indian {singer_gender.lower()} singing voice with natural Indian accent', 'Bollywood style playback singer (e.g. Arijit Singh/Atif Aslam style male, Shreya Ghoshal style female)', 'expressive emotional delivery with traditional vocal ornamentations (gamaq and murki)', 'clear native pronunciation', 'traditional Indian instruments (sitar, bansuri flute, dholak, tabla, acoustic guitar)', and 'highly polished T-Series/Saregama style commercial pop mix with grand cinematic reverb and spacious stereo delay' in the style description.
+        2. SPECIAL DEVOTIONAL EXCEPTION: If the User Song Idea or prompt contains references to Hindu deities, devotional topics, or prayers (such as 'Hanuman', 'Chalisa', 'bhajan', 'aarti', 'spiritual', 'ram', 'krishna', 'shiva', 'ganesha', 'temple', 'prayer', 'devotional'), then override the modern commercial pop styles. Instead, explicitly require:
+           - 'authentic traditional Indian devotional bhajan/kirtan mood'
+           - 'deeply spiritual native Indian {singer_gender.lower()} devotional singer voice'
+           - 'traditional acoustic instrumentation: bansuri flute, harmonium, sitar, dholak, tabla, manjira hand cymbals'
+           - 'peaceful and prayerful tempo (65-75 BPM)'
+           - 'strictly no modern electronic dance drums, no heavy synthesizers, no modern EDM elements'
+           - 'sacred temple hall acoustics with warm ambient reverb'
+        3. If the Target Song Language is 'English', write the lyrics in English.
+        4. Structure the lyrics with standard tags like [verse] and [chorus]. Avoid [intro] or [outro] tags. Keep it to 2-3 short verses and 1-2 choruses.
+        5. The 'style' string must be a comma-separated description of instruments, tempo (BPM), vocal qualities, and musical genre. Make it match the song idea.
+        
+        Return a raw JSON object matching this schema:
+        {{
+            "lyrics": "verse and chorus text",
+            "style": "comma-separated musical style description"
+        }}
+        """
+
+    gen_lower = script_generator.strip().lower()
+    if "nvidia" in gen_lower:
+        order = ["nvidia", "gemini", "local"]
+    elif "local" in gen_lower:
+        order = ["local", "gemini"]
     else:
-        return expand_prompt_to_lyrics_and_style(prompt, singer_gender, mode=mode)
+        order = ["gemini", "local"]
+
+    for engine in order:
+        if engine == "nvidia":
+            keys = list(settings.nvidia_api_keys)
+            if not keys and settings.nvidia_api_key:
+                keys = [settings.nvidia_api_key]
+            if os.environ.get("NVIDIA_API_KEY") and os.environ.get("NVIDIA_API_KEY") not in keys:
+                keys.insert(0, os.environ.get("NVIDIA_API_KEY"))
+            keys = [k for k in keys if k]
+            
+            url = "https://integrate.api.nvidia.com/v1/chat/completions"
+            for key in keys:
+                try:
+                    headers = {
+                        "Authorization": f"Bearer {key}",
+                        "Content-Type": "application/json"
+                    }
+                    payload = {
+                        "model": "meta/llama-3.3-70b-instruct",
+                        "messages": [
+                            {"role": "system", "content": system_instruction},
+                            {"role": "user", "content": user_prompt}
+                        ],
+                        "temperature": 0.3,
+                        "max_tokens": 2048,
+                        "response_format": {"type": "json_object"}
+                    }
+                    r = requests.post(url, headers=headers, json=payload, timeout=30)
+                    if r.status_code == 200:
+                        data = r.json()
+                        content = data["choices"][0]["message"]["content"]
+                        parsed = json.loads(content)
+                        if "lyrics" in parsed and "style" in parsed:
+                            return parsed["lyrics"], parsed["style"]
+                except Exception:
+                    pass
+                    
+        elif engine == "gemini":
+            keys = list(settings.gemini_api_keys)
+            if not keys and settings.gemini_api_key:
+                keys = [settings.gemini_api_key]
+            if os.environ.get("GEMINI_API_KEY") and os.environ.get("GEMINI_API_KEY") not in keys:
+                keys.insert(0, os.environ.get("GEMINI_API_KEY"))
+            custom_ui_key = st.session_state.get("custom_gemini_api_key", "").strip()
+            if custom_ui_key:
+                if custom_ui_key in keys:
+                    keys.remove(custom_ui_key)
+                keys.insert(0, custom_ui_key)
+            keys = [k for k in keys if k]
+            
+            for key in keys:
+                try:
+                    from google import genai
+                    from google.genai import types
+                    client = genai.Client(api_key=key)
+                    response = client.models.generate_content(
+                        model="gemini-2.5-flash",
+                        contents=user_prompt,
+                        config=types.GenerateContentConfig(
+                            response_mime_type="application/json",
+                            system_instruction=system_instruction
+                        )
+                    )
+                    parsed = json.loads(response.text)
+                    if "lyrics" in parsed and "style" in parsed:
+                        return parsed["lyrics"], parsed["style"]
+                except Exception:
+                    pass
+                    
+        elif engine == "local":
+            url = f"{settings.local_llm_url.rstrip('/')}/chat/completions"
+            model = settings.local_llm_model
+            try:
+                payload = {
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": system_instruction},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    "temperature": 0.3,
+                    "max_tokens": 2048,
+                    "response_format": {"type": "json_object"}
+                }
+                r = requests.post(url, json=payload, timeout=30)
+                if r.status_code == 200:
+                    data = r.json()
+                    content = data["choices"][0]["message"]["content"]
+                    parsed = json.loads(content)
+                    if "lyrics" in parsed and "style" in parsed:
+                        return parsed["lyrics"], parsed["style"]
+            except Exception:
+                pass
+
+    # Offline fallbacks if all API calls failed
+    if language == "Hindi":
+        if is_kids:
+            return expand_prompt_to_lyrics_and_style_hindi_local(prompt, singer_gender, mode=mode)
+        else:
+            return expand_general_prompt_to_lyrics_and_style_hindi_local(prompt, singer_gender)
+    else:
+        if is_kids:
+            return expand_prompt_to_lyrics_and_style(prompt, singer_gender, mode=mode)
+        else:
+            return expand_general_prompt_to_lyrics_and_style(prompt, singer_gender)
+
+
+def expand_general_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, singer_gender: str, language: str) -> tuple[str, str]:
+    script_generator = st.session_state.get("music_studio_script_generator", "NVIDIA Llama 3.3")
+    return generate_lyrics_and_style_unified(
+        settings=settings,
+        prompt=prompt,
+        singer_gender=singer_gender,
+        language=language,
+        is_kids=False,
+        script_generator=script_generator
+    )
+
+
+def expand_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, singer_gender: str, language: str, mode: str = "Poem/Rhyme") -> tuple[str, str]:
+    script_generator = st.session_state.get("kids_studio_script_generator", "NVIDIA Llama 3.3")
+    return generate_lyrics_and_style_unified(
+        settings=settings,
+        prompt=prompt,
+        singer_gender=singer_gender,
+        language=language,
+        mode=mode,
+        is_kids=True,
+        script_generator=script_generator
+    )
 
 
 def expand_general_prompt_to_lyrics_and_style_hindi_local(prompt: str, singer_gender: str) -> tuple[str, str]:
@@ -7878,6 +8326,27 @@ def get_package_info() -> str:
 def main() -> None:
     _apply_streamlit_secrets()
     settings = Settings.from_environment(PROJECT_ROOT)
+    
+    # Dynamic Channel Credentials Switcher
+    selected_channel = st.session_state.get("active_youtube_channel", "TechWithLalit")
+    channel_keys = {
+        "TechWithLalit": "techwithlalit",
+        "Studio_MagicTales": "magictales",
+        "LittleBubbles TV": "littlebubbles"
+    }
+    c_key = channel_keys.get(selected_channel, "techwithlalit")
+    
+    specific_token = PROJECT_ROOT / ".secrets" / f"youtube_token_{c_key}.json"
+    specific_secrets = PROJECT_ROOT / "scripts" / f"client_secret_{c_key}.json"
+    
+    if specific_token.exists():
+        os.environ["YOUTUBE_TOKEN_FILE"] = str(specific_token)
+        settings = replace(settings, youtube_token_file=str(specific_token))
+        
+    if specific_secrets.exists():
+        os.environ["YOUTUBE_CLIENT_SECRETS_FILE"] = str(specific_secrets)
+        settings = replace(settings, youtube_client_secrets_file=str(specific_secrets))
+
     st.set_page_config(page_title="Content Pipeline Studio", page_icon="🎬", layout="wide")
     
     # Environment Diagnostics

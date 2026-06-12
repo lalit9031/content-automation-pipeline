@@ -854,69 +854,62 @@ class NvidiaQwenImageProvider:
 class PollinationsImageProvider:
     extension = ".png"
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, skip_nvidia: bool = False) -> None:
         self.settings = settings
+        self._skip_nvidia = skip_nvidia
 
     def create(self, prompt: str, variant: ImageVariant) -> bytes:
         import requests, time, urllib.parse, os, base64
 
         errors: dict[str, str] = {}
 
-        # ── Tier 1: Gemini REST API  (free AI Studio quota, keys 1-6 rotated) ──────
-        # Fastest & highest quality. Free quota ~1500 img/day per key (6 keys = ~9000/day).
-        # Only AQ.Ab8... format keys work — AIzaSy... type excluded.
-        # Direct REST — no SDK required. Free quota ~1500 img/day per key.
-        # Note: only AQ.Ab8... format keys work with AI Studio image API
-        # GEMINI_API_KEY_7 is AIzaSy... format (different type) — excluded
-        gemini_slots = [
-            "GEMINI_API_KEY", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3",
-            "GEMINI_API_KEY_4", "GEMINI_API_KEY_5", "GEMINI_API_KEY_6",
-        ]
-        gemini_model = (
-            getattr(self.settings, "gemini_image_model", None)
-            or "gemini-2.5-flash-image"
-        )
-        gemini_url = (
-            f"https://generativelanguage.googleapis.com/v1beta/models"
-            f"/{gemini_model}:generateContent"
-        )
-        for slot in gemini_slots:
-            key = os.environ.get(slot, "")
-            if not key:
-                continue
+        # ── Tier 1: NVIDIA FLUX  (fastest, free 25 req/day per key) ──────────
+        if not self._skip_nvidia:
             try:
-                r = requests.post(
-                    gemini_url,
-                    params={"key": key},
-                    json={
-                        "contents": [{"parts": [{"text": prompt}]}],
-                        "generationConfig": {"responseModalities": ["IMAGE", "TEXT"]},
-                    },
-                    timeout=60,
-                )
-                if r.status_code == 200:
-                    cands = r.json().get("candidates", [{}])
-                    parts = cands[0].get("content", {}).get("parts", []) if cands else []
-                    for part in parts:
-                        raw = part.get("inlineData", {}).get("data", "")
-                        if raw:
-                            img_bytes = (
-                                raw if isinstance(raw, bytes)
-                                else base64.b64decode(raw)
-                            )
-                            if len(img_bytes) > 5000:
-                                print(f"\u2705 [Image] Gemini/{gemini_model} ({slot})")
-                                return self._process_image(img_bytes, variant)
-                elif r.status_code == 429:
-                    time.sleep(15)
-                    continue
-                elif r.status_code in (401, 403):
-                    continue
+                nvidia_provider = NvidiaFluxImageProvider(self.settings)
+                # Call NVIDIA directly — don't use its own fallback (which loops back here)
+                import urllib.request, urllib.error, json as _json
+                flux_w, flux_h = nvidia_provider._map_flux_dimensions(variant.width, variant.height)
+                for attempt in range(len(nvidia_provider.api_keys)):
+                    api_key = nvidia_provider._next_key()
+                    payload = {
+                        "prompt": prompt, "seed": 0,
+                        "steps": nvidia_provider.steps,
+                        "width": flux_w, "height": flux_h,
+                        **({"cfg_scale": 3.5} if "dev" in nvidia_provider.model_key else {}),
+                    }
+                    req = urllib.request.Request(
+                        nvidia_provider.url,
+                        data=_json.dumps(payload).encode(),
+                        headers={"Authorization": f"Bearer {api_key}",
+                                 "Content-Type": "application/json",
+                                 "Accept": "application/json"},
+                        method="POST",
+                    )
+                    try:
+                        with urllib.request.urlopen(req, timeout=120) as res:
+                            data = _json.loads(res.read())
+                            image_bytes = nvidia_provider._extract_image_bytes(data)
+                            if image_bytes and len(image_bytes) > 5000:
+                                print(f"\u2705 [Image] NVIDIA FLUX/{nvidia_provider.model_key}")
+                                return self._process_image(image_bytes, variant)
+                            else:
+                                errors[f"nvidia/{nvidia_provider.model_key}"] = f"No image in response: {_json.dumps(data)[:200]}"
+                    except urllib.error.HTTPError as e:
+                        body = ""
+                        try: body = e.read().decode()[:200]
+                        except: pass
+                        errors[f"nvidia/{nvidia_provider.model_key}/key{attempt}"] = f"HTTP {e.code}: {body}"
+                        if e.code in (429, 503):
+                            continue
+                        break
+                    except Exception as exc:
+                        errors[f"nvidia/{nvidia_provider.model_key}"] = _redact_provider_error(exc)
+                        break
             except Exception as exc:
-                errors[f"gemini/{slot}"] = _redact_provider_error(exc)
+                errors["nvidia_init"] = _redact_provider_error(exc)
 
-        # ── Tier 2: Hugging Face Inference Providers ───────────────────────────
-        # Prefer the official client so model/provider selection is handled for us.
+        # ── Tier 2: Hugging Face Inference Providers (FLUX + Dreamshaper/SD) ──
         if self.settings.hf_token:
             try:
                 from huggingface_hub import InferenceClient
@@ -970,32 +963,40 @@ class PollinationsImageProvider:
                     errors[f"hf_http/{free_model}"] = _redact_provider_error(exc)
                     break
 
-        # ── Tier 3: HuggingFace FLUX.1-schnell  (paid, HF_TOKEN credits) ────────
-        if self.settings.hf_token:
-            flux_url = (
-                "https://router.huggingface.co/hf-inference/models"
-                "/black-forest-labs/FLUX.1-schnell"
-            )
-            for attempt in range(2):
-                try:
-                    r = requests.post(
-                        flux_url,
-                        headers={"Authorization": f"Bearer {self.settings.hf_token}"},
-                        json={"inputs": prompt}, timeout=120,
-                    )
-                    if r.status_code == 200 and len(r.content) > 5000:
-                        print("\u2705 [Image] HF FLUX.1-schnell (paid)")
-                        return self._process_image(r.content, variant)
-                    if r.status_code == 402:
-                        break   # credits exhausted
-                    time.sleep(5)
-                except Exception as exc:
-                    errors["hf_flux"] = _redact_provider_error(exc)
-
-        # ── Tier 4: Pollinations.ai  (last resort, throttled on some IPs) ────────
+        # ── Tier 3: Pollinations.ai  (free, throttled on some IPs) ────────────
         encoded_prompt = urllib.parse.quote(prompt)
         request_width = min(1024, variant.width)
         request_height = min(1024, variant.height)
+        
+        # Try authenticated OpenAI-compatible Pollinations API if key is present
+        p_key = getattr(self.settings, "pollinations_api_key", None) or os.environ.get("POLLINATIONS_API_KEY", "")
+        if p_key:
+            try:
+                payload = {
+                    "prompt": prompt,
+                    "model": "flux",
+                    "width": request_width,
+                    "height": request_height,
+                    "n": 1,
+                    "response_format": "b64_json"
+                }
+                headers = {
+                    "Authorization": f"Bearer {p_key}",
+                    "Content-Type": "application/json"
+                }
+                r = requests.post("https://gen.pollinations.ai/v1/images/generations", headers=headers, json=payload, timeout=60)
+                if r.status_code == 200:
+                    data = r.json().get("data", [])
+                    if data and "b64_json" in data[0]:
+                        img_bytes = base64.b64decode(data[0]["b64_json"])
+                        if len(img_bytes) > 5000:
+                            print("✅ [Image] Pollinations (authenticated)")
+                            return self._process_image(img_bytes, variant)
+                else:
+                    errors["pollinations_auth"] = f"HTTP {r.status_code}: {r.text[:200]}"
+            except Exception as exc:
+                errors["pollinations_auth"] = _redact_provider_error(exc)
+
         for p_model in ["flux", "sana", "turbo"]:
             for seed in [42, 1337, 999]:
                 try:
@@ -1014,6 +1015,54 @@ class PollinationsImageProvider:
                         break
                 except Exception as exc:
                     errors[f"pollinations/{p_model}"] = _redact_provider_error(exc)
+
+        # ── Tier 4: Gemini REST API  (last resort, can be slow) ──────────────
+        gemini_slots = [
+            "GEMINI_API_KEY", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3",
+            "GEMINI_API_KEY_4", "GEMINI_API_KEY_5", "GEMINI_API_KEY_6",
+        ]
+        gemini_model = (
+            getattr(self.settings, "gemini_image_model", None)
+            or "gemini-2.5-flash-image"
+        )
+        gemini_url = (
+            f"https://generativelanguage.googleapis.com/v1beta/models"
+            f"/{gemini_model}:generateContent"
+        )
+        for slot in gemini_slots:
+            key = os.environ.get(slot, "")
+            if not key:
+                continue
+            try:
+                r = requests.post(
+                    gemini_url,
+                    params={"key": key},
+                    json={
+                        "contents": [{"parts": [{"text": prompt}]}],
+                        "generationConfig": {"responseModalities": ["IMAGE", "TEXT"]},
+                    },
+                    timeout=45,
+                )
+                if r.status_code == 200:
+                    cands = r.json().get("candidates", [{}])
+                    parts = cands[0].get("content", {}).get("parts", []) if cands else []
+                    for part in parts:
+                        raw = part.get("inlineData", {}).get("data", "")
+                        if raw:
+                            img_bytes = (
+                                raw if isinstance(raw, bytes)
+                                else base64.b64decode(raw)
+                            )
+                            if len(img_bytes) > 5000:
+                                print(f"\u2705 [Image] Gemini/{gemini_model} ({slot})")
+                                return self._process_image(img_bytes, variant)
+                elif r.status_code == 429:
+                    time.sleep(10)
+                    continue
+                elif r.status_code in (401, 403):
+                    continue
+            except Exception as exc:
+                errors[f"gemini/{slot}"] = _redact_provider_error(exc)
 
         # ── Tier 5: SVG placeholder  (compilation never hard-crashes) ─────────────
         import logging
@@ -1071,9 +1120,10 @@ class NvidiaFluxImageProvider:
         "flux.1-schnell":  ("https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-schnell",  4),
         "flux.1-dev":      ("https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-dev",      20),
     }
-    DEFAULT_MODEL = "flux.2-klein-4b"
+    DEFAULT_MODEL = "flux.1-schnell"
 
     def __init__(self, settings: Settings) -> None:
+        self.settings = settings
         self.api_keys = list(settings.nvidia_api_keys or ([settings.nvidia_api_key] if settings.nvidia_api_key else []))
         # De-duplicate while preserving order
         seen = set()
@@ -1158,7 +1208,7 @@ class NvidiaFluxImageProvider:
                     data = _json.loads(res.read())
                     image_bytes = self._extract_image_bytes(data)
                     if image_bytes is None:
-                        raise RuntimeError(f"No image in response: {list(data.keys())}")
+                        raise RuntimeError(f"No image in response: {list(data.keys())} -> {_json.dumps(data)}")
 
                     # Resize to exact dimensions if needed
                     try:
@@ -1187,7 +1237,12 @@ class NvidiaFluxImageProvider:
                 last_error = exc
                 break
 
-        raise RuntimeError(f"FLUX ({self.model_key}) generation failed: {last_error}")
+        import logging
+        logging.warning(f"FLUX ({self.model_key}) generation failed: {last_error}. Falling back to PollinationsImageProvider.")
+        try:
+            return PollinationsImageProvider(self.settings, skip_nvidia=True).create(prompt, variant)
+        except Exception as fallback_exc:
+            raise RuntimeError(f"FLUX ({self.model_key}) generation failed and fallback also failed: {fallback_exc}") from last_error
 
     def _extract_image_bytes(self, data: object) -> bytes | None:
         if not isinstance(data, dict):
