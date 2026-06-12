@@ -931,6 +931,10 @@ def generate_indian_voiceover(
                     "frame_rate": int(vocals.frame_rate * 0.94)
                 }).set_frame_rate(vocals.frame_rate)
                 
+                # Normalize peak to -1.5 dBFS for consistent standard volume level
+                if deeper_vocals.max_dBFS > -9999.0:
+                    deeper_vocals = deeper_vocals.apply_gain(-1.5 - deeper_vocals.max_dBFS)
+                
                 # Export the processed vocals back to the output path
                 fmt = output_path.suffix.lstrip(".").lower() or "mp3"
                 deeper_vocals.export(str(output_path), format=fmt)
@@ -3393,6 +3397,10 @@ def generate_hindi_song_via_native_audio(
     except Exception as e:
         print(f"⚠️ Failed to apply 0.94x pitch shift: {e}")
 
+    # Peak-normalize the vocal track to -3.0 dBFS as a standard baseline reference level
+    if vocals.max_dBFS > -9999.0:
+        vocals = vocals.apply_gain(-3.0 - vocals.max_dBFS)
+
     profile_vocal_gain = float(active_profile.get("vocal_gain_db", 0.0) or 0.0)
     if profile_vocal_gain:
         print(f"🎚️ Voice Profile Gain: Boosting selected profile by +{profile_vocal_gain:.1f}dB for clarity.")
@@ -3400,7 +3408,8 @@ def generate_hindi_song_via_native_audio(
 
     if narration_only:
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        if vocals.max_dBFS > -1.5:
+        # Normalize to exactly -1.5 dBFS for the final standalone voiceover file
+        if vocals.max_dBFS > -9999.0:
             vocals = vocals.apply_gain(-1.5 - vocals.max_dBFS)
         vocals.export(str(output_path), format="mp3", bitrate="192k")
         try:
