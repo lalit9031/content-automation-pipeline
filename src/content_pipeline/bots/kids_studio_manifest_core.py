@@ -39,12 +39,88 @@ KIDS_STUDIO_MASTER_REGISTRY = {
     "EN_KIDS_ANA": {
         "display_name": "Teacher Ana (Preschool Voice - English)",
         "base_tts_voice": "en-US-AnaNeural",
+        "gemini_tts_voice": "Aoede",
+        "edge_rate": "+0%",
+        "edge_pitch": "+0Hz",
+        "vocal_gain_db": 3.0,
         "pitch_change": 0,
         "formant_shift": 1.00,
         "index_rate": 0.28,                  # Calibrated to allow organic word transitions
         "filter_radius": 3,
         "protect": 0.40,                     # Clamped to allow smooth word flow without vocal locking
         "rms_mix_rate": 0.35                  # Smooths out low-volume text terminations
+    },
+    "EN_STORY_NEERJA_CLEAR": {
+        "display_name": "Clear English Storyteller Female (Loud & Crisp)",
+        "base_tts_voice": "en-IN-NeerjaNeural",
+        "gemini_tts_voice": "Kore",
+        "edge_rate": "-4%",
+        "edge_pitch": "+1Hz",
+        "vocal_gain_db": 5.5,
+        "pitch_change": 0,
+        "formant_shift": 1.00,
+        "index_rate": 0.22,
+        "filter_radius": 2,
+        "protect": 0.50,
+        "rms_mix_rate": 0.42
+    },
+    "EN_STORY_PRABHAT_CLEAR": {
+        "display_name": "Clear English Storyteller Male (Warm & Strong)",
+        "base_tts_voice": "en-IN-PrabhatNeural",
+        "gemini_tts_voice": "Fenrir",
+        "edge_rate": "-6%",
+        "edge_pitch": "-1Hz",
+        "vocal_gain_db": 5.0,
+        "pitch_change": -1,
+        "formant_shift": 0.98,
+        "index_rate": 0.22,
+        "filter_radius": 2,
+        "protect": 0.50,
+        "rms_mix_rate": 0.42
+    },
+    "EN_STORY_ANA_BRIGHT": {
+        "display_name": "Bright Child Story Voice (English Clear)",
+        "base_tts_voice": "en-US-AnaNeural",
+        "gemini_tts_voice": "Aoede",
+        "edge_rate": "-2%",
+        "edge_pitch": "+2Hz",
+        "vocal_gain_db": 5.0,
+        "pitch_change": 1,
+        "formant_shift": 1.02,
+        "index_rate": 0.20,
+        "filter_radius": 2,
+        "protect": 0.52,
+        "rms_mix_rate": 0.45
+    },
+    "EN_RHYME_ANA_CLEAR": {
+        "display_name": "Clear English Rhyme Voice (Bright Kid)",
+        "base_tts_voice": "en-US-AnaNeural",
+        "gemini_tts_voice": "Aoede",
+        "edge_rate": "+2%",
+        "edge_pitch": "+2Hz",
+        "vocal_gain_db": 5.0,
+        "pitch_change": 2,
+        "formant_shift": 1.02,
+        "index_rate": 0.22,
+        "filter_radius": 2,
+        "protect": 0.50,
+        "rms_mix_rate": 0.45,
+        "bg_music_prompt": "cheerful nursery rhyme, bright acoustic ukulele, glockenspiel, soft piano, hand claps, gentle bells, clear vocal-forward mix, 96 BPM"
+    },
+    "EN_RHYME_NEERJA_CLEAR": {
+        "display_name": "Clear English Rhyme Voice (Female Teacher)",
+        "base_tts_voice": "en-IN-NeerjaNeural",
+        "gemini_tts_voice": "Kore",
+        "edge_rate": "+0%",
+        "edge_pitch": "+1Hz",
+        "vocal_gain_db": 5.5,
+        "pitch_change": 0,
+        "formant_shift": 1.00,
+        "index_rate": 0.22,
+        "filter_radius": 2,
+        "protect": 0.50,
+        "rms_mix_rate": 0.44,
+        "bg_music_prompt": "cheerful educational kids rhyme, vocal-forward clean mix, soft piano, glockenspiel, bells, light percussion, 94 BPM"
     }
 }
 
@@ -96,7 +172,7 @@ def apply_vocal_equalization(audio_samples: np.ndarray, sr: int, active_mode: st
     mid-bass chest resonance, and tames piercing high-end sharpness.
     Uses custom biquad lowshelf and highshelf structures to prevent scipy crashes.
     """
-    if active_mode in ["STORY_MALE_PREMIUM", "STORY_FEMALE_KIND", "EN_KIDS_ANA"]:
+    if active_mode in ["STORY_MALE_PREMIUM", "STORY_FEMALE_KIND"] or active_mode.startswith("EN_"):
         print(f"🎛️ DSP Master: Running throat-clearing filter and stabilizing phase layers for [{active_mode}].")
         import math
         

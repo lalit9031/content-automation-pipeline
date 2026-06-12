@@ -1,4 +1,9 @@
-def get_kids_studio_creative_prompt(user_idea: str, mode: str, target_lang: str) -> str:
+def get_kids_studio_creative_prompt(
+    user_idea: str,
+    mode: str,
+    target_lang: str,
+    song_speed: str = "Mid",
+) -> str:
     """
     Dynamically switches backend prompt constraints with explicit examples
     to completely eliminate structural confusion.
@@ -14,6 +19,22 @@ def get_kids_studio_creative_prompt(user_idea: str, mode: str, target_lang: str)
         )
         
     else:  # Poem / Nursery Rhyme Mode
+        speed_key = (song_speed or "Mid").strip().lower()
+        speed_profiles = {
+            "slow": (
+                "Slow",
+                "Use slower pacing, longer vowel sounds, gentle repetition, and roomy pauses between lines.",
+            ),
+            "mid": (
+                "Mid",
+                "Use balanced pacing, clean hooks, steady repetition, and an easy sing-along flow.",
+            ),
+            "fast": (
+                "Fast",
+                "Use quick pacing, tighter rhyme density, short lines, and a lively bounce.",
+            ),
+        }
+        speed_label, speed_direction = speed_profiles.get(speed_key, speed_profiles["mid"])
         return (
             "You are a master children's lyricist composing catchy nursery rhymes for toddler channels.\n"
             f"Write a rhythmic, rhyming children's poem based on this idea: '{user_idea}' in {target_lang}.\n\n"
@@ -22,6 +43,9 @@ def get_kids_studio_creative_prompt(user_idea: str, mode: str, target_lang: str)
             "1. You must follow a strict rhyming pattern where the first two lines rhyme with each other, "
             "and the subsequent two lines rhyme with each other.\n"
             "2. DO NOT print or output the letters 'A' or 'B' anywhere in your response.\n\n"
+            f"3. Song speed: {speed_label}.\n"
+            f"4. Speed direction: {speed_direction}\n"
+            "5. Do not mention exact song length or duration in the generated rhyme.\n\n"
             
             "EXPLICIT HINDI FORMAT EXAMPLE TO FOLLOW:\n"
             "[Verse]\n"

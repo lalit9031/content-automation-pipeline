@@ -191,6 +191,15 @@ def generate_scene_images(
         enhanced_prompt = _cinematic_prompt(scene.visual_prompt)
         try:
             image_bytes = image_provider.create(enhanced_prompt, variant)
+            if not image_bytes:
+                raise RuntimeError("Image provider returned empty bytes.")
+            try:
+                from PIL import Image
+                import io
+                img = Image.open(io.BytesIO(image_bytes))
+                img.verify()
+            except Exception as img_exc:
+                raise RuntimeError(f"Invalid image bytes returned: {img_exc}") from img_exc
             # Ensure PNG format
             if image_bytes.startswith(b"<svg") or b"<svg" in image_bytes[:200]:
                 image_bytes = _convert_svg_to_png(image_bytes)

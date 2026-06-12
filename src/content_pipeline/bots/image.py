@@ -40,9 +40,17 @@ class ImageProvider(Protocol):
 
 
 class MockImageProvider:
-    extension = ".png"
+    extension = ".svg"
+
     def create(self, prompt: str, variant: ImageVariant) -> bytes:
-        raise ValueError("MockImageProvider is disabled. Please select a valid AI image provider (gemini, imagen, openai, pollinations).")
+        safe_prompt = escape(prompt[:220])
+        return f"""<svg xmlns="http://www.w3.org/2000/svg" width="{variant.width}" height="{variant.height}" viewBox="0 0 {variant.width} {variant.height}">
+  <rect width="100%" height="100%" fill="#0f172a"/>
+  <rect x="40" y="40" width="{max(1, variant.width - 80)}" height="{max(1, variant.height - 80)}" rx="24" fill="#1e293b" stroke="#38bdf8" stroke-width="4"/>
+  <text x="72" y="120" fill="#e2e8f0" font-family="Arial, sans-serif" font-size="44" font-weight="700">THE PM AI QUESTION</text>
+  <text x="72" y="160" fill="#7dd3fc" font-family="Arial, sans-serif" font-size="24">Mock image placeholder, no API cost</text>
+  <text x="72" y="190" fill="#cbd5e1" font-family="Arial, sans-serif" font-size="28">{safe_prompt}</text>
+</svg>""".encode("utf-8")
 
 
 class ImagenProvider:
@@ -349,7 +357,8 @@ class GeminiImageLimiter:
             state.usage_date = str(raw_state.get("usage_date", ""))
             state.daily_generated = int(raw_state.get("daily_generated", 0))
         self._usage_date = str(data.get("usage_date", self._today()))
-        self.rollover = int(data.get("rollover", 0))
+        loaded_daily_budget = int(data.get("daily_budget", self.daily_budget))
+        self.rollover = int(data.get("rollover", 0)) if loaded_daily_budget == self.daily_budget else 0
         self._reset_daily_if_needed()
 
     def _save_locked(self) -> None:
@@ -360,6 +369,7 @@ class GeminiImageLimiter:
             "version": 1,
             "updated_at": self._now(),
             "usage_date": self._usage_date,
+            "daily_budget": self.daily_budget,
             "rollover": self.rollover,
             "keys": [
                 {
@@ -391,7 +401,7 @@ class GeminiImageLimiter:
             if self._usage_date == today:
                 return
             
-            yesterday_limit = self.daily_budget + getattr(self, "rollover", 0)
+            yesterday_limit = self.daily_budget
             yesterday_generated = sum(state.daily_generated for state in self._states)
             unused = max(0, yesterday_limit - yesterday_generated)
             self.rollover = unused
@@ -581,6 +591,13 @@ def _is_budget_exhausted(exc: Exception) -> bool:
     return "daily budget exhausted" in message or "quota exhausted" in message
 
 
+def _redact_provider_error(exc: Exception) -> str:
+    message = str(exc)
+    message = re.sub(r"([?&]key=)[^&\\s)'\"]+", r"\1[REDACTED]", message)
+    message = re.sub(r"(Bearer\\s+)[A-Za-z0-9._\\-]+", r"\1[REDACTED]", message)
+    return message
+
+
 def _safe_fallback_provider_name(name: str) -> str:
     fallback = (name or "imagen").strip().lower()
     if fallback in {"gemini", "google", "google-genai"}:
@@ -593,10 +610,14 @@ def _safe_fallback_provider_name(name: str) -> str:
 def _fallback_image_provider(settings: Settings) -> ImageProvider:
     fallback_name = _safe_fallback_provider_name(settings.image_fallback_provider)
     candidates = [fallback_name]
-    if fallback_name != "pollinations":
+    if fallback_name not in {"pollinations", "mock"}:
         candidates.append("pollinations")
+    if "mock" not in candidates:
+        candidates.append("mock")
     for provider_name in candidates:
         try:
+            if provider_name == "mock":
+                return MockImageProvider()
             if provider_name == "pollinations":
                 return PollinationsImageProvider(settings)
             if provider_name == "imagen":
@@ -605,7 +626,7 @@ def _fallback_image_provider(settings: Settings) -> ImageProvider:
                 return OpenAIImageProvider(replace(settings, image_provider="openai"))
         except Exception:
             continue
-    return PollinationsImageProvider(settings)
+    return MockImageProvider()
 
 
 class OpenAIImageProvider:
@@ -892,29 +913,61 @@ class PollinationsImageProvider:
                 elif r.status_code in (401, 403):
                     continue
             except Exception as exc:
-                errors[f"gemini/{slot}"] = str(exc)
+                errors[f"gemini/{slot}"] = _redact_provider_error(exc)
 
-        # ── Tier 2: HuggingFace Serverless  (free, no credits, ~20-40s) ─────────
-        # Uses api-inference.hf.co (resolves OK on this network).
-        # api-inference.huggingface.co DNS fails on Excitel — excluded.
-        hf_headers = {}
+        # ── Tier 2: Hugging Face Inference Providers ───────────────────────────
+        # Prefer the official client so model/provider selection is handled for us.
+        if self.settings.hf_token:
+            try:
+                from huggingface_hub import InferenceClient
+            except Exception as exc:
+                errors["hf_import"] = _redact_provider_error(exc)
+            else:
+                hf_models = [
+                    "black-forest-labs/FLUX.1-schnell",
+                    "black-forest-labs/FLUX.1-dev",
+                    "Lykon/dreamshaper-8",
+                    "runwayml/stable-diffusion-v1-5",
+                ]
+                client = InferenceClient(api_key=self.settings.hf_token)
+                for model in hf_models:
+                    try:
+                        image = client.text_to_image(prompt=prompt, model=model)
+                        if image is None:
+                            continue
+                        import io
+                        from PIL import Image
+
+                        buffer = io.BytesIO()
+                        if hasattr(image, "save"):
+                            image.save(buffer, format="PNG")
+                        else:
+                            Image.open(io.BytesIO(image)).save(buffer, format="PNG")
+                        image_bytes = buffer.getvalue()
+                        if len(image_bytes) > 5000:
+                            print(f"\u2705 [Image] HF/{model}")
+                            return self._process_image(image_bytes, variant)
+                    except Exception as exc:
+                        errors[f"hf/{model}"] = _redact_provider_error(exc)
+
+        # Tier 2b: raw HTTP fallback for HF if the client is unavailable.
+        hf_headers = {"Accept": "image/png", "X-Wait-For-Model": "true"}
         if self.settings.hf_token:
             hf_headers["Authorization"] = f"Bearer {self.settings.hf_token}"
-        for free_model in ["Lykon/dreamshaper-8", "runwayml/stable-diffusion-v1-5"]:
-            hf_url = f"https://api-inference.hf.co/models/{free_model}"
+        for free_model in ["black-forest-labs/FLUX.1-schnell", "Lykon/dreamshaper-8", "runwayml/stable-diffusion-v1-5"]:
+            hf_url = f"https://router.huggingface.co/hf-inference/models/{free_model}"
             for attempt in range(3):
                 try:
-                    r = requests.post(hf_url, headers=hf_headers,
-                                      json={"inputs": prompt}, timeout=60)
+                    r = requests.post(hf_url, headers=hf_headers, json={"inputs": prompt}, timeout=120)
                     if r.status_code == 200 and len(r.content) > 5000:
-                        print(f"\u2705 [Image] HF Serverless/{free_model.split('/')[1]}")
+                        print(f"\u2705 [Image] HF-HTTP/{free_model.split('/')[-1]}")
                         return self._process_image(r.content, variant)
-                    elif r.status_code == 503:
-                        time.sleep(min(r.json().get("estimated_time", 10.0), 20.0))
-                    else:
-                        break
+                    if r.status_code in (503, 529):
+                        time.sleep(min(20.0, 5.0 * (attempt + 1)))
+                        continue
+                    break
                 except Exception as exc:
-                    errors[f"hf/{free_model}"] = str(exc)
+                    errors[f"hf_http/{free_model}"] = _redact_provider_error(exc)
                     break
 
         # ── Tier 3: HuggingFace FLUX.1-schnell  (paid, HF_TOKEN credits) ────────
@@ -937,16 +990,18 @@ class PollinationsImageProvider:
                         break   # credits exhausted
                     time.sleep(5)
                 except Exception as exc:
-                    errors["hf_flux"] = str(exc)
+                    errors["hf_flux"] = _redact_provider_error(exc)
 
         # ── Tier 4: Pollinations.ai  (last resort, throttled on some IPs) ────────
         encoded_prompt = urllib.parse.quote(prompt)
+        request_width = min(1024, variant.width)
+        request_height = min(1024, variant.height)
         for p_model in ["flux", "sana", "turbo"]:
             for seed in [42, 1337, 999]:
                 try:
                     p_url = (
                         f"https://image.pollinations.ai/prompt/{encoded_prompt}"
-                        f"?width={variant.width}&height={variant.height}"
+                        f"?width={request_width}&height={request_height}"
                         f"&model={p_model}&nologo=true&seed={seed}"
                     )
                     r = requests.get(p_url, timeout=60,
@@ -958,14 +1013,14 @@ class PollinationsImageProvider:
                         time.sleep(5)
                         break
                 except Exception as exc:
-                    errors[f"pollinations/{p_model}"] = str(exc)
+                    errors[f"pollinations/{p_model}"] = _redact_provider_error(exc)
 
-        # ── Tier 5: Grey placeholder  (compilation never hard-crashes) ────────────
+        # ── Tier 5: SVG placeholder  (compilation never hard-crashes) ─────────────
         import logging
         logging.warning(
             f"All image providers failed for: {prompt[:80]!r}. Errors: {errors}"
         )
-        return self._create_placeholder_image(prompt, variant)
+        return MockImageProvider().create(prompt, variant)
 
     def _create_placeholder_image(self, prompt: str, variant: ImageVariant) -> bytes:
         try:
@@ -1079,7 +1134,6 @@ class NvidiaFluxImageProvider:
             api_key = self._next_key()
             payload = {
                 "prompt": prompt,
-                "mode": "base",
                 "seed": 0,
                 "steps": self.steps,
                 "width": flux_w,
@@ -1102,10 +1156,9 @@ class NvidiaFluxImageProvider:
             try:
                 with urllib.request.urlopen(req, timeout=120) as res:
                     data = _json.loads(res.read())
-                    artifacts = data.get("artifacts", [])
-                    if not artifacts or not artifacts[0].get("base64"):
+                    image_bytes = self._extract_image_bytes(data)
+                    if image_bytes is None:
                         raise RuntimeError(f"No image in response: {list(data.keys())}")
-                    image_bytes = base64.b64decode(artifacts[0]["base64"])
 
                     # Resize to exact dimensions if needed
                     try:
@@ -1136,9 +1189,64 @@ class NvidiaFluxImageProvider:
 
         raise RuntimeError(f"FLUX ({self.model_key}) generation failed: {last_error}")
 
+    def _extract_image_bytes(self, data: object) -> bytes | None:
+        if not isinstance(data, dict):
+            return None
+
+        def _decode_candidate(candidate: object) -> bytes | None:
+            if candidate is None:
+                return None
+            if isinstance(candidate, bytes):
+                return candidate if candidate else None
+            if isinstance(candidate, str):
+                if not candidate.strip():
+                    return None
+                if candidate.startswith("data:image/") and "base64," in candidate:
+                    candidate = candidate.split("base64,", 1)[1]
+                try:
+                    decoded = base64.b64decode(candidate)
+                    return decoded if decoded else None
+                except Exception:
+                    return None
+            if isinstance(candidate, dict):
+                for key in ("base64", "b64_json", "image", "image_base64", "base64_image"):
+                    decoded = _decode_candidate(candidate.get(key))
+                    if decoded is not None:
+                        return decoded
+                url = candidate.get("url")
+                if isinstance(url, str) and url:
+                    try:
+                        import urllib.request
+                        with urllib.request.urlopen(url, timeout=60) as r:
+                            return r.read()
+                    except Exception:
+                        return None
+            return None
+
+        for key in ("artifacts", "data", "images", "output"):
+            items = data.get(key)
+            if isinstance(items, list):
+                for item in items:
+                    decoded = _decode_candidate(item)
+                    if decoded is not None:
+                        return decoded
+            else:
+                decoded = _decode_candidate(items)
+                if decoded is not None:
+                    return decoded
+
+        for key in ("base64", "b64_json", "image", "image_base64", "base64_image"):
+            decoded = _decode_candidate(data.get(key))
+            if decoded is not None:
+                return decoded
+
+        return None
+
 
 def image_provider(settings: Settings) -> ImageProvider:
     provider_name = _resolved_image_provider_name(settings)
+    if provider_name == "mock":
+        return MockImageProvider()
     if provider_name in {"free-ai", "pollinations"}:
         return PollinationsImageProvider(settings)
     if provider_name in {"flux", "nvidia-flux", "flux-dev", "flux-schnell"}:
@@ -1146,6 +1254,8 @@ def image_provider(settings: Settings) -> ImageProvider:
     if provider_name == "imagen":
         return ImagenProvider(settings)
     if provider_name == "gemini":
+        if not settings.gemini_api_key and not settings.gcp_project_id:
+            return MockImageProvider()
         return GeminiImageProvider(settings)
     if provider_name in {"openai", "chatgpt", "gpt-image"}:
         return OpenAIImageProvider(settings)
@@ -1157,8 +1267,6 @@ def image_provider(settings: Settings) -> ImageProvider:
 
 def _resolved_image_provider_name(settings: Settings) -> str:
     provider_name = (settings.image_provider or "").strip().lower()
-    if provider_name == "mock":
-        provider_name = "gemini"
     if provider_name == "gemini" and settings.gcp_project_id:
         return "imagen"
     return provider_name

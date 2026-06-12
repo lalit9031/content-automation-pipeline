@@ -5,6 +5,7 @@ import json
 import math
 import struct
 import re
+import subprocess
 import wave
 from dataclasses import asdict, dataclass
 from html import escape
@@ -1037,6 +1038,1134 @@ def generate_music_preview(output_path: Path, mood: str, *, duration_seconds: in
     return output_path
 
 
+def sanitize_instrumental_style_description(style_description: str) -> str:
+    raw_desc = (
+        style_description
+        or "Pure instrumental. Cheerful English kids song backing track, bright ukulele, soft piano, glockenspiel, warm bass, hand claps, 92 BPM, polished studio mix."
+    )
+    clauses = re.split(r"([.,!?])", raw_desc)
+    filtered_clauses = []
+    vocal_terms_regex = re.compile(
+        r"\b(vocals?|singing|voices?|singers?|vocalists?|lyrics?|chanting|backing vocals)\b",
+        re.IGNORECASE,
+    )
+    for i in range(0, len(clauses), 2):
+        clause = clauses[i]
+        punct = clauses[i + 1] if i + 1 < len(clauses) else ""
+        if not vocal_terms_regex.search(clause):
+            filtered_clauses.append(clause + punct)
+    inst_desc = "".join(filtered_clauses).strip()
+    inst_desc = re.sub(r"\s*,\s*,", ",", inst_desc)
+    inst_desc = re.sub(r"\s*\.\s*\.", ".", inst_desc)
+    inst_desc = re.sub(r",\s*\.", ".", inst_desc)
+    inst_desc = re.sub(r"\.\s*,", ".", inst_desc)
+    inst_desc = re.sub(r"\s+", " ", inst_desc).strip()
+    if "instrumental" not in inst_desc.lower():
+        inst_desc = "Pure instrumental. " + inst_desc
+    return inst_desc
+
+
+def generate_layered_kids_instrumental(
+    output_path: Path,
+    *,
+    duration_seconds: int = 90,
+    bpm: int = 92,
+    style_description: str = "",
+) -> Path:
+    """Create a local vocal-free kids instrumental bed with melody, chords, bass, and light drums."""
+    from pydub.effects import compress_dynamic_range
+
+    duration_seconds = max(15, min(int(duration_seconds), 240))
+    mood_text = (style_description or "").lower()
+    sad_mode = any(
+        keyword in mood_text
+        for keyword in [
+            "sad", "pain", "painful", "lonely", "heartbreak", "emotional",
+            "sorrow", "melancholy", "cry", "tears", "tragic", "grief",
+        ]
+    )
+    if sad_mode and bpm == 92:
+        bpm = 62
+    suspense_mode = any(keyword in mood_text for keyword in ["suspense", "danger", "scary", "fear", "dark", "storm", "mystery", "डर", "अंधेरा", "संकट", "तूफान", "राक्षस"])
+    magic_mode = any(keyword in mood_text for keyword in ["magic", "magical", "wonder", "dream", "fairy", "star", "moon", "जादू", "चमक", "तारा", "चाँद", "सपना"])
+    calm_mode = any(keyword in mood_text for keyword in ["calm", "peace", "bedtime", "gentle", "soft", "sleep", "शांत", "नींद", "आराम", "लोरी"])
+    adventure_mode = any(keyword in mood_text for keyword in ["adventure", "brave", "journey", "hero", "festival", "quest", "बहादुर", "साहस", "यात्रा", "उत्सव"])
+    if suspense_mode and bpm == 92:
+        bpm = 70
+    elif calm_mode and bpm == 92:
+        bpm = 68
+    elif magic_mode and bpm == 92:
+        bpm = 82
+    elif adventure_mode and bpm == 92:
+        bpm = 108
+
+    sample_rate = 44100
+    total_samples = duration_seconds * sample_rate
+    t = np.arange(total_samples, dtype=np.float32) / sample_rate
+    beat = 60.0 / max(40, bpm)
+    bar = beat * 4.0
+
+    if sad_mode:
+        chord_progression = [
+            (220.00, 261.63, 329.63),  # Am
+            (174.61, 220.00, 261.63),  # F
+            (146.83, 220.00, 293.66),  # Dm
+            (164.81, 207.65, 246.94),  # E minor color
+        ]
+        melody_notes = [
+            440.00, 392.00, 329.63, 293.66,
+            261.63, 293.66, 329.63, 246.94,
+            220.00, 246.94, 261.63, 293.66,
+            329.63, 293.66, 261.63, 220.00,
+        ]
+        bass_roots = [55.00, 43.65, 73.42, 82.41]
+        melody_step = beat
+        melody_decay = 2.2
+        melody_gain = 0.09
+        pad_gain = 0.080
+        bass_gain = 0.12
+    elif suspense_mode:
+        chord_progression = [
+            (98.00, 146.83, 207.65),
+            (92.50, 138.59, 196.00),
+            (87.31, 130.81, 185.00),
+            (82.41, 123.47, 174.61),
+        ]
+        melody_notes = [196.00, 185.00, 174.61, 164.81, 146.83, 138.59, 130.81, 123.47]
+        bass_roots = [49.00, 46.25, 43.65, 41.20]
+        melody_step = beat
+        melody_decay = 3.1
+        melody_gain = 0.055
+        pad_gain = 0.070
+        bass_gain = 0.13
+    elif calm_mode:
+        chord_progression = [
+            (261.63, 329.63, 392.00),
+            (220.00, 329.63, 440.00),
+            (174.61, 261.63, 349.23),
+            (196.00, 293.66, 392.00),
+        ]
+        melody_notes = [523.25, 493.88, 440.00, 392.00, 349.23, 392.00, 440.00, 523.25]
+        bass_roots = [65.41, 55.00, 43.65, 49.00]
+        melody_step = beat
+        melody_decay = 3.6
+        melody_gain = 0.075
+        pad_gain = 0.065
+        bass_gain = 0.08
+    elif magic_mode:
+        chord_progression = [
+            (261.63, 329.63, 392.00),
+            (293.66, 369.99, 440.00),
+            (349.23, 440.00, 523.25),
+            (392.00, 493.88, 587.33),
+        ]
+        melody_notes = [783.99, 659.25, 880.00, 783.99, 1046.50, 987.77, 880.00, 783.99]
+        bass_roots = [65.41, 73.42, 87.31, 98.00]
+        melody_step = beat / 2.0
+        melody_decay = 7.0
+        melody_gain = 0.105
+        pad_gain = 0.055
+        bass_gain = 0.08
+    elif adventure_mode:
+        chord_progression = [
+            (261.63, 329.63, 392.00),
+            (196.00, 246.94, 392.00),
+            (349.23, 440.00, 523.25),
+            (392.00, 493.88, 587.33),
+        ]
+        melody_notes = [523.25, 659.25, 783.99, 659.25, 587.33, 783.99, 880.00, 783.99]
+        bass_roots = [65.41, 98.00, 87.31, 98.00]
+        melody_step = beat / 4.0
+        melody_decay = 7.5
+        melody_gain = 0.115
+        pad_gain = 0.050
+        bass_gain = 0.17
+    else:
+        chord_progression = [
+            (261.63, 329.63, 392.00),  # C
+            (196.00, 246.94, 392.00),  # G
+            (220.00, 261.63, 329.63),  # Am
+            (174.61, 261.63, 349.23),  # F
+        ]
+        melody_notes = [
+            523.25, 587.33, 659.25, 523.25,
+            783.99, 659.25, 587.33, 523.25,
+            440.00, 523.25, 587.33, 659.25,
+            698.46, 659.25, 587.33, 523.25,
+        ]
+        bass_roots = [65.41, 98.00, 110.00, 87.31]
+        melody_step = beat / 4.0
+        melody_decay = 8.5
+        melody_gain = 0.12
+        pad_gain = 0.055
+        bass_gain = 0.16
+
+    audio = np.zeros(total_samples, dtype=np.float32)
+    left = np.zeros(total_samples, dtype=np.float32)
+    right = np.zeros(total_samples, dtype=np.float32)
+
+    fade_in = np.minimum(1.0, t / 2.0)
+    fade_out = np.minimum(1.0, np.maximum(0.0, (duration_seconds - t) / 3.0))
+    global_env = fade_in * fade_out
+
+    for chord_index, chord in enumerate(chord_progression):
+        mask = ((t // bar).astype(np.int32) % len(chord_progression)) == chord_index
+        pad = sum(np.sin(2 * math.pi * freq * t) for freq in chord) / len(chord)
+        shimmer = sum(np.sin(2 * math.pi * freq * 2.0 * t) for freq in chord) / len(chord)
+        audio += ((pad + shimmer * (0.08 if sad_mode else 0.04)) * mask * pad_gain).astype(np.float32)
+
+    eighth = beat / 2.0
+    for note_index in range(int(duration_seconds / eighth) + 2):
+        start = int(note_index * eighth * sample_rate)
+        end = min(total_samples, start + int((0.70 if sad_mode else 0.34) * sample_rate))
+        if start >= total_samples:
+            break
+        local_t = np.arange(end - start, dtype=np.float32) / sample_rate
+        chord_index = int((note_index * eighth) // bar) % len(chord_progression)
+        freq = bass_roots[chord_index]
+        env = np.exp(-local_t * (2.4 if sad_mode else 5.0))
+        audio[start:end] += np.sin(2 * math.pi * freq * local_t) * env * bass_gain
+
+    for note_index in range(int(duration_seconds / melody_step) + 2):
+        start = int(note_index * melody_step * sample_rate)
+        end = min(total_samples, start + int((0.90 if sad_mode else 0.22) * sample_rate))
+        if start >= total_samples:
+            break
+        local_t = np.arange(end - start, dtype=np.float32) / sample_rate
+        freq = melody_notes[note_index % len(melody_notes)]
+        env = np.exp(-local_t * melody_decay)
+        pluck = np.sin(2 * math.pi * freq * local_t) + 0.18 * np.sin(2 * math.pi * freq * 2.0 * local_t)
+        pan = 0.58 if note_index % 2 == 0 else 0.42
+        left[start:end] += pluck * env * melody_gain * (1.0 - pan)
+        right[start:end] += pluck * env * melody_gain * pan
+
+    for beat_index in range(int(duration_seconds / beat) + 2):
+        start = int(beat_index * beat * sample_rate)
+        if start >= total_samples:
+            break
+        local_t = np.arange(min(int(0.18 * sample_rate), total_samples - start), dtype=np.float32) / sample_rate
+        if sad_mode or calm_mode:
+            if beat_index % 8 == 0:
+                pulse = np.sin(2 * math.pi * 58.0 * local_t) * np.exp(-local_t * 12.0) * (0.10 if sad_mode else 0.045)
+                audio[start:start + len(pulse)] += pulse
+            continue
+        if suspense_mode and beat_index % 2 == 0:
+            pulse = np.sin(2 * math.pi * 52.0 * local_t) * np.exp(-local_t * 16.0) * 0.09
+            audio[start:start + len(pulse)] += pulse
+            continue
+        if beat_index % 4 in (0, 2):
+            kick = np.sin(2 * math.pi * 74.0 * local_t) * np.exp(-local_t * 18.0) * 0.28
+            audio[start:start + len(kick)] += kick
+        if beat_index % 4 in (1, 3):
+            rng = np.random.default_rng(beat_index)
+            snare = rng.normal(0, 1, len(local_t)).astype(np.float32) * np.exp(-local_t * 24.0) * 0.035
+            audio[start:start + len(snare)] += snare
+
+    for tick_index in range(int(duration_seconds / eighth) + 2):
+        start = int(tick_index * eighth * sample_rate)
+        if start >= total_samples:
+            break
+        if (sad_mode or calm_mode) and tick_index % 4 != 0:
+            continue
+        if suspense_mode and tick_index % 3 != 0:
+            continue
+        length = min(int(0.055 * sample_rate), total_samples - start)
+        rng = np.random.default_rng(1000 + tick_index)
+        shaker_gain = 0.006 if sad_mode else 0.010 if suspense_mode else 0.004 if calm_mode else 0.018
+        shaker = rng.normal(0, 1, length).astype(np.float32) * np.linspace(1.0, 0.0, length) * shaker_gain
+        left[start:start + length] += shaker * 0.65
+        right[start:start + length] += shaker
+
+    left += audio * 0.92
+    right += audio * 0.92
+    left *= global_env
+    right *= global_env
+    stereo = np.column_stack([left, right])
+    peak = float(np.max(np.abs(stereo))) or 1.0
+    stereo = np.tanh((stereo / peak) * 0.88)
+    int_samples = (stereo * 32767).clip(-32768, 32767).astype(np.int16)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    wav_path = output_path.with_suffix(".wav")
+    with wave.open(str(wav_path), "wb") as wav_file:
+        wav_file.setnchannels(2)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(sample_rate)
+        wav_file.writeframes(int_samples.tobytes())
+
+    track = AudioSegment.from_file(str(wav_path))
+    track = compress_dynamic_range(track, threshold=-20.0, ratio=2.0, attack=8.0, release=120.0)
+    track = track.apply_gain(-1.0 - track.max_dBFS)
+    track.export(str(output_path), format="mp3", bitrate="192k")
+    try:
+        wav_path.unlink()
+    except Exception:
+        pass
+    return output_path
+
+
+def generate_instrumental_audio_track(
+    output_path: Path,
+    style_description: str = "",
+    *,
+    hf_token: str = "",
+    genre: str = "Pop",
+    temperature: float = 0.35,
+    cfg_coef: float = 1.8,
+    duration_seconds: int = 90,
+    selected_ref: str = "None (Text-only)",
+    force_local: bool = False,
+) -> Path:
+    """Generate a finished instrumental-only MP3, using SongGeneration when available."""
+    import subprocess
+    from content_pipeline.config import Settings
+
+    settings = Settings.from_environment()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    temp_dir = settings.output_dir / ".runtime"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    inst_desc = sanitize_instrumental_style_description(style_description)
+    beat_path: Path | None = None
+
+    try:
+        if force_local:
+            raise RuntimeError("Guaranteed no-vocal local renderer selected.")
+        from gradio_client import Client, handle_file
+
+        prompt_audio_param = None
+        if selected_ref != "None (Text-only)" and not is_vocal_track(selected_ref):
+            project_root = Path(__file__).resolve().parent.parent.parent.parent
+            ref_full_path = project_root / "output" / "reference_audio" / selected_ref
+            if ref_full_path.exists():
+                cropped_ref_path = temp_dir / "instrumental_ref_cropped.mp3"
+                cmd = [
+                    "ffmpeg", "-y", "-i", str(ref_full_path),
+                    "-ss", "0", "-t", "15",
+                    "-codec:a", "libmp3lame", "-b:a", "128k",
+                    str(cropped_ref_path),
+                ]
+                subprocess.run(cmd, capture_output=True)
+                if cropped_ref_path.exists():
+                    prompt_audio_param = handle_file(str(cropped_ref_path))
+
+        client = Client("tencent/SongGeneration", token=hf_token, httpx_kwargs={"timeout": 600.0})
+        valid_genres = [
+            "Auto", "Pop", "Latin", "Rock", "Electronic", "Metal", "Country",
+            "R&B/Soul", "Ballad", "Jazz", "World", "Hip-Hop", "Funk", "Soundtrack",
+        ]
+        active_genre = genre if genre in valid_genres else "Pop"
+        inst_lyric = "[intro-medium]\n\n[verse]\n[silence]\n\n[chorus]\n[silence]\n\n[outro-medium]"
+        result_path, _info = client.predict(
+            lyric=inst_lyric,
+            description=inst_desc,
+            prompt_audio=prompt_audio_param,
+            genre=active_genre,
+            cfg_coef=cfg_coef,
+            temperature=min(float(temperature), 0.40),
+            api_name="/generate_song",
+        )
+        if result_path and str(result_path).strip().lower() != "none" and Path(result_path).exists():
+            beat_path = Path(result_path)
+    except Exception as err:
+        print(f"Instrumental SongGeneration failed, using local fallback: {err}")
+
+    if not beat_path:
+        return generate_layered_kids_instrumental(
+            output_path,
+            duration_seconds=duration_seconds,
+            bpm=92,
+            style_description=style_description,
+        )
+
+    track = AudioSegment.from_file(str(beat_path))
+    target_ms = max(15, min(int(duration_seconds), 240)) * 1000
+    if len(track) < target_ms:
+        loops = math.ceil(target_ms / max(1, len(track)))
+        track = track * loops
+    track = track[:target_ms].fade_in(1200).fade_out(1800)
+    track = track.apply_gain(-1.0 - track.max_dBFS)
+    track.export(str(output_path), format="mp3", bitrate="192k")
+    return output_path
+
+
+STORY_SCORE_MOOD_STYLES: dict[str, str] = {
+    "sad": "Pure instrumental. Sad painful emotional background score, slow minor-key felt piano, deep cello swells, soft low strings, lonely cinematic atmosphere, gentle reverb, 62 BPM.",
+    "suspense": "Pure instrumental. Suspenseful kids story background score, low pulsing strings, dark soft piano notes, distant rumble, careful mystery tension, no horror shock, 70 BPM.",
+    "magic": "Pure instrumental. Magical wonder background score, celesta sparkle, harp-like arpeggios, soft strings, moonlit dream atmosphere, gentle child-safe fantasy mood, 82 BPM.",
+    "adventure": "Pure instrumental. Brave adventure background score, warm orchestral rhythm, pizzicato strings, soft drums, rising heroic melody, child-safe excitement, 108 BPM.",
+    "happy": "Pure instrumental. Happy kids story background score, warm ukulele, glockenspiel, soft piano, gentle hand claps, friendly playful mood, 92 BPM.",
+    "calm": "Pure instrumental. Calm bedtime story background score, soft music box, warm pad, gentle felt piano, peaceful family mood, slow breathing rhythm, 68 BPM.",
+}
+
+
+def _clean_story_text_for_scoring(script: str) -> str:
+    clean_text = re.sub(r"\[[^\]]+\]", " ", script or "")
+    clean_text = re.sub(r"\s+", " ", clean_text).strip()
+    return clean_text
+
+
+def classify_story_mood(text: str) -> tuple[str, str]:
+    lower = (text or "").lower()
+    mood_keywords = {
+        "sad": ["दुख", "उदास", "रो", "आँसू", "आंसू", "दर्द", "अकेला", "बिछड़", "sad", "pain", "tears", "lonely"],
+        "suspense": ["डर", "अंधेरा", "संकट", "तूफान", "राक्षस", "खो", "चिल्ल", "danger", "dark", "storm", "lost", "scary", "mystery"],
+        "magic": ["जादू", "चमक", "तारा", "चाँद", "चांद", "सपना", "परी", "magic", "star", "moon", "dream", "wonder"],
+        "adventure": ["बहादुर", "साहस", "यात्रा", "खोज", "बच", "उत्सव", "adventure", "brave", "journey", "rescue", "festival"],
+        "happy": ["खुश", "हँस", "हंस", "मुस्कुर", "दोस्त", "खेल", "मिल", "happy", "smile", "friend", "play"],
+        "calm": ["शांत", "नींद", "सो", "आराम", "माँ", "मां", "दादी", "घर", "calm", "sleep", "home", "mother"],
+    }
+    scores: dict[str, int] = {}
+    for mood, keywords in mood_keywords.items():
+        scores[mood] = sum(1 for keyword in keywords if keyword in lower)
+    if any(keyword in lower for keyword in ["आँसू", "आंसू", "दर्द", "रो", "tears", "pain"]):
+        scores["sad"] += 2
+    best_mood = max(scores, key=scores.get)
+    if scores[best_mood] == 0:
+        best_mood = "calm"
+    reason = "keyword match" if scores[best_mood] else "default gentle story bed"
+    return best_mood, reason
+
+
+def plan_story_music_segments_with_nim(
+    script: str,
+    narration_duration_ms: int,
+    *,
+    api_key: str = "",
+    model: str = "microsoft/phi-4-mini-instruct",
+    max_segments: int = 6,
+) -> list[dict[str, Any]] | None:
+    import urllib.error
+    import urllib.request
+
+    clean_text = _clean_story_text_for_scoring(script)
+    if not api_key or not clean_text:
+        return None
+
+    allowed_moods = set(STORY_SCORE_MOOD_STYLES.keys())
+    prompt = (
+        "Analyze this Hindi children's story and split it into background music cues. "
+        "Return only compact JSON, no markdown. Format: "
+        '{"segments":[{"mood":"calm|suspense|sad|magic|adventure|happy","weight":1,"reason":"short reason"}]}. '
+        f"Use at most {max_segments} segments. Preserve story order. Story: {clean_text[:4000]}"
+    )
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.1,
+        "max_tokens": 500,
+    }
+    request = urllib.request.Request(
+        "https://integrate.api.nvidia.com/v1/chat/completions",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            response_json = json.loads(response.read().decode("utf-8"))
+        content = response_json["choices"][0]["message"]["content"].strip()
+        content = re.sub(r"^```(?:json)?|```$", "", content, flags=re.IGNORECASE).strip()
+        parsed = json.loads(content)
+        raw_segments = parsed if isinstance(parsed, list) else parsed.get("segments", [])
+        valid_segments = []
+        for raw_segment in raw_segments[:max_segments]:
+            mood = str(raw_segment.get("mood", "calm")).strip().lower()
+            if mood not in allowed_moods:
+                mood = "calm"
+            weight = max(1.0, float(raw_segment.get("weight", 1) or 1))
+            valid_segments.append(
+                {
+                    "mood": mood,
+                    "weight": weight,
+                    "reason": str(raw_segment.get("reason", "NVIDIA NIM planner")).strip()[:120],
+                }
+            )
+        if not valid_segments:
+            return None
+        total_weight = sum(segment["weight"] for segment in valid_segments) or 1.0
+        cursor_ms = 0
+        plan = []
+        for index, segment in enumerate(valid_segments, start=1):
+            if index == len(valid_segments):
+                duration_ms = max(1, narration_duration_ms - cursor_ms)
+            else:
+                duration_ms = max(3000, int(narration_duration_ms * (segment["weight"] / total_weight)))
+            mood = segment["mood"]
+            plan.append(
+                {
+                    "index": index,
+                    "start_ms": cursor_ms,
+                    "duration_ms": duration_ms,
+                    "mood": mood,
+                    "reason": f"NVIDIA NIM: {segment['reason']}",
+                    "text_preview": "",
+                    "style": STORY_SCORE_MOOD_STYLES[mood],
+                }
+            )
+            cursor_ms += duration_ms
+        return plan
+    except (OSError, KeyError, ValueError, json.JSONDecodeError, urllib.error.URLError) as err:
+        print(f"NVIDIA NIM story score planner unavailable, using local planner: {err}")
+        return None
+
+
+def plan_story_music_segments(
+    script: str,
+    narration_duration_ms: int,
+    *,
+    max_segments: int = 6,
+) -> list[dict[str, Any]]:
+    clean_text = _clean_story_text_for_scoring(script)
+    if not clean_text:
+        return [
+            {
+                "index": 1,
+                "start_ms": 0,
+                "duration_ms": narration_duration_ms,
+                "mood": "calm",
+                "reason": "empty script fallback",
+                "text_preview": "",
+                "style": STORY_SCORE_MOOD_STYLES["calm"],
+            }
+        ]
+
+    units = [
+        unit.strip()
+        for unit in re.split(r"(?<=[।.!?])\s+|\n+", clean_text)
+        if unit.strip()
+    ]
+    if not units:
+        units = [clean_text]
+
+    word_counts = [max(1, len(unit.split())) for unit in units]
+    if len(units) <= max_segments:
+        grouped_units = list(zip(units, word_counts))
+    else:
+        total_words = max(1, sum(word_counts))
+        target_segment_words = max(8, math.ceil(total_words / max(1, max_segments)))
+        grouped_units: list[tuple[str, int]] = []
+        current_units: list[str] = []
+        current_words = 0
+        for unit, count in zip(units, word_counts):
+            current_units.append(unit)
+            current_words += count
+            if current_words >= target_segment_words and len(grouped_units) < max_segments - 1:
+                grouped_units.append((" ".join(current_units), current_words))
+                current_units = []
+                current_words = 0
+        if current_units:
+            grouped_units.append((" ".join(current_units), current_words))
+
+    plan = []
+    cursor_ms = 0
+    grouped_total_words = max(1, sum(words for _text, words in grouped_units))
+    for index, (text, words) in enumerate(grouped_units, start=1):
+        if index == len(grouped_units):
+            duration_ms = max(1, narration_duration_ms - cursor_ms)
+        else:
+            duration_ms = max(3000, int(narration_duration_ms * (words / grouped_total_words)))
+        mood, reason = classify_story_mood(text)
+        plan.append(
+            {
+                "index": index,
+                "start_ms": cursor_ms,
+                "duration_ms": duration_ms,
+                "mood": mood,
+                "reason": reason,
+                "text_preview": text[:180],
+                "style": STORY_SCORE_MOOD_STYLES[mood],
+            }
+        )
+        cursor_ms += duration_ms
+
+    if plan:
+        overflow = (plan[-1]["start_ms"] + plan[-1]["duration_ms"]) - narration_duration_ms
+        if overflow:
+            plan[-1]["duration_ms"] = max(1000, plan[-1]["duration_ms"] - overflow)
+    return plan
+
+
+def duck_music_under_narration(
+    music: AudioSegment,
+    narration: AudioSegment,
+    *,
+    base_gain_db: float = -17.0,
+    speech_duck_db: float = 8.0,
+    chunk_ms: int = 100,
+) -> AudioSegment:
+    music = music[:len(narration)]
+    if len(music) < len(narration):
+        music += AudioSegment.silent(duration=len(narration) - len(music), frame_rate=narration.frame_rate)
+
+    ducked = AudioSegment.silent(duration=0, frame_rate=narration.frame_rate)
+    for start_ms in range(0, len(narration), chunk_ms):
+        end_ms = min(len(narration), start_ms + chunk_ms)
+        narration_chunk = narration[start_ms:end_ms]
+        music_chunk = music[start_ms:end_ms]
+        speech_active = narration_chunk.dBFS > -42.0
+        gain = base_gain_db - (speech_duck_db if speech_active else 0.0)
+        processed_chunk = music_chunk.apply_gain(gain)
+        if len(ducked) == 0:
+            ducked = processed_chunk
+        else:
+            ducked += processed_chunk
+    return ducked
+
+
+def mix_storytelling_with_adaptive_music(
+    narration_path: Path,
+    script: str,
+    output_path: Path,
+    *,
+    music_gain_db: float = -17.0,
+    speech_duck_db: float = 8.0,
+    max_segments: int = 6,
+    score_plan: list[dict[str, Any]] | None = None,
+) -> tuple[Path, list[dict[str, Any]]]:
+    from content_pipeline.config import Settings
+
+    narration = AudioSegment.from_file(str(narration_path)).set_channels(2)
+    narration = narration.apply_gain(-1.5 - narration.max_dBFS) if narration.max_dBFS > -1.5 else narration
+    settings = Settings.from_environment()
+    plan = score_plan or plan_story_music_segments_with_nim(
+        script,
+        len(narration),
+        api_key=settings.nvidia_api_key,
+        model=settings.nvidia_nim_model,
+        max_segments=max_segments,
+    ) or plan_story_music_segments(script, len(narration), max_segments=max_segments)
+
+    temp_dir = output_path.parent / ".story_score_parts"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    music_bed = AudioSegment.silent(duration=0, frame_rate=narration.frame_rate).set_channels(2)
+
+    for segment in plan:
+        segment_seconds = max(4, math.ceil((segment["duration_ms"] + 1200) / 1000))
+        segment_path = temp_dir / f"{output_path.stem}_score_{segment['index']:02d}_{segment['mood']}.mp3"
+        generate_layered_kids_instrumental(
+            segment_path,
+            duration_seconds=segment_seconds,
+            style_description=segment["style"],
+        )
+        segment_audio = AudioSegment.from_file(str(segment_path)).set_frame_rate(narration.frame_rate).set_channels(2)
+        segment_audio = segment_audio[:segment["duration_ms"] + 800].fade_in(450).fade_out(650)
+        if len(music_bed) == 0:
+            music_bed = segment_audio
+        else:
+            music_bed = music_bed.append(segment_audio, crossfade=min(900, len(music_bed), len(segment_audio)))
+
+    if len(music_bed) < len(narration):
+        music_bed += AudioSegment.silent(duration=len(narration) - len(music_bed), frame_rate=narration.frame_rate)
+    music_bed = music_bed[:len(narration)]
+    ducked_music = duck_music_under_narration(
+        music_bed,
+        narration,
+        base_gain_db=music_gain_db,
+        speech_duck_db=speech_duck_db,
+    )
+    carved_music = apply_vocal_sidechain_carving(ducked_music, narration)
+    final_mix = carved_music.overlay(narration + 1.0, position=0)
+    final_mix = final_mix.compress_dynamic_range(threshold=-3.0, attack=5.0, release=80.0, ratio=3.0)
+    if len(final_mix) < len(narration):
+        final_mix += AudioSegment.silent(duration=len(narration) - len(final_mix), frame_rate=narration.frame_rate)
+    elif len(final_mix) > len(narration):
+        final_mix = final_mix[:len(narration)]
+    if final_mix.max_dBFS > -1.0:
+        final_mix = final_mix.apply_gain(-1.0 - final_mix.max_dBFS)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    final_mix.export(str(output_path), format="mp3", bitrate="192k")
+    plan_path = output_path.with_suffix(".score_plan.json")
+    plan_path.write_text(json.dumps(plan, ensure_ascii=False, indent=2), encoding="utf-8")
+    return output_path, plan
+
+
+def analyze_story_mix_quality(narration_path: Path, mixed_path: Path) -> dict[str, Any]:
+    narration = AudioSegment.from_file(str(narration_path))
+    mixed = AudioSegment.from_file(str(mixed_path))
+    duration_delta_ms = len(mixed) - len(narration)
+    longest_silence_ms = 0
+    current_silence_ms = 0
+    chunk_ms = 100
+    for start_ms in range(0, len(mixed), chunk_ms):
+        chunk = mixed[start_ms:start_ms + chunk_ms]
+        if chunk.dBFS == float("-inf") or chunk.dBFS < -45.0:
+            current_silence_ms += len(chunk)
+            longest_silence_ms = max(longest_silence_ms, current_silence_ms)
+        else:
+            current_silence_ms = 0
+
+    issues: list[str] = []
+    if abs(duration_delta_ms) > 250:
+        issues.append(f"duration mismatch {duration_delta_ms}ms")
+    if mixed.max_dBFS > -0.5:
+        issues.append(f"peak too hot {mixed.max_dBFS:.1f}dBFS")
+    if mixed.dBFS > -12.0:
+        issues.append(f"mix too loud {mixed.dBFS:.1f}dBFS")
+    if mixed.dBFS < -24.0:
+        issues.append(f"mix too quiet {mixed.dBFS:.1f}dBFS")
+    if longest_silence_ms > 1000:
+        issues.append(f"long silence {longest_silence_ms}ms")
+
+    return {
+        "narration_duration_ms": len(narration),
+        "mixed_duration_ms": len(mixed),
+        "duration_delta_ms": duration_delta_ms,
+        "mean_dbfs": round(float(mixed.dBFS), 2),
+        "peak_dbfs": round(float(mixed.max_dBFS), 2),
+        "longest_silence_ms": longest_silence_ms,
+        "passed": not issues,
+        "issues": issues,
+    }
+
+
+def analyze_audio_file_for_repair(audio_path: Path) -> dict[str, Any]:
+    audio = AudioSegment.from_file(str(audio_path)).set_channels(2)
+    chunk_ms = 250
+    chunk_levels: list[float] = []
+    longest_silence_ms = 0
+    current_silence_ms = 0
+    low_level_ms = 0
+    for start_ms in range(0, len(audio), chunk_ms):
+        chunk = audio[start_ms:start_ms + chunk_ms]
+        level = float(chunk.dBFS) if chunk.dBFS != float("-inf") else -90.0
+        chunk_levels.append(level)
+        if level < -45.0:
+            current_silence_ms += len(chunk)
+            longest_silence_ms = max(longest_silence_ms, current_silence_ms)
+        else:
+            current_silence_ms = 0
+        if level < -30.0:
+            low_level_ms += len(chunk)
+
+    mean_dbfs = float(audio.dBFS) if audio.dBFS != float("-inf") else -90.0
+    peak_dbfs = float(audio.max_dBFS) if audio.max_dBFS != float("-inf") else -90.0
+    dynamic_swing_db = 0.0
+    if chunk_levels:
+        active_levels = [level for level in chunk_levels if level > -45.0]
+        if active_levels:
+            dynamic_swing_db = max(active_levels) - min(active_levels)
+
+    issues: list[str] = []
+    if peak_dbfs > -0.5:
+        issues.append(f"peak too hot {peak_dbfs:.1f}dBFS")
+    if mean_dbfs > -12.0:
+        issues.append(f"overall too loud {mean_dbfs:.1f}dBFS")
+    if mean_dbfs < -24.0:
+        issues.append(f"overall too quiet {mean_dbfs:.1f}dBFS")
+    if longest_silence_ms > 1200:
+        issues.append(f"long gap {longest_silence_ms}ms")
+    if dynamic_swing_db > 32.0:
+        issues.append(f"uneven loudness swing {dynamic_swing_db:.1f}dB")
+    if low_level_ms > max(2500, len(audio) * 0.35):
+        issues.append("too many low-level sections")
+
+    return {
+        "path": str(audio_path),
+        "duration_ms": len(audio),
+        "mean_dbfs": round(mean_dbfs, 2),
+        "peak_dbfs": round(peak_dbfs, 2),
+        "dynamic_swing_db": round(dynamic_swing_db, 2),
+        "longest_silence_ms": longest_silence_ms,
+        "low_level_ms": low_level_ms,
+        "passed": not issues,
+        "issues": issues,
+    }
+
+
+def _local_audio_repair_plan(analysis: dict[str, Any]) -> dict[str, Any]:
+    issues = [str(issue).lower() for issue in analysis.get("issues", [])]
+    mean_dbfs = float(analysis.get("mean_dbfs", -18.0))
+    target_mean = -17.5
+    if mean_dbfs < -22.0:
+        target_mean = -16.5
+    elif mean_dbfs > -13.0:
+        target_mean = -18.5
+    return {
+        "target_mean_dbfs": target_mean,
+        "peak_ceiling_dbfs": -1.2,
+        "compression_threshold_dbfs": -19.0 if any("uneven" in issue for issue in issues) else -16.0,
+        "compression_ratio": 2.2 if any("uneven" in issue for issue in issues) else 1.6,
+        "max_gap_ms": 650 if any("long gap" in issue for issue in issues) else 900,
+        "music_gain_delta_db": -2.0 if any("loud" in issue or "hot" in issue for issue in issues) else 0.0,
+        "speech_duck_delta_db": 2.0 if any("loud" in issue or "unclear" in issue for issue in issues) else 0.0,
+        "comment": "local metric-based repair plan",
+    }
+
+
+def plan_audio_repair_with_nim(
+    analysis: dict[str, Any],
+    *,
+    script: str = "",
+    api_key: str = "",
+    model: str = "microsoft/phi-4-mini-instruct",
+) -> dict[str, Any] | None:
+    import urllib.error
+    import urllib.request
+
+    if not api_key:
+        return None
+    prompt = (
+        "You are an audio post-production repair planner for Hindi kids storytelling with background music. "
+        "Use the measured MP3 metrics and story context to choose safe repair settings. "
+        "Return only JSON with these keys: target_mean_dbfs, peak_ceiling_dbfs, "
+        "compression_threshold_dbfs, compression_ratio, max_gap_ms, music_gain_delta_db, "
+        "speech_duck_delta_db, comment. Keep voice clear and background music emotional but soft. "
+        f"Metrics: {json.dumps(analysis, ensure_ascii=False)}. "
+        f"Story context: {_clean_story_text_for_scoring(script)[:1200]}"
+    )
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.1,
+        "max_tokens": 450,
+    }
+    request = urllib.request.Request(
+        "https://integrate.api.nvidia.com/v1/chat/completions",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            response_json = json.loads(response.read().decode("utf-8"))
+        content = response_json["choices"][0]["message"]["content"].strip()
+        content = re.sub(r"^```(?:json)?|```$", "", content, flags=re.IGNORECASE).strip()
+        raw_plan = json.loads(content)
+        if not isinstance(raw_plan, dict):
+            return None
+        plan = _local_audio_repair_plan(analysis)
+        plan.update(
+            {
+                "target_mean_dbfs": max(-21.0, min(-15.0, float(raw_plan.get("target_mean_dbfs", plan["target_mean_dbfs"])))),
+                "peak_ceiling_dbfs": max(-2.0, min(-0.8, float(raw_plan.get("peak_ceiling_dbfs", plan["peak_ceiling_dbfs"])))),
+                "compression_threshold_dbfs": max(-24.0, min(-12.0, float(raw_plan.get("compression_threshold_dbfs", plan["compression_threshold_dbfs"])))),
+                "compression_ratio": max(1.2, min(3.2, float(raw_plan.get("compression_ratio", plan["compression_ratio"])))),
+                "max_gap_ms": max(450, min(1000, int(raw_plan.get("max_gap_ms", plan["max_gap_ms"])))),
+                "music_gain_delta_db": max(-5.0, min(3.0, float(raw_plan.get("music_gain_delta_db", plan["music_gain_delta_db"])))),
+                "speech_duck_delta_db": max(-2.0, min(5.0, float(raw_plan.get("speech_duck_delta_db", plan["speech_duck_delta_db"])))),
+                "comment": str(raw_plan.get("comment", "NVIDIA NIM repair plan")).strip()[:180],
+                "used_nvidia_nim": True,
+            }
+        )
+        return plan
+    except (OSError, KeyError, ValueError, json.JSONDecodeError, urllib.error.URLError) as err:
+        print(f"NVIDIA NIM audio repair planner unavailable, using local repair plan: {err}")
+        return None
+
+
+def tighten_long_silences(
+    audio: AudioSegment,
+    *,
+    silence_threshold_dbfs: float = -45.0,
+    max_gap_ms: int = 750,
+    chunk_ms: int = 50,
+) -> AudioSegment:
+    output = AudioSegment.silent(duration=0, frame_rate=audio.frame_rate).set_channels(audio.channels)
+    pending_silence = AudioSegment.silent(duration=0, frame_rate=audio.frame_rate).set_channels(audio.channels)
+    for start_ms in range(0, len(audio), chunk_ms):
+        chunk = audio[start_ms:start_ms + chunk_ms]
+        level = float(chunk.dBFS) if chunk.dBFS != float("-inf") else -90.0
+        if level < silence_threshold_dbfs:
+            pending_silence += chunk
+            continue
+        if len(pending_silence):
+            output += pending_silence[:max_gap_ms]
+            pending_silence = AudioSegment.silent(duration=0, frame_rate=audio.frame_rate).set_channels(audio.channels)
+        output += chunk
+    if len(pending_silence):
+        output += pending_silence[:max_gap_ms]
+    return output
+
+
+def repair_story_audio_master(
+    input_path: Path,
+    output_path: Path,
+    repair_plan: dict[str, Any],
+    *,
+    target_duration_ms: int | None = None,
+) -> Path:
+    audio = AudioSegment.from_file(str(input_path)).set_channels(2)
+    audio = tighten_long_silences(
+        audio,
+        max_gap_ms=int(repair_plan.get("max_gap_ms", 750)),
+    )
+    audio = audio.compress_dynamic_range(
+        threshold=float(repair_plan.get("compression_threshold_dbfs", -17.0)),
+        ratio=float(repair_plan.get("compression_ratio", 1.8)),
+        attack=8.0,
+        release=120.0,
+    )
+    target_mean = float(repair_plan.get("target_mean_dbfs", -17.5))
+    if audio.dBFS != float("-inf"):
+        audio = audio.apply_gain(target_mean - float(audio.dBFS))
+    peak_ceiling = float(repair_plan.get("peak_ceiling_dbfs", -1.2))
+    if audio.max_dBFS != float("-inf") and audio.max_dBFS > peak_ceiling:
+        audio = audio.apply_gain(peak_ceiling - float(audio.max_dBFS))
+    if target_duration_ms:
+        if len(audio) < target_duration_ms:
+            audio += AudioSegment.silent(duration=target_duration_ms - len(audio), frame_rate=audio.frame_rate)
+        elif len(audio) > target_duration_ms:
+            audio = audio[:target_duration_ms]
+    audio = audio.fade_in(80).fade_out(min(900, max(120, len(audio) // 20)))
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    audio.export(str(output_path), format="mp3", bitrate="192k")
+    return output_path
+
+
+def build_ffmpeg_atempo_filter(speed_ratio: float) -> str:
+    factors: list[float] = []
+    remaining = max(0.25, min(4.0, float(speed_ratio)))
+    while remaining < 0.5:
+        factors.append(0.5)
+        remaining /= 0.5
+    while remaining > 2.0:
+        factors.append(2.0)
+        remaining /= 2.0
+    factors.append(remaining)
+    return ",".join(f"atempo={factor:.6f}" for factor in factors)
+
+
+def adjust_audio_tempo_for_clarity(
+    input_path: Path,
+    output_path: Path,
+    *,
+    speed_ratio: float = 0.82,
+) -> Path:
+    if not input_path.exists():
+        raise FileNotFoundError(f"Audio file not found: {input_path}")
+    speed_ratio = max(0.25, min(1.10, float(speed_ratio)))
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    if abs(speed_ratio - 1.0) < 0.01:
+        audio = AudioSegment.from_file(str(input_path))
+        audio.export(str(output_path), format="mp3", bitrate="192k")
+        return output_path
+
+    filter_chain = f"{build_ffmpeg_atempo_filter(speed_ratio)},aresample=44100,afade=t=in:st=0:d=0.04"
+    subprocess.run(
+        [
+            "ffmpeg", "-y", "-i", str(input_path),
+            "-filter:a", filter_chain,
+            "-codec:a", "libmp3lame", "-b:a", "192k",
+            str(output_path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return output_path
+
+
+def smart_mix_storytelling_music_agent(
+    narration_path: Path,
+    script: str,
+    output_path: Path,
+    *,
+    music_gain_db: float = -17.0,
+    speech_duck_db: float = 8.0,
+    max_segments: int = 6,
+    max_attempts: int = 3,
+) -> tuple[Path, list[dict[str, Any]], dict[str, Any]]:
+    attempts: list[dict[str, Any]] = []
+    current_music_gain = music_gain_db
+    current_duck = speech_duck_db
+    final_path = output_path
+    final_plan: list[dict[str, Any]] = []
+    final_quality: dict[str, Any] = {}
+
+    for attempt_index in range(1, max(1, max_attempts) + 1):
+        attempt_path = output_path
+        if attempt_index > 1:
+            attempt_path = output_path.with_name(f"{output_path.stem}_attempt_{attempt_index}{output_path.suffix}")
+        mixed_path, plan = mix_storytelling_with_adaptive_music(
+            narration_path,
+            script,
+            attempt_path,
+            music_gain_db=current_music_gain,
+            speech_duck_db=current_duck,
+            max_segments=max_segments,
+        )
+        quality = analyze_story_mix_quality(narration_path, mixed_path)
+        quality["attempt"] = attempt_index
+        quality["music_gain_db"] = current_music_gain
+        quality["speech_duck_db"] = current_duck
+        attempts.append(quality)
+
+        final_path = mixed_path
+        final_plan = plan
+        final_quality = quality
+        if quality["passed"]:
+            break
+
+        if any("too hot" in issue or "too loud" in issue for issue in quality["issues"]):
+            current_music_gain -= 2.0
+            current_duck += 2.0
+        elif any("too quiet" in issue for issue in quality["issues"]):
+            current_music_gain += 2.0
+        else:
+            current_duck += 1.0
+
+        current_music_gain = max(-28.0, min(-10.0, current_music_gain))
+        current_duck = max(4.0, min(14.0, current_duck))
+
+    report = {
+        "passed": bool(final_quality.get("passed")),
+        "attempts": attempts,
+        "final_quality": final_quality,
+        "used_nvidia_nim": any("NVIDIA NIM:" in str(segment.get("reason", "")) for segment in final_plan),
+    }
+    report_path = final_path.with_suffix(".agent_report.json")
+    report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    return final_path, final_plan, report
+
+
+def hybrid_story_audio_repair_agent(
+    narration_path: Path,
+    script: str,
+    output_path: Path,
+    *,
+    existing_mix_path: Path | None = None,
+    music_gain_db: float = -17.0,
+    speech_duck_db: float = 8.0,
+    narration_speed_ratio: float = 0.90,
+    max_segments: int = 6,
+    max_attempts: int = 4,
+) -> tuple[Path, list[dict[str, Any]], dict[str, Any]]:
+    from content_pipeline.config import Settings
+
+    settings = Settings.from_environment()
+    source_narration_path = narration_path
+    if narration_speed_ratio < 0.99:
+        pace_dir = output_path.parent / ".story_narration_repairs"
+        pace_dir.mkdir(parents=True, exist_ok=True)
+        narration_path = pace_dir / f"{output_path.stem}_voice_{int(narration_speed_ratio * 100)}pct.mp3"
+        adjust_audio_tempo_for_clarity(
+            source_narration_path,
+            narration_path,
+            speed_ratio=narration_speed_ratio,
+        )
+    attempts: list[dict[str, Any]] = []
+    current_music_gain = music_gain_db
+    current_duck = speech_duck_db
+    final_path = output_path
+    final_plan: list[dict[str, Any]] = []
+    final_quality: dict[str, Any] = {}
+    final_repair_plan: dict[str, Any] = {}
+    narration_duration_ms = len(AudioSegment.from_file(str(narration_path)))
+    base_score_plan = plan_story_music_segments_with_nim(
+        script,
+        narration_duration_ms,
+        api_key=settings.nvidia_api_key,
+        model=settings.nvidia_nim_model,
+        max_segments=max_segments,
+    ) or plan_story_music_segments(script, narration_duration_ms, max_segments=max_segments)
+
+    for attempt_index in range(1, max(1, max_attempts) + 1):
+        attempt_stem = output_path.stem if attempt_index == 1 else f"{output_path.stem}_attempt_{attempt_index}"
+        candidate_mix = output_path.with_name(f"{attempt_stem}_raw_mix{output_path.suffix}")
+        mastered_path = output_path if attempt_index == 1 else output_path.with_name(f"{attempt_stem}{output_path.suffix}")
+
+        mixed_path, plan = mix_storytelling_with_adaptive_music(
+            narration_path,
+            script,
+            candidate_mix,
+            music_gain_db=current_music_gain,
+            speech_duck_db=current_duck,
+            max_segments=max_segments,
+            score_plan=base_score_plan,
+        )
+        pre_repair_analysis = analyze_audio_file_for_repair(existing_mix_path or mixed_path)
+        raw_mix_analysis = analyze_audio_file_for_repair(mixed_path)
+        repair_plan = plan_audio_repair_with_nim(
+            raw_mix_analysis,
+            script=script,
+            api_key=settings.nvidia_api_key,
+            model=settings.nvidia_nim_model,
+        ) or _local_audio_repair_plan(raw_mix_analysis)
+        repair_plan.setdefault("used_nvidia_nim", False)
+
+        mastered_path = repair_story_audio_master(
+            mixed_path,
+            mastered_path,
+            repair_plan,
+            target_duration_ms=narration_duration_ms,
+        )
+        quality = analyze_story_mix_quality(narration_path, mastered_path)
+        repaired_analysis = analyze_audio_file_for_repair(mastered_path)
+        quality["attempt"] = attempt_index
+        quality["music_gain_db"] = current_music_gain
+        quality["speech_duck_db"] = current_duck
+        quality["pre_repair_analysis"] = pre_repair_analysis
+        quality["raw_mix_analysis"] = raw_mix_analysis
+        quality["repaired_analysis"] = repaired_analysis
+        quality["repair_plan"] = repair_plan
+        attempts.append(quality)
+
+        final_path = mastered_path
+        final_plan = plan
+        final_quality = quality
+        final_repair_plan = repair_plan
+        blocking_repaired_issues = [
+            issue
+            for issue in repaired_analysis.get("issues", [])
+            if not str(issue).startswith("uneven loudness swing")
+        ]
+        if quality.get("passed") and not blocking_repaired_issues:
+            break
+
+        combined_issues = [
+            str(issue).lower()
+            for issue in list(quality.get("issues", [])) + list(repaired_analysis.get("issues", []))
+        ]
+        current_music_gain += float(repair_plan.get("music_gain_delta_db", 0.0))
+        current_duck += float(repair_plan.get("speech_duck_delta_db", 0.0))
+        if any("too loud" in issue or "too hot" in issue for issue in combined_issues):
+            current_music_gain -= 1.5
+            current_duck += 1.0
+        if any("too quiet" in issue for issue in combined_issues):
+            current_music_gain += 1.5
+        if any("long" in issue or "gap" in issue or "silence" in issue for issue in combined_issues):
+            current_duck += 0.5
+
+        current_music_gain = max(-28.0, min(-10.0, current_music_gain))
+        current_duck = max(4.0, min(15.0, current_duck))
+
+    report = {
+        "passed": bool(
+            final_quality.get("passed")
+            and not [
+                issue
+                for issue in final_quality.get("repaired_analysis", {}).get("issues", [])
+                if not str(issue).startswith("uneven loudness swing")
+            ]
+        ),
+        "attempts": attempts,
+        "final_quality": final_quality,
+        "final_repair_plan": final_repair_plan,
+        "source_narration_path": str(source_narration_path),
+        "working_narration_path": str(narration_path),
+        "narration_speed_ratio": narration_speed_ratio,
+        "used_nvidia_nim": any("NVIDIA NIM:" in str(segment.get("reason", "")) for segment in final_plan)
+        or bool(final_repair_plan.get("used_nvidia_nim")),
+        "engine": "hybrid-nvidia-nim-local-dsp",
+    }
+    output_path.with_suffix(".hybrid_agent_report.json").write_text(
+        json.dumps(report, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    final_path.with_suffix(".score_plan.json").write_text(
+        json.dumps(final_plan, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return final_path, final_plan, report
+
+
 def voice_status(output_dir: Path, settings: Settings, *, day: str | None = None) -> dict[str, Any]:
     day = day or date.today().isoformat()
     daily_dir = output_dir / "daily" / day
@@ -1393,6 +2522,8 @@ def apply_vocal_sidechain_carving(beat_segment: AudioSegment, vocal_segment: Aud
     whenever vocal energy is detected, carving an acoustic pocket for the singer.
     """
     print("🎛️ Mastering Suite: Executing Dynamic Mid-Side Sidechain Carving...")
+    beat_segment = beat_segment.set_sample_width(2)
+    vocal_segment = vocal_segment.set_sample_width(2)
     
     # Export segments to raw sample arrays
     sample_rate = beat_segment.frame_rate
@@ -1766,8 +2897,10 @@ def generate_edge_tts_song_fallback(
     
     # 2. Determine voice based on singer_key or gender
     if singer_key in KIDS_STUDIO_MASTER_REGISTRY:
-        voice = KIDS_STUDIO_MASTER_REGISTRY[singer_key].get("base_tts_voice", "hi-IN-SwaraNeural")
+        active_profile = KIDS_STUDIO_MASTER_REGISTRY[singer_key]
+        voice = active_profile.get("base_tts_voice", "hi-IN-SwaraNeural")
     elif is_kids_mode:
+        active_profile = {}
         from content_pipeline.bots.kids_studio_core import configure_absolute_storyteller_vocal_chain
         chain_config = configure_absolute_storyteller_vocal_chain(mode)
         voice = chain_config["base_tts_voice"]
@@ -1778,6 +2911,7 @@ def generate_edge_tts_song_fallback(
         elif singer_key == "hi_kids_ananya":
             voice = "hi-IN-SwaraNeural"
     else:
+        active_profile = {}
         if singer_key == "hi_kids_ananya":
             voice = "hi-IN-SwaraNeural"
         elif singer_key == "en_kids_ana":
@@ -1798,8 +2932,8 @@ def generate_edge_tts_song_fallback(
         raw_vocals_file,
         voice=voice,
         text=clean_lyrics,
-        rate="+0%",
-        pitch="+0Hz"
+        rate=active_profile.get("edge_rate", "+0%"),
+        pitch=active_profile.get("edge_pitch", "+0Hz")
     ))
     
     # 3. Load vocals and beat
@@ -1873,6 +3007,10 @@ def generate_edge_tts_song_fallback(
     else:
         softer_beat = beat - 7.0
         vocals_boosted = processed_vocals + 3.0
+
+    profile_vocal_gain = float(active_profile.get("vocal_gain_db", 0.0) or 0.0)
+    if profile_vocal_gain:
+        vocals_boosted = vocals_boosted + profile_vocal_gain
     
     # Overlay the processed vocals onto the background track
     final_mix = softer_beat.overlay(vocals_boosted, position=0)
@@ -1903,6 +3041,7 @@ def generate_hindi_song_via_native_audio(
     style_description: str = "",
     singer_key: str = "arijit_singh",
     mode: str = "Poem/Rhyme",
+    narration_only: bool = False,
 ) -> Path:
     """Unified Hindi Song Generator:
     Bypasses Hugging Face Space for vocals, but dynamically generates
@@ -1995,7 +3134,8 @@ def generate_hindi_song_via_native_audio(
 
     generated_ok = False
     gender_lower = singer_gender.strip().lower()
-    voice_to_use = "Puck" if gender_lower == "male" else "Aoede"
+    active_profile = KIDS_STUDIO_MASTER_REGISTRY.get(singer_key, {})
+    voice_to_use = active_profile.get("gemini_tts_voice", "Puck" if gender_lower == "male" else "Aoede")
 
     state_path = settings.output_dir / ".runtime" / "gemini_audio_rate_limit.json"
     limiter = GeminiAudioLimiter(state_path, daily_budget=50)
@@ -2078,8 +3218,8 @@ def generate_hindi_song_via_native_audio(
                 edge_raw_vocals,
                 voice=fallback_voice,
                 text=clean_lyrics_edge,
-                rate="+0%",
-                pitch="+0Hz"
+                rate=active_profile.get("edge_rate", "+0%"),
+                pitch=active_profile.get("edge_pitch", "+0Hz")
             ))
             # Convert edge mp3 to wav format
             edge_wav = temp_dir / "edge_raw_vocals_song.wav"
@@ -2221,6 +3361,22 @@ def generate_hindi_song_via_native_audio(
         vocals_doubled = apply_studio_stereo_doubling(vocals_clean)
         vocals = apply_ambient_reverb_space(vocals_doubled)
 
+    profile_vocal_gain = float(active_profile.get("vocal_gain_db", 0.0) or 0.0)
+    if profile_vocal_gain:
+        print(f"🎚️ Voice Profile Gain: Boosting selected profile by +{profile_vocal_gain:.1f}dB for clarity.")
+        vocals = vocals + profile_vocal_gain
+
+    if narration_only:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        if vocals.max_dBFS > -1.5:
+            vocals = vocals.apply_gain(-1.5 - vocals.max_dBFS)
+        vocals.export(str(output_path), format="mp3", bitrate="192k")
+        try:
+            if raw_vocals_file.exists():
+                os.remove(raw_vocals_file)
+        except Exception:
+            pass
+        return output_path
 
     # 4. Determine background beat file (Decoupled Pipeline using Lyria instrumental)
     beat_path = None
@@ -2405,5 +3561,3 @@ def generate_storytelling_ambient_pad(output_path: Path, duration_seconds: int =
             frames.extend(struct.pack("<h", int(sample * 32767)))
         wav_file.writeframes(bytes(frames))
     return output_path
-
-

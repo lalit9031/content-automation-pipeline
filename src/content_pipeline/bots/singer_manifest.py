@@ -47,7 +47,12 @@ SINGER_ALIASES = {
     "KIDS_RHYME_MOUSE": "shreya_ghoshal",
     "STORY_MALE_PREMIUM": "arijit_singh",
     "STORY_FEMALE_KIND": "shreya_ghoshal",
-    "EN_KIDS_ANA": "shreya_ghoshal"
+    "EN_KIDS_ANA": "shreya_ghoshal",
+    "EN_STORY_NEERJA_CLEAR": "shreya_ghoshal",
+    "EN_STORY_PRABHAT_CLEAR": "arijit_singh",
+    "EN_STORY_ANA_BRIGHT": "shreya_ghoshal",
+    "EN_RHYME_ANA_CLEAR": "shreya_ghoshal",
+    "EN_RHYME_NEERJA_CLEAR": "shreya_ghoshal"
 }
 
 def verify_and_cache_singer_model(singer_key: str) -> str:

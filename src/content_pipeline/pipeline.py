@@ -4,6 +4,7 @@ from dataclasses import asdict
 from html import escape
 
 from content_pipeline.bots.image import (
+    MockImageProvider,
     gemini_image_package_plan,
     gemini_image_status,
     generate_images,
@@ -45,9 +46,10 @@ def run_linkedin_mvp(day: str, settings: Settings) -> dict[str, object]:
     voice_status_payload = voice_status(settings.output_dir, settings, day=day)
     image_quota_plan = gemini_image_package_plan(settings, packages_requested=1)
     quota_plan_path = storage.write_json(day, "gemini_image_plan.json", image_quota_plan)
+    supporting_image_provider = image_provider(settings)
     image_files = generate_images(
         package,
-        image_provider(settings),
+        supporting_image_provider,
         storage,
         max_dimension=settings.image_max_dimension,
         max_bytes=settings.image_max_bytes,
@@ -118,7 +120,7 @@ def run_linkedin_mvp(day: str, settings: Settings) -> dict[str, object]:
     )
     provider_mode = (
         "mock"
-        if settings.prompt_provider == "mock" and settings.image_provider == "mock"
+        if settings.prompt_provider == "mock" and isinstance(supporting_image_provider, MockImageProvider)
         else "live"
     )
     artifacts: dict[str, object] = {

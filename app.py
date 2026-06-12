@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import sys
 import re
@@ -67,7 +68,9 @@ import streamlit as st
 from content_pipeline.bots.audio import audio_status, render_audio_status_html
 from content_pipeline.bots.audio import curate_reference_audio_bank
 from content_pipeline.bots.audio import available_voice_options
+from content_pipeline.bots.audio import generate_instrumental_audio_track
 from content_pipeline.bots.audio import generate_music_preview
+from content_pipeline.bots.audio import smart_mix_storytelling_music_agent
 from content_pipeline.bots.audio import generate_voice_preview
 from content_pipeline.bots.audio import filter_voice_preview_presets
 from content_pipeline.bots.audio import normalize_voice_text
@@ -1682,9 +1685,9 @@ def render_frontdoor(settings: Settings) -> None:
     # Render sub-navigation below top bar if category has subpages
     if active_cat == "Music":
         st.session_state.setdefault("active_music_page", "Music Studio")
-        sub_cols = st.columns(4)
-        sub_pages = ["Music Studio", "Kids Music Studio", "Speech Studio", "Voice Cloner"]
-        sub_icons = ["🎵 Music Studio", "👶 Kids Music Studio", "🎙️ Speech Studio", "🎙️ Voice Cloner"]
+        sub_cols = st.columns(5)
+        sub_pages = ["Music Studio", "Instrumental Studio", "Kids Music Studio", "Speech Studio", "Voice Cloner"]
+        sub_icons = ["🎵 Music Studio", "🎼 Instrumental Studio", "👶 Kids Music Studio", "🎙️ Speech Studio", "🎙️ Voice Cloner"]
         for i, (page, icon) in enumerate(zip(sub_pages, sub_icons)):
             with sub_cols[i]:
                 is_active = st.session_state["active_music_page"] == page
@@ -1725,6 +1728,7 @@ def render_frontdoor(settings: Settings) -> None:
     elif active_cat == "Music":
         subpage_mapping = {
             "Music Studio": "Music",
+            "Instrumental Studio": "Instrumental",
             "Kids Music Studio": "Kids",
             "Speech Studio": "Speech",
             "Voice Cloner": "Cloner"
@@ -2649,6 +2653,239 @@ def render_frontdoor(settings: Settings) -> None:
                         st.rerun()
                 except Exception as exc:
                     st.error(f"❌ Error during song preparation: {exc}")
+
+    elif active_p == "Instrumental":
+        st.markdown("### Instrumental Music Studio")
+        st.markdown(
+            "<p style='font-size: 14.5px; color: #94a3b8; margin-top: -10px; margin-bottom: 24px;'>Create polished no-vocal music beds for kids songs, stories, intros, background scores, and previews.</p>",
+            unsafe_allow_html=True,
+        )
+
+        instrumental_presets = {
+            "Sad Painful Piano": {
+                "style": (
+                    "Pure instrumental. Sad painful emotional background music, slow minor-key felt piano melody, "
+                    "deep cello swells, soft low strings, distant ambient pad, sparse heartbeat-like percussion, "
+                    "lonely cinematic atmosphere, gentle reverb, 62 BPM."
+                ),
+                "genre": "Soundtrack",
+                "temperature": 0.25,
+                "duration": 90,
+            },
+            "Cheerful Kids Pop": {
+                "style": (
+                    "Pure instrumental. Cheerful English kids song backing track, bright ukulele strums, "
+                    "soft piano chords, glockenspiel melody, warm bass, hand claps, playful pop nursery rhythm, "
+                    "polished studio mix, 92 BPM."
+                ),
+                "genre": "Pop",
+                "temperature": 0.35,
+                "duration": 90,
+            },
+            "Bedtime Story Score": {
+                "style": (
+                    "Pure instrumental. Gentle bedtime story background music, warm celesta, soft music box, "
+                    "airy strings, subtle felt piano, slow calming pace, cozy moonlit atmosphere, 68 BPM."
+                ),
+                "genre": "Soundtrack",
+                "temperature": 0.30,
+                "duration": 120,
+            },
+            "Adventure Cartoon Theme": {
+                "style": (
+                    "Pure instrumental. Bright cartoon adventure theme, pizzicato strings, playful brass stabs, "
+                    "bouncy drums, xylophone sparkle, cheerful orchestral movement, energetic family-friendly mix, 112 BPM."
+                ),
+                "genre": "Soundtrack",
+                "temperature": 0.38,
+                "duration": 90,
+            },
+            "Indian Kids Folk": {
+                "style": (
+                    "Pure instrumental. Happy Indian kids folk backing track, bansuri flute lead, tabla and dholak groove, "
+                    "soft harmonium chords, acoustic guitar, manjira sparkle, warm festival mood, 96 BPM."
+                ),
+                "genre": "World",
+                "temperature": 0.34,
+                "duration": 90,
+            },
+            "Cinematic Magical": {
+                "style": (
+                    "Pure instrumental. Magical cinematic children score, harp glissandos, celesta melody, lush strings, "
+                    "soft choir-like synth pad, gentle percussion, wonder and discovery mood, 82 BPM."
+                ),
+                "genre": "Soundtrack",
+                "temperature": 0.32,
+                "duration": 120,
+            },
+        }
+
+        top_cols = st.columns([1.2, 0.8])
+        with top_cols[0]:
+            instrumental_idea = st.text_input(
+                "Music Idea",
+                placeholder="e.g., cheerful background music for a village boy story",
+                key="instrumental_music_idea",
+            )
+        with top_cols[1]:
+            selected_instrumental_preset = st.selectbox(
+                "Instrumental Preset",
+                options=["Custom"] + list(instrumental_presets.keys()),
+                key="instrumental_music_preset",
+            )
+
+        if "prev_instrumental_music_preset" not in st.session_state:
+            st.session_state["prev_instrumental_music_preset"] = selected_instrumental_preset
+        if st.session_state["prev_instrumental_music_preset"] != selected_instrumental_preset:
+            st.session_state["prev_instrumental_music_preset"] = selected_instrumental_preset
+            if selected_instrumental_preset != "Custom":
+                preset_data = instrumental_presets[selected_instrumental_preset]
+                st.session_state["instrumental_style_prompt_input"] = preset_data["style"]
+                st.session_state["instrumental_genre"] = preset_data["genre"]
+                st.session_state["instrumental_temperature"] = preset_data["temperature"]
+                st.session_state["instrumental_duration_seconds"] = preset_data["duration"]
+
+        if "instrumental_style_prompt_input" not in st.session_state:
+            st.session_state["instrumental_style_prompt_input"] = instrumental_presets["Cheerful Kids Pop"]["style"]
+
+        if st.button("✨ Build Instrumental Prompt From Idea", use_container_width=True):
+            clean_idea = instrumental_idea.strip() or "a cheerful kids music bed"
+            sad_request = any(
+                keyword in clean_idea.lower()
+                for keyword in ["sad", "pain", "painful", "lonely", "heartbreak", "cry", "tears", "grief", "emotional"]
+            )
+            if sad_request:
+                st.session_state["instrumental_style_prompt_input"] = (
+                    "Pure instrumental. "
+                    f"Create sad painful music for: {clean_idea}. "
+                    "Use slow minor-key felt piano, deep cello, soft low strings, distant ambient pad, sparse heartbeat-like percussion, "
+                    "lonely cinematic mood, gentle reverb, no bright bells, no playful rhythm, no cheerful melody, 62 BPM."
+                )
+                st.session_state["instrumental_genre"] = "Soundtrack"
+                st.session_state["instrumental_temperature"] = 0.25
+            else:
+                st.session_state["instrumental_style_prompt_input"] = (
+                    "Pure instrumental. "
+                    f"Create music for: {clean_idea}. "
+                    "Use memorable melody, clear chord movement, polished stereo mix, family-friendly tone, "
+                    "bright lead instruments, warm bass, gentle percussion, and a clean ending."
+                )
+
+        style_prompt = st.text_area(
+            "Instrumental Style Prompt",
+            key="instrumental_style_prompt_input",
+            height=140,
+            help="Describe only instruments, rhythm, mood, tempo, and production. Vocal words are removed before generation.",
+        )
+
+        settings_cols = st.columns(4)
+        with settings_cols[0]:
+            duration_seconds = st.number_input(
+                "Duration",
+                min_value=15,
+                max_value=240,
+                value=int(st.session_state.get("instrumental_duration_seconds", 90)),
+                step=15,
+                key="instrumental_duration_seconds",
+                help="Instrumental generation target in seconds.",
+            )
+        with settings_cols[1]:
+            genre_options = ['Auto', 'Pop', 'Latin', 'Rock', 'Electronic', 'Metal', 'Country', 'R&B/Soul', 'Ballad', 'Jazz', 'World', 'Hip-Hop', 'Funk', 'Soundtrack']
+            genre_default = st.session_state.get("instrumental_genre", "Pop")
+            genre_index = genre_options.index(genre_default) if genre_default in genre_options else 1
+            instrumental_genre = st.selectbox(
+                "Genre",
+                options=genre_options,
+                index=genre_index,
+                key="instrumental_genre",
+            )
+        with settings_cols[2]:
+            instrumental_temp = st.slider(
+                "Creativity",
+                min_value=0.0,
+                max_value=1.0,
+                value=float(st.session_state.get("instrumental_temperature", 0.35)),
+                step=0.05,
+                key="instrumental_temperature",
+            )
+        with settings_cols[3]:
+            instrumental_cfg = st.slider(
+                "CFG",
+                min_value=1.0,
+                max_value=5.0,
+                value=float(st.session_state.get("instrumental_cfg_coef", 1.8)),
+                step=0.1,
+                key="instrumental_cfg_coef",
+            )
+
+        ref_dir = PROJECT_ROOT / "output" / "reference_audio"
+        if not ref_dir.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio").exists():
+            ref_dir = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio")
+        else:
+            ref_dir.mkdir(parents=True, exist_ok=True)
+        ref_files = []
+        if ref_dir.exists():
+            ref_files = sorted(
+                [
+                    f.name for f in ref_dir.glob("*.mp3")
+                    if any(token in f.name.lower() for token in ["instrumental", "bgm", "beat", "karaoke"])
+                ]
+            )
+        selected_ref = st.selectbox(
+            "Instrumental Style Reference",
+            options=["None (Text-only)"] + ref_files,
+            key="instrumental_ref_audio_choice",
+            help="Only files named like instrumental/bgm/beat/karaoke are shown here to avoid vocal references.",
+        )
+
+        cleaned_style = clean_style_description_for_instrumental(style_prompt)
+        if cleaned_style != style_prompt.strip():
+            with st.expander("Sanitized no-vocal prompt", expanded=False):
+                st.write(cleaned_style)
+
+        st.markdown("---")
+        playback_path = st.session_state.get("instrumental_generated_mp3", "")
+        playback_cols = st.columns([1.1, 1.6, 0.9])
+        with playback_cols[0]:
+            st.markdown("#### Output")
+            if playback_path and Path(playback_path).exists():
+                st.caption(Path(playback_path).name)
+            else:
+                st.caption("No instrumental generated yet")
+        with playback_cols[1]:
+            if playback_path and Path(playback_path).exists():
+                st.audio(playback_path)
+        with playback_cols[2]:
+            if playback_path and Path(playback_path).exists():
+                with open(playback_path, "rb") as generated_audio:
+                    st.download_button(
+                        "Download",
+                        data=generated_audio.read(),
+                        file_name=Path(playback_path).name,
+                        mime="audio/mp3",
+                        use_container_width=True,
+                        key="instrumental_download_btn",
+                    )
+            else:
+                st.button("Download", disabled=True, use_container_width=True, key="instrumental_download_disabled")
+
+        if st.button("🎼 Generate Instrumental Music", type="primary", use_container_width=True):
+            output_path = PROJECT_ROOT / "output" / "instrumentals" / "Instrumental_Music_Studio_No_Vocal.mp3"
+            with st.spinner("Generating instrumental-only audio..."):
+                generated_path = generate_instrumental_audio_track(
+                    output_path,
+                    cleaned_style,
+                    hf_token=settings.hf_token,
+                    genre=instrumental_genre,
+                    temperature=instrumental_temp,
+                    cfg_coef=instrumental_cfg,
+                    duration_seconds=int(duration_seconds),
+                    selected_ref=selected_ref,
+                    force_local=True,
+                )
+            st.session_state["instrumental_generated_mp3"] = str(generated_path)
+            st.success("Instrumental music generated.")
+            st.rerun()
 
     elif active_p == "Video":
         st.markdown(
@@ -3869,7 +4106,10 @@ def render_frontdoor(settings: Settings) -> None:
         )
 
         # Determine kids voice options based on the selected language and mode
-        from content_pipeline.bots.kids_studio_manifest_core import KIDS_STUDIO_MASTER_REGISTRY
+        import importlib
+        import content_pipeline.bots.kids_studio_manifest_core as kids_manifest_core
+        kids_manifest_core = importlib.reload(kids_manifest_core)
+        KIDS_STUDIO_MASTER_REGISTRY = kids_manifest_core.KIDS_STUDIO_MASTER_REGISTRY
         kids_lang = st.session_state.get("kids_studio_language", "English")
         
         kids_singer_opts = {}
@@ -3919,12 +4159,17 @@ def render_frontdoor(settings: Settings) -> None:
         cfg = float(st.session_state.setdefault("kids_song_cfg_coef", 1.8))
         temp = float(st.session_state.setdefault("kids_song_temperature", 0.8))
         genre = st.session_state.setdefault("kids_song_genre", "Auto")
+        st.session_state.setdefault("kids_song_speed", "Mid")
         
         # Set default description based on mode if not already set
         if kids_mode == "Storytelling":
             default_desc = "warm theatrical spoken-word audiobook narrator, gentle bedtime story, calm pacing, soft glockenspiel and warm strings, 0 BPM"
         else:
-            default_desc = "cheerful nursery rhyme, magical kids show music, happy bouncy melody, 92 BPM, ukulele, soft piano, glockenspiel, bells."
+            speed_profile = get_kids_rhyme_speed_profile(st.session_state.get("kids_song_speed", "Mid"))
+            default_desc = str(speed_profile["default_desc"])
+            if st.session_state.get("prev_kids_song_speed") != speed_profile["label"]:
+                st.session_state["prev_kids_song_speed"] = speed_profile["label"]
+                st.session_state["kids_song_description"] = default_desc
         desc = st.session_state.setdefault("kids_song_description", default_desc)
 
         expander_title = "⚡ One-Click Story Creator" if kids_mode == "Storytelling" else "⚡ One-Click Song Creator"
@@ -3936,9 +4181,254 @@ def render_frontdoor(settings: Settings) -> None:
             prompt_label = "Story Idea" if kids_mode == "Storytelling" else "Song Idea"
             prompt_placeholder = "e.g., a story about a wise turtle" if kids_mode == "Storytelling" else "e.g., create an emotional song"
             one_click_prompt = st.text_input(prompt_label, placeholder=prompt_placeholder, key="one_click_song_idea")
+
+            st.session_state.setdefault("kids_initial_target_duration_text", "1:30")
+            if kids_mode == "Storytelling":
+                story_length_preset = st.selectbox(
+                    "Story Size",
+                    options=story_length_preset_options(),
+                    key="kids_story_length_preset",
+                    help="Choose an approximate story size. The final audio can naturally be 30-45 seconds shorter or longer to preserve quality.",
+                )
+                if story_length_preset == "Custom time":
+                    initial_duration_text = st.text_input(
+                        "Custom Story Length",
+                        key="kids_initial_target_duration_text",
+                        placeholder="e.g., 1:30, 3 mins, 6 mins",
+                        help="Use this as an approximate target. The app keeps a natural timing range to avoid quality loss.",
+                    )
+                else:
+                    initial_duration_text = ""
+
+                initial_duration_seconds, initial_duration_descriptor = resolve_story_length_seconds(
+                    story_length_preset,
+                    initial_duration_text,
+                )
+                tolerance_seconds = get_natural_duration_tolerance_seconds(initial_duration_seconds)
+                st.caption(
+                    "Approx target: "
+                    f"{initial_duration_descriptor}. Natural range: "
+                    f"{_format_duration_hint(max(1, initial_duration_seconds - tolerance_seconds))} to "
+                    f"{_format_duration_hint(initial_duration_seconds + tolerance_seconds)}."
+                )
+                planned_part_count = determine_story_audio_part_count(initial_duration_seconds)
+                if planned_part_count > 1:
+                    planned_part_targets = get_story_part_target_seconds(initial_duration_seconds, planned_part_count)
+                    st.caption(
+                        "Generation plan: "
+                        f"{planned_part_count} parts. Part targets: "
+                        f"{', '.join(_format_duration_hint(seconds) for seconds in planned_part_targets)}."
+                    )
+                if (
+                    story_length_preset == "Custom time"
+                    and initial_duration_text.strip()
+                    and not _extract_requested_duration_seconds(initial_duration_text)
+                ):
+                    st.warning("Length not understood yet. Using the default 1:30 target.")
+            else:
+                song_speed = st.selectbox(
+                    "Song Speed",
+                    options=["Slow", "Mid", "Fast"],
+                    key="kids_song_speed",
+                    help="Choose the rhyme pacing. The prompt, lyric density, and music energy will adapt automatically.",
+                )
+                speed_profile = get_kids_rhyme_speed_profile(song_speed)
+                initial_duration_seconds = int(speed_profile["target_seconds"])
+                initial_duration_descriptor = f"{speed_profile['label']} speed"
+                st.caption(
+                    f"Selected speed: {speed_profile['label']}. The rhyme prompt and music will adapt automatically."
+                )
+
+            st.session_state["kids_effective_target_duration_seconds"] = initial_duration_seconds
+            st.session_state["kids_effective_target_duration_descriptor"] = initial_duration_descriptor
+
+            story_type = ""
+            story_tags: list[str] = []
+            if kids_mode == "Storytelling":
+                story_type_options = [
+                    "Fables & Fairy Tales",
+                    "Bedtime Stories / Toddler Tales",
+                    "Adventure / Action",
+                    "Magic / Fantasy",
+                    "Mystery",
+                    "Mythology",
+                    "Sci-Fi",
+                    "Slice of Life",
+                    "Historical Fiction",
+                    "Supernatural",
+                    "Romance",
+                    "Thriller / Suspense",
+                    "Horror",
+                    "Young Adult (YA)",
+                    "Dystopian",
+                    "Cyberpunk",
+                ]
+                story_tag_options = [
+                    "Kindness",
+                    "Friendship",
+                    "Courage",
+                    "Teamwork",
+                    "Family",
+                    "Village life",
+                    "School life",
+                    "Animals",
+                    "Space",
+                    "Time travel",
+                    "Magic quest",
+                    "Hidden secret",
+                    "Treasure hunt",
+                    "Ancient gods",
+                    "Cozy bedtime",
+                    "Coming of age",
+                ]
+                genre_cols = st.columns([1, 1.4])
+                with genre_cols[0]:
+                    story_type = st.selectbox(
+                        "Which type of story?",
+                        options=story_type_options,
+                        key="kids_story_type",
+                        help="The agent will shape the plot, setting, tension, and tone around this story type.",
+                    )
+                with genre_cols[1]:
+                    story_tags = st.multiselect(
+                        "Story Tags",
+                        options=story_tag_options,
+                        key="kids_story_tags",
+                        help="Optional extra signals for the story world, moral, and characters.",
+                    )
+
+                story_length_suggestion = suggest_story_length_preset(
+                    one_click_prompt,
+                    story_type,
+                    story_tags,
+                    initial_duration_seconds,
+                )
+                if story_length_suggestion:
+                    suggested_preset, suggestion_reason = story_length_suggestion
+
+                    def _apply_story_length_suggestion(preset_label: str) -> None:
+                        st.session_state["kids_story_length_preset"] = preset_label
+
+                    st.info(f"Length suggestion: {suggestion_reason}")
+                    st.button(
+                        f"Use {suggested_preset}",
+                        key="kids_apply_story_length_suggestion",
+                        use_container_width=True,
+                        on_click=_apply_story_length_suggestion,
+                        args=(suggested_preset,),
+                    )
+
+            if kids_mode == "Storytelling" and kids_lang == "English":
+                story_suggestions = [
+                    "A kind boy in a village helps a lost calf find its mother",
+                    "A shy child plants a tiny seed that grows into a friendship tree",
+                    "Two friends save the village kite festival on a windy day",
+                    "A curious girl follows fireflies and learns why bedtime matters",
+                    "A little boy shares his lunch and discovers the joy of kindness",
+                    "A grandmother tells a moonlight story about a brave mango tree",
+                ]
+
+                def _use_story_suggestion(selected_idea: str) -> None:
+                    st.session_state["one_click_song_idea"] = selected_idea
+
+                st.caption("Need an idea? Pick a starter:")
+                suggestion_cols = st.columns(3)
+                for idx, suggestion in enumerate(story_suggestions):
+                    label = suggestion.split(" ", 7)
+                    short_label = " ".join(label[:7]) + ("..." if len(label) > 7 else "")
+                    with suggestion_cols[idx % len(suggestion_cols)]:
+                        st.button(
+                            short_label,
+                            key=f"kids_story_idea_suggestion_{idx}",
+                            help=suggestion,
+                            use_container_width=True,
+                            on_click=_use_story_suggestion,
+                            args=(suggestion,),
+                        )
             
             # Resolve gender dynamically based on current selected profile
             one_click_gender = st.session_state.get("kids_song_singer_gender", "Female")
+            story_tags_source = ",".join(story_tags)
+            if kids_mode == "Storytelling":
+                prompt_scale_source = f"{initial_duration_seconds}|{initial_duration_descriptor}"
+            else:
+                prompt_scale_source = f"{st.session_state.get('kids_song_speed', 'Mid')}"
+            kids_prompt_source = f"{kids_mode}|{kids_lang}|{one_click_gender}|{prompt_scale_source}|{story_type}|{story_tags_source}|{one_click_prompt.strip()}"
+            if st.session_state.get("kids_lyrics_prompt_source") != kids_prompt_source:
+                st.session_state["kids_lyrics_generation_prompt"] = build_kids_lyrics_prompt(
+                    one_click_prompt,
+                    kids_mode,
+                    kids_lang,
+                    one_click_gender,
+                    duration_seconds=initial_duration_seconds,
+                    length_descriptor=initial_duration_descriptor,
+                    song_speed=st.session_state.get("kids_song_speed", "Mid"),
+                    story_type=story_type,
+                    story_tags=story_tags,
+                )
+                st.session_state["kids_lyrics_prompt_source"] = kids_prompt_source
+                st.session_state["kids_lyrics_prompt_widget_version"] = (
+                    int(st.session_state.get("kids_lyrics_prompt_widget_version", 0)) + 1
+                )
+
+            prompt_box_label = "Script Prompt" if kids_mode == "Storytelling" else "Lyrics Prompt"
+            prompt_widget_version = int(st.session_state.setdefault("kids_lyrics_prompt_widget_version", 0))
+            prompt_widget_key = f"kids_lyrics_generation_prompt_input_{prompt_widget_version}"
+            st.session_state["kids_lyrics_prompt_active_key"] = prompt_widget_key
+            if prompt_widget_key not in st.session_state:
+                st.session_state[prompt_widget_key] = st.session_state.get("kids_lyrics_generation_prompt", "")
+            current_generation_prompt = st.text_area(
+                prompt_box_label,
+                key=prompt_widget_key,
+                height=150,
+                help="This is the full brief sent to the composer. Edit it directly or submit advice below.",
+            )
+            st.session_state["kids_lyrics_generation_prompt"] = current_generation_prompt
+
+            advice_placeholder = (
+                "e.g., Make it 2 minutes, slower bedtime pacing, add a gentle moral"
+                if kids_mode == "Storytelling"
+                else "e.g., make it slower, more playful, stronger chorus, shorter lines"
+            )
+            prompt_advice = st.text_area(
+                "Advice for My Agent",
+                placeholder=advice_placeholder,
+                key="kids_lyrics_prompt_advice",
+                height=90,
+                help="Submit changes like speed, rhythm, mood, topic, or structure before generating.",
+            )
+
+            def _submit_kids_prompt_advice() -> None:
+                advice_text = st.session_state.get("kids_lyrics_prompt_advice", "").strip()
+                if not advice_text:
+                    st.session_state["kids_lyrics_prompt_advice_status"] = "empty"
+                    return
+                active_prompt_key = st.session_state.get("kids_lyrics_prompt_active_key", "")
+                active_prompt = st.session_state.get(
+                    active_prompt_key,
+                    st.session_state.get("kids_lyrics_generation_prompt", ""),
+                )
+                st.session_state["kids_lyrics_generation_prompt"] = apply_kids_prompt_advice(
+                    active_prompt,
+                    advice_text,
+                    kids_mode,
+                )
+                st.session_state["kids_lyrics_prompt_widget_version"] = (
+                    int(st.session_state.get("kids_lyrics_prompt_widget_version", 0)) + 1
+                )
+                st.session_state["kids_lyrics_prompt_advice_status"] = "applied"
+
+            st.button(
+                "✅ Submit Advice",
+                use_container_width=True,
+                key="kids_lyrics_prompt_advice_submit",
+                on_click=_submit_kids_prompt_advice,
+            )
+            advice_status = st.session_state.pop("kids_lyrics_prompt_advice_status", None)
+            if advice_status == "empty":
+                st.warning("Please enter advice first.")
+            elif advice_status == "applied":
+                st.success("Advice applied to the lyrics prompt.")
             
             if st.session_state.get("gemini_api_error"):
                 kids_lang = st.session_state.get("kids_studio_language", "English")
@@ -3951,13 +4441,14 @@ def render_frontdoor(settings: Settings) -> None:
                     st.info("ℹ️ **Dynamic generation offline fallback active.**\n\n"
                             "Using local offline template for English content (Gemini key not configured or failed, but not required for English).")
 
-            btn_label = "🚀 Create & Generate Story" if kids_mode == "Storytelling" else "🚀 Create & Generate Song"
+            btn_label = "🚀 Create & Generate Story" if kids_mode == "Storytelling" else "🚀 Create & Generate Rhyme/Poem"
             if st.button(btn_label, type="primary", use_container_width=True):
-                if not one_click_prompt.strip():
-                    st.warning(f"Please enter a {prompt_label.lower()} first.")
+                composer_prompt = st.session_state.get("kids_lyrics_generation_prompt", "").strip()
+                if not composer_prompt:
+                    st.warning(f"Please enter a {prompt_label.lower()} or lyrics prompt first.")
                 else:
                     lyrics_exp, desc_exp = expand_prompt_to_lyrics_and_style_dynamic(
-                        settings, one_click_prompt, one_click_gender, kids_lang, mode=kids_mode
+                        settings, composer_prompt, one_click_gender, kids_lang, mode=kids_mode
                     )
                     if kids_lang in ["Hindi", "Hinglish"] and kids_mode != "Storytelling":
                         desc_exp = clean_style_description_for_instrumental(desc_exp)
@@ -3966,6 +4457,33 @@ def render_frontdoor(settings: Settings) -> None:
                     st.session_state["kids_song_singer_gender"] = one_click_gender
                     st.session_state["trigger_generation_now"] = True
                     st.rerun()
+
+            if st.button("🎼 Create Instrumental Only (No Vocal)", use_container_width=True):
+                instrumental_style = clean_style_description_for_instrumental(
+                    st.session_state.get("kids_song_description", desc)
+                )
+                if not instrumental_style.strip():
+                    instrumental_style = (
+                        "Pure instrumental. Cheerful English kids song backing track, bright ukulele strums, "
+                        "soft piano chords, glockenspiel melody, warm bass, hand claps, playful pop nursery rhythm, "
+                        "polished studio mix, 92 BPM."
+                    )
+                instrumental_output = PROJECT_ROOT / "output" / "instrumentals" / "LittleBubbles_Instrumental_No_Vocal.mp3"
+                with st.spinner("Creating instrumental-only music..."):
+                    generated_instrumental = generate_instrumental_audio_track(
+                        instrumental_output,
+                        instrumental_style,
+                        hf_token=settings.hf_token,
+                        genre=genre,
+                        temperature=temp,
+                        cfg_coef=cfg,
+                        duration_seconds=int(st.session_state.get("kids_effective_target_duration_seconds", 90)),
+                        selected_ref=selected_ref,
+                        force_local=True,
+                    )
+                st.session_state["kids_song_generated_mp3"] = str(generated_instrumental)
+                st.session_state["kids_song_description"] = instrumental_style
+                st.success("Instrumental-only audio created.")
 
         composer_title = "Story Composer / Script" if kids_mode == "Storytelling" else "Lyrics Composer"
         st.markdown(f"### {composer_title}")
@@ -4088,12 +4606,14 @@ def render_frontdoor(settings: Settings) -> None:
         
         with bottom_cols[0]:
             if generated_file_path and Path(generated_file_path).exists():
+                import html
+                active_track_name = html.escape(Path(generated_file_path).name)
                 st.markdown(
                     f"""
                     <div style="padding: 10px; border-radius: 8px; background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(56, 189, 248, 0.15);">
                       <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase;">Active Track</div>
                       <div style="font-size: 14px; font-weight: 800; color: #f8fafc; margin-top: 2px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
-                        LittleBubbles_Generated_Song.mp3
+                        {active_track_name}
                       </div>
                     </div>
                     """,
@@ -4135,6 +4655,150 @@ def render_frontdoor(settings: Settings) -> None:
                     st.button("Download", disabled=True, use_container_width=True)
             with btn_cols[1]:
                 generate_clicked = st.button("Generate", type="primary", use_container_width=True, key="kids_song_btn_generate")
+
+        if generated_file_path and Path(generated_file_path).exists():
+            adjust_cols = st.columns([1.0, 1.0, 2.0])
+            audio_path = Path(generated_file_path)
+            with adjust_cols[0]:
+                try:
+                    current_audio_seconds = get_audio_duration_seconds(audio_path)
+                    st.metric("Current Length", _format_duration_hint(int(round(current_audio_seconds))))
+                except Exception:
+                    current_audio_seconds = None
+                    st.metric("Current Length", "Unknown")
+            with adjust_cols[1]:
+                st.session_state.setdefault("kids_audio_target_duration_text", "1:30")
+                target_duration_text = st.text_input(
+                    "Target Length",
+                    key="kids_audio_target_duration_text",
+                    help="Examples: 1:30, 90 sec, 2 mins",
+                )
+            with adjust_cols[2]:
+                st.write("")
+                st.write("")
+                if st.button("Adjust Audio Length", use_container_width=True, key="kids_audio_adjust_duration_btn"):
+                    target_seconds = _extract_requested_duration_seconds(target_duration_text)
+                    if not target_seconds:
+                        st.warning("Please enter a valid target length, like 1:30 or 90 sec.")
+                    else:
+                        try:
+                            with st.spinner(f"Adjusting audio to {_format_duration_hint(target_seconds)}..."):
+                                adjusted_path = audio_path.with_name(
+                                    f"{audio_path.stem}_{target_seconds}s{audio_path.suffix}"
+                                )
+                                adjusted_path, previous_seconds = adjust_audio_to_target_duration(
+                                    audio_path,
+                                    target_seconds,
+                                    adjusted_path,
+                                )
+                                st.session_state["kids_song_generated_mp3"] = str(adjusted_path)
+                                st.success(
+                                    "Adjusted audio from "
+                                    f"{_format_duration_hint(int(round(previous_seconds)))} "
+                                    f"to {_format_duration_hint(target_seconds)}."
+                                )
+                                st.rerun()
+                        except Exception as adjust_exc:
+                            st.error(f"Could not adjust audio length: {adjust_exc}")
+
+            if kids_mode == "Storytelling":
+                st.markdown("#### Smart Story Music Mixer")
+                if generated_file_path and Path(generated_file_path).exists():
+                    generated_parts = set(Path(generated_file_path).parts)
+                    if "story_mixes" not in generated_parts:
+                        st.session_state["kids_story_original_narration_mp3"] = generated_file_path
+                mix_cols = st.columns([1.0, 1.0, 2.0])
+                with mix_cols[0]:
+                    story_music_gain = st.slider(
+                        "Music Level",
+                        min_value=-26.0,
+                        max_value=-10.0,
+                        value=float(st.session_state.get("kids_story_music_gain_db", -13.0)),
+                        step=1.0,
+                        key="kids_story_music_gain_db",
+                        help="Lower values keep music softer under the storyteller.",
+                    )
+                with mix_cols[1]:
+                    story_music_duck = st.slider(
+                        "Speech Ducking",
+                        min_value=3.0,
+                        max_value=14.0,
+                        value=float(st.session_state.get("kids_story_music_duck_db", 5.0)),
+                        step=1.0,
+                        key="kids_story_music_duck_db",
+                        help="Higher values push background music down while narration is active.",
+                    )
+                with mix_cols[2]:
+                    st.write("")
+                    st.write("")
+                    if st.button("🎚️ Add Smart Music to Clear Narration", use_container_width=True, key="kids_story_smart_music_mix_btn"):
+                        original_narration = st.session_state.get("kids_story_original_narration_mp3", generated_file_path)
+                        if not original_narration or not Path(original_narration).exists():
+                            st.warning("Generate the clear Hindi story narration first.")
+                        else:
+                            original_path = Path(original_narration)
+                            if "story_mixes" in set(original_path.parts) and generated_file_path:
+                                st.warning("Please regenerate the clear narration first. The current source is already a mixed file.")
+                                st.stop()
+                            st.session_state["kids_story_original_narration_mp3"] = str(original_path)
+                            story_script_for_score = st.session_state.get("kids_song_lyrics", lyrics)
+                            mixed_output = PROJECT_ROOT / "output" / "story_mixes" / "LittleBubbles_Smart_Story_Mix.mp3"
+                            with st.spinner("Smart AI is planning music cues and mixing under the existing clear narration..."):
+                                mixed_path, score_plan, agent_report = smart_mix_storytelling_music_agent(
+                                    original_path,
+                                    story_script_for_score,
+                                    mixed_output,
+                                    music_gain_db=story_music_gain,
+                                    speech_duck_db=story_music_duck,
+                                )
+                            st.session_state["kids_song_generated_mp3"] = str(mixed_path)
+                            st.session_state["kids_story_score_plan"] = score_plan
+                            st.session_state["kids_story_mix_agent_report"] = agent_report
+                            if agent_report.get("passed"):
+                                st.success("Music added under the clear narration. Voice, language, and pace were preserved.")
+                            else:
+                                st.warning("Music mix created, but review the quality report.")
+                            st.rerun()
+
+                score_plan = st.session_state.get("kids_story_score_plan", [])
+                if score_plan:
+                    with st.expander("Story music score plan", expanded=False):
+                        for segment in score_plan:
+                            start_seconds = int(segment.get("start_ms", 0) / 1000)
+                            duration_seconds = int(segment.get("duration_ms", 0) / 1000)
+                            st.write(
+                                f"Part {segment.get('index')}: {segment.get('mood')} "
+                                f"at {_format_duration_hint(start_seconds)} for {_format_duration_hint(duration_seconds)}"
+                            )
+                agent_report = st.session_state.get("kids_story_mix_agent_report", {})
+                if agent_report:
+                    with st.expander("Smart mix quality report", expanded=False):
+                        final_quality = agent_report.get("final_quality", {})
+                        st.write(
+                            "NVIDIA planner: "
+                            + ("used" if agent_report.get("used_nvidia_nim") else "local fallback")
+                        )
+                        st.write(
+                            f"Duration delta: {final_quality.get('duration_delta_ms', 'n/a')}ms, "
+                            f"mean: {final_quality.get('mean_dbfs', 'n/a')} dBFS, "
+                            f"peak: {final_quality.get('peak_dbfs', 'n/a')} dBFS, "
+                            f"longest silence: {final_quality.get('longest_silence_ms', 'n/a')}ms"
+                        )
+                        issues = final_quality.get("issues", [])
+                        if issues:
+                            st.write("Issues: " + ", ".join(str(issue) for issue in issues))
+                        else:
+                            st.write("Issues: none")
+                        if agent_report.get("engine"):
+                            st.write(f"Engine: {agent_report.get('engine')}")
+                        repair_plan = agent_report.get("final_repair_plan", {})
+                        if repair_plan:
+                            st.write(
+                                "Repair plan: "
+                                f"target {repair_plan.get('target_mean_dbfs', 'n/a')} dBFS, "
+                                f"peak ceiling {repair_plan.get('peak_ceiling_dbfs', 'n/a')} dBFS, "
+                                f"max gap {repair_plan.get('max_gap_ms', 'n/a')}ms"
+                            )
 
         if generate_clicked or st.session_state.get("trigger_generation_now"):
             if st.session_state.get("trigger_generation_now"):
@@ -4344,22 +5008,135 @@ def render_frontdoor(settings: Settings) -> None:
                         
                         singer_gender = st.session_state.get("kids_song_singer_gender", "Female")
                         selected_ref = st.session_state.get("kids_song_ref_audio_choice", "None (Text-only)")
-                        
-                        generate_hindi_song_via_native_audio(
-                            lyrics=sanitized_lyrics,
-                            output_path=out_path,
-                            singer_gender=singer_gender,
-                            selected_ref=selected_ref,
-                            hf_token=settings.hf_token,
-                            genre=genre,
-                            temperature=temp,
-                            cfg_coef=cfg,
-                            style_description=desc,
-                            singer_key=st.session_state.get("kids_studio_playback_singer_key", "hi_kids_ananya"),
-                            mode=kids_mode
+
+                        story_target_seconds = int(
+                            st.session_state.get("kids_effective_target_duration_seconds", 90)
                         )
-                        st.session_state["kids_song_generated_mp3"] = str(out_path)
-                        st.success(f"🎉 Kids {kids_mode} generated successfully using Native Audio Pipeline!")
+                        story_part_count = determine_story_audio_part_count(story_target_seconds)
+                        if kids_mode == "Storytelling" and story_part_count > 1:
+                            progress_bar = st.progress(0, text="0% - Preparing story audio parts...")
+                            progress_bar.progress(1, text="1% - Checking story length...")
+                            minimum_story_words = int(story_target_seconds * 1.35)
+                            if len(sanitized_lyrics.split()) < minimum_story_words:
+                                st.warning(
+                                    "The script is shorter than the requested story length, so the agent is expanding it before audio generation."
+                                )
+                                fallback_story, _fallback_style = build_local_storytelling_fallback(
+                                    st.session_state.get("kids_lyrics_generation_prompt", sanitized_lyrics),
+                                    singer_gender,
+                                )
+                                sanitized_lyrics = f"{sanitized_lyrics}\n\n{fallback_story}".strip()
+                            story_idea_for_intro = st.session_state.get("one_click_song_idea", "").strip()
+                            part_target_seconds_list = get_story_part_target_seconds(
+                                story_target_seconds,
+                                story_part_count,
+                            )
+                            story_part_scripts = build_story_audio_part_scripts(
+                                sanitized_lyrics,
+                                story_idea_for_intro,
+                                story_part_count,
+                                part_target_seconds_list,
+                                language=lang,
+                            )
+                            if len(story_part_scripts) < story_part_count:
+                                story_part_count = len(story_part_scripts)
+                                part_target_seconds_list = get_story_part_target_seconds(
+                                    story_target_seconds,
+                                    story_part_count,
+                                )
+                            st.info(
+                                f"Long story mode: generating {story_part_count} parts with the same selected voice profile "
+                                "and identical audio settings for continuity. Part 1 targets about 90 seconds; remaining parts stay around 70-80 seconds when possible. "
+                                f"Target length is about {_format_duration_hint(story_target_seconds)}."
+                            )
+                            part_dir = out_path.parent / "story_parts"
+                            part_dir.mkdir(parents=True, exist_ok=True)
+                            part_paths: list[Path] = []
+                            selected_singer_key = st.session_state.get(
+                                "kids_studio_playback_singer_key",
+                                "hi_kids_ananya",
+                            )
+                            part_percent_span = 86
+                            for part_index, story_part_script in enumerate(story_part_scripts, start=1):
+                                part_target_seconds = part_target_seconds_list[min(part_index - 1, len(part_target_seconds_list) - 1)]
+                                part_start = 2 + int((part_index - 1) * part_percent_span / story_part_count)
+                                part_end = 2 + int(part_index * part_percent_span / story_part_count)
+                                part_path = part_dir / f"{out_path.stem}_part_{part_index:02d}.mp3"
+
+                                run_with_live_percentage(
+                                    lambda script=story_part_script, path=part_path: generate_hindi_song_via_native_audio(
+                                        lyrics=script,
+                                        output_path=path,
+                                        singer_gender=singer_gender,
+                                        selected_ref=selected_ref,
+                                        hf_token=settings.hf_token,
+                                        genre=genre,
+                                        temperature=temp,
+                                        cfg_coef=cfg,
+                                        style_description=desc,
+                                        singer_key=selected_singer_key,
+                                        mode=kids_mode
+                                    ),
+                                    progress_bar,
+                                    f"Generating part {part_index}/{story_part_count}...",
+                                    start_percent=part_start,
+                                    max_percent=part_end,
+                                    estimated_seconds=estimate_story_audio_generation_seconds(
+                                        part_target_seconds,
+                                        story_part_script,
+                                    ),
+                                )
+                                part_paths.append(part_path)
+
+                            progress_bar.progress(90, text="90% - Merging story parts...")
+                            merged_path = out_path.with_name(f"{out_path.stem}_merged.mp3")
+                            merge_audio_parts(part_paths, merged_path)
+                            tolerance_seconds = get_natural_duration_tolerance_seconds(story_target_seconds)
+                            progress_bar.progress(
+                                94,
+                                text=(
+                                    "94% - Checking natural duration range "
+                                    f"({_format_duration_hint(story_target_seconds - tolerance_seconds)} to "
+                                    f"{_format_duration_hint(story_target_seconds + tolerance_seconds)})..."
+                                )
+                            )
+                            adjusted_path, previous_seconds, final_duration_target, used_natural_duration = normalize_audio_to_duration_window(
+                                merged_path,
+                                story_target_seconds,
+                                out_path,
+                            )
+                            st.session_state["kids_song_generated_mp3"] = str(adjusted_path)
+                            st.session_state["kids_song_story_part_paths"] = [str(path) for path in part_paths]
+                            st.session_state.pop("kids_song_preview_part_mp3", None)
+                            progress_bar.progress(100, text="100% - Story audio parts merged and ready.")
+                            if used_natural_duration:
+                                st.success(
+                                    f"🎉 Long story generated in {story_part_count} parts. "
+                                    f"Final length is {_format_duration_hint(int(round(previous_seconds)))} "
+                                    "and is inside the natural quality range, so no time-stretching was applied."
+                                )
+                            else:
+                                st.success(
+                                    f"🎉 Long story generated in {story_part_count} parts. "
+                                    f"Final audio was gently adjusted from {_format_duration_hint(int(round(previous_seconds)))} "
+                                    f"to the nearest quality range edge: {_format_duration_hint(final_duration_target)}."
+                                )
+                        else:
+                            generate_hindi_song_via_native_audio(
+                                lyrics=sanitized_lyrics,
+                                output_path=out_path,
+                                singer_gender=singer_gender,
+                                selected_ref=selected_ref,
+                                hf_token=settings.hf_token,
+                                genre=genre,
+                                temperature=temp,
+                                cfg_coef=cfg,
+                                style_description=desc,
+                                singer_key=st.session_state.get("kids_studio_playback_singer_key", "hi_kids_ananya"),
+                                mode=kids_mode
+                            )
+                            st.session_state["kids_song_generated_mp3"] = str(out_path)
+                            st.success(f"🎉 Kids {kids_mode} generated successfully using Native Audio Pipeline!")
                         st.rerun()
                     elif lang == "Hinglish":
                         st.write("🔮 Applying advanced phonetic transcription layer for perfect Indian accent...")
@@ -5591,18 +6368,788 @@ def parse_prompt_into_sections(prompt_text: str) -> dict[str, str]:
     return sections
 
 
+def _extract_requested_duration_seconds(text: str) -> int | None:
+    import re
+    if not text:
+        return None
+
+    normalized = text.lower()
+
+    minutes_match = re.search(
+        r"\b(\d+(?:\.\d+)?)\s*(?:minutes?|mins?|min|m)\b", normalized
+    )
+    seconds_match = re.search(
+        r"\b(\d+(?:\.\d+)?)\s*(?:seconds?|secs?|sec|s)\b", normalized
+    )
+
+    total = 0
+    if minutes_match:
+        minutes_value = minutes_match.group(1)
+        if "." in minutes_value:
+            minute_part, second_part = minutes_value.split(".", 1)
+            if len(second_part) == 2 and int(second_part) < 60:
+                total += int(minute_part) * 60 + int(second_part)
+            else:
+                total += int(float(minutes_value) * 60)
+        else:
+            total += int(float(minutes_value) * 60)
+    if seconds_match:
+        total += int(float(seconds_match.group(1)))
+
+    if total:
+        return total
+
+    clock_match = re.search(r"\b(\d{1,2})\s*[:.]\s*([0-5]\d)\b", normalized)
+    if clock_match:
+        return int(clock_match.group(1)) * 60 + int(clock_match.group(2))
+
+    return None
+
+
+def _format_duration_hint(seconds: int) -> str:
+    minutes, remaining_seconds = divmod(seconds, 60)
+    if minutes and remaining_seconds:
+        return f"{minutes} minute {remaining_seconds} seconds ({seconds} seconds)"
+    if minutes:
+        minute_label = "minute" if minutes == 1 else "minutes"
+        return f"{minutes} {minute_label} ({seconds} seconds)"
+    return f"{seconds} seconds"
+
+
+def get_audio_duration_seconds(audio_path: Path) -> float:
+    import subprocess
+
+    duration_cmd = [
+        "ffprobe", "-i", str(audio_path),
+        "-show_entries", "format=duration",
+        "-v", "quiet", "-of", "csv=p=0"
+    ]
+    duration_res = subprocess.run(duration_cmd, capture_output=True, text=True, check=True)
+    return float(duration_res.stdout.strip())
+
+
+def build_atempo_filter(speed_ratio: float) -> str:
+    factors = []
+    remaining = speed_ratio
+    while remaining < 0.5:
+        factors.append(0.5)
+        remaining /= 0.5
+    while remaining > 2.0:
+        factors.append(2.0)
+        remaining /= 2.0
+    factors.append(remaining)
+    return ",".join(f"atempo={factor:.6f}" for factor in factors)
+
+
+def adjust_audio_to_target_duration(
+    audio_path: Path,
+    target_seconds: int,
+    output_path: Path | None = None,
+) -> tuple[Path, float]:
+    import subprocess
+
+    if target_seconds <= 0:
+        raise ValueError("Target duration must be greater than 0 seconds.")
+    if not audio_path.exists():
+        raise FileNotFoundError(f"Audio file not found: {audio_path}")
+
+    current_seconds = get_audio_duration_seconds(audio_path)
+    if current_seconds <= 0:
+        raise ValueError("Could not detect a valid audio duration.")
+
+    if output_path is None:
+        safe_target = str(target_seconds).replace(".", "_")
+        output_path = audio_path.with_name(f"{audio_path.stem}_{safe_target}s{audio_path.suffix}")
+
+    temp_path = output_path.with_name(f"{output_path.stem}.tmp{output_path.suffix}")
+    speed_ratio = current_seconds / target_seconds
+    atempo_chain = build_atempo_filter(speed_ratio)
+    filter_chain = (
+        f"{atempo_chain},"
+        f"apad=pad_dur={max(target_seconds - current_seconds, 0) + 2:.3f},"
+        f"atrim=0:{target_seconds},asetpts=PTS-STARTPTS,"
+        f"afade=t=out:st={max(target_seconds - 2, 0):.3f}:d={min(2, target_seconds):.3f}"
+    )
+    adjust_cmd = [
+        "ffmpeg", "-y", "-i", str(audio_path),
+        "-filter:a", filter_chain,
+        "-t", str(target_seconds),
+        "-codec:a", "libmp3lame", "-qscale:a", "2",
+        str(temp_path)
+    ]
+    subprocess.run(adjust_cmd, check=True, capture_output=True, text=True)
+    temp_path.replace(output_path)
+    return output_path, current_seconds
+
+
+def get_natural_duration_tolerance_seconds(target_seconds: int) -> int:
+    return int(max(30, min(45, round(target_seconds * 0.10))))
+
+
+STORY_LENGTH_PRESETS: dict[str, tuple[int, str]] = {
+    "Very short (~1 min)": (60, "very short story, about 1 minute"),
+    "Short (~2-3 mins)": (150, "short story, about 2 to 3 minutes"),
+    "Mid (~3-5 mins)": (240, "medium story, about 3 to 5 minutes"),
+    "Long (~5-8 mins)": (390, "long story, about 5 to 8 minutes"),
+    "Very long (~8-15 mins)": (690, "very long story, about 8 to 15 minutes"),
+}
+
+
+def story_length_preset_options() -> list[str]:
+    return ["Custom time"] + list(STORY_LENGTH_PRESETS.keys())
+
+
+def resolve_story_length_seconds(preset_label: str, custom_text: str) -> tuple[int, str]:
+    if preset_label in STORY_LENGTH_PRESETS:
+        seconds, description = STORY_LENGTH_PRESETS[preset_label]
+        return seconds, description
+
+    parsed_seconds = _extract_requested_duration_seconds(custom_text)
+    if parsed_seconds:
+        return parsed_seconds, f"custom approximate length, about {_format_duration_hint(parsed_seconds)}"
+    return 90, "default approximate length, about 1 minute 30 seconds"
+
+
+def suggest_story_length_preset(
+    idea: str,
+    story_type: str,
+    story_tags: list[str] | None,
+    current_target_seconds: int,
+) -> tuple[str, str] | None:
+    import re
+
+    if current_target_seconds > 180:
+        return None
+
+    idea_text = (idea or "").strip()
+    if not idea_text:
+        return None
+
+    normalized = idea_text.lower()
+    selected_tags = [tag for tag in (story_tags or []) if tag]
+    score = 0
+    reasons: list[str] = []
+    words = re.findall(r"[a-zA-Z]+", normalized)
+
+    if len(words) >= 10:
+        score += 1
+        reasons.append("the idea already has enough detail for scenes")
+    if len(words) >= 18:
+        score += 1
+
+    complex_genres = {
+        "Adventure / Action",
+        "Magic / Fantasy",
+        "Mystery",
+        "Mythology",
+        "Sci-Fi",
+        "Historical Fiction",
+        "Supernatural",
+        "Thriller / Suspense",
+        "Young Adult (YA)",
+        "Dystopian",
+        "Cyberpunk",
+    }
+    if story_type in complex_genres:
+        score += 2
+        reasons.append(f"{story_type.lower()} usually needs setup, conflict, and payoff")
+
+    plot_keywords = [
+        "journey", "quest", "adventure", "mystery", "secret", "treasure", "magic",
+        "village", "kingdom", "forest", "space", "alien", "time", "detective",
+        "dragon", "festival", "lost", "save", "rescue", "discover", "learns",
+        "friendship", "family", "challenge", "problem", "dream",
+    ]
+    matched_keywords = [keyword for keyword in plot_keywords if keyword in normalized]
+    if len(matched_keywords) >= 2:
+        score += 1
+        reasons.append("there are multiple story beats to explore")
+    if len(matched_keywords) >= 4:
+        score += 1
+
+    if len(selected_tags) >= 2:
+        score += 1
+        reasons.append("the selected tags add extra emotional/plot layers")
+
+    if score < 3:
+        return None
+
+    reason_text = reasons[0] if reasons else "the idea has enough plot depth"
+    return "Mid (~3-5 mins)", f"This story may work better as Mid (~3-5 mins) because {reason_text}."
+
+
+def normalize_audio_to_duration_window(
+    audio_path: Path,
+    target_seconds: int,
+    output_path: Path,
+) -> tuple[Path, float, int, bool]:
+    current_seconds = get_audio_duration_seconds(audio_path)
+    tolerance_seconds = get_natural_duration_tolerance_seconds(target_seconds)
+    lower_bound = max(1, target_seconds - tolerance_seconds)
+    upper_bound = target_seconds + tolerance_seconds
+
+    if lower_bound <= current_seconds <= upper_bound:
+        if audio_path.resolve() != output_path.resolve():
+            output_path.write_bytes(audio_path.read_bytes())
+        return output_path, current_seconds, int(round(current_seconds)), True
+
+    if current_seconds < lower_bound:
+        adjustment_target = lower_bound
+    else:
+        adjustment_target = upper_bound
+
+    adjusted_path, original_seconds = adjust_audio_to_target_duration(
+        audio_path,
+        int(adjustment_target),
+        output_path,
+    )
+    return adjusted_path, original_seconds, int(adjustment_target), False
+
+
+def split_story_script_for_audio_chunks(
+    script: str,
+    target_seconds: int,
+    chunk_seconds: int = 60,
+) -> list[str]:
+    import re
+
+    clean_script = (script or "").strip()
+    if not clean_script:
+        return []
+    if target_seconds <= chunk_seconds:
+        return [clean_script]
+
+    target_chunks = max(1, math.ceil(target_seconds / chunk_seconds))
+    words = clean_script.split()
+    if len(words) < 80 or target_chunks == 1:
+        return [clean_script]
+
+    target_words_per_chunk = max(45, math.ceil(len(words) / target_chunks))
+    sentence_pattern = r"(?<=[.!?।])\s+|\n{2,}|(?=\[pause\])"
+    units = [unit.strip() for unit in re.split(sentence_pattern, clean_script) if unit.strip()]
+    if len(units) <= 1:
+        units = [" ".join(words[i:i + target_words_per_chunk]) for i in range(0, len(words), target_words_per_chunk)]
+
+    chunks = []
+    current_units = []
+    current_words = 0
+    for unit in units:
+        unit_words = len(unit.split())
+        if current_units and current_words + unit_words > target_words_per_chunk:
+            chunks.append(" ".join(current_units).strip())
+            current_units = [unit]
+            current_words = unit_words
+        else:
+            current_units.append(unit)
+            current_words += unit_words
+    if current_units:
+        chunks.append(" ".join(current_units).strip())
+
+    if len(chunks) > target_chunks + 1:
+        merged = []
+        for index in range(0, len(chunks), 2):
+            merged.append(" ".join(chunks[index:index + 2]).strip())
+        chunks = merged
+
+    return [chunk if "[pause]" in chunk.lower() else f"{chunk} [pause]" for chunk in chunks if chunk]
+
+
+def determine_story_audio_part_count(target_seconds: int) -> int:
+    if target_seconds <= 130:
+        return 1
+    return max(2, math.ceil(target_seconds / 80))
+
+
+def get_story_part_target_seconds(target_seconds: int, part_count: int) -> list[int]:
+    if part_count <= 1:
+        return [target_seconds]
+    first_part_seconds = min(90, max(70, target_seconds - (part_count - 1) * 70))
+    remaining_seconds = max(0, target_seconds - first_part_seconds)
+    remaining_parts = part_count - 1
+    base_remaining = remaining_seconds // remaining_parts
+    extra_seconds = remaining_seconds % remaining_parts
+    targets = [first_part_seconds]
+    for index in range(remaining_parts):
+        targets.append(int(base_remaining + (1 if index < extra_seconds else 0)))
+    return targets
+
+
+def split_story_script_into_exact_parts(
+    script: str,
+    part_count: int,
+    part_target_seconds: list[int] | None = None,
+) -> list[str]:
+    import re
+
+    clean_script = (script or "").strip()
+    if not clean_script or part_count <= 1:
+        return [clean_script] if clean_script else []
+    if not part_target_seconds or len(part_target_seconds) != part_count:
+        part_target_seconds = [1] * part_count
+
+    units = [
+        unit.strip()
+        for unit in re.split(r"(?<=[.!?।])\s+|\n{2,}|(?=\[pause\])", clean_script)
+        if unit.strip()
+    ]
+    if len(units) <= 1:
+        words = clean_script.split()
+        total_weight = max(1, sum(part_target_seconds))
+        parts = []
+        cursor = 0
+        for index, weight in enumerate(part_target_seconds):
+            if index == part_count - 1:
+                end = len(words)
+            else:
+                end = cursor + max(1, round(len(words) * weight / total_weight))
+            parts.append(" ".join(words[cursor:end]).strip())
+            cursor = end
+        return [part for part in parts if part]
+
+    total_words = sum(len(unit.split()) for unit in units)
+    total_weight = max(1, sum(part_target_seconds))
+    cumulative_boundaries = []
+    cumulative_weight = 0
+    for weight in part_target_seconds[:-1]:
+        cumulative_weight += weight
+        cumulative_boundaries.append(max(1, round(total_words * cumulative_weight / total_weight)))
+    parts = []
+    current_units = []
+    current_words = 0
+    total_words_seen = 0
+
+    for unit in units:
+        unit_words = len(unit.split())
+        current_units.append(unit)
+        current_words += unit_words
+        total_words_seen += unit_words
+        should_close = (
+            current_units
+            and len(parts) < part_count - 1
+            and total_words_seen >= cumulative_boundaries[len(parts)]
+        )
+        if should_close:
+            parts.append(" ".join(current_units).strip())
+            current_units = []
+            current_words = 0
+
+    if current_units:
+        parts.append(" ".join(current_units).strip())
+
+    while len(parts) < part_count:
+        parts.append("")
+    if len(parts) > part_count:
+        parts = parts[:part_count - 1] + [" ".join(parts[part_count - 1:]).strip()]
+    return [part for part in parts if part.strip()]
+
+
+def strip_story_boundary_pause_text(text: str) -> str:
+    import re
+
+    cleaned = (text or "").strip()
+    cleaned = re.sub(r"(?i)^(?:\s*\[pause\]\s*)+", "", cleaned)
+    cleaned = re.sub(r"(?i)(?:\s*\[pause\]\s*)+$", "", cleaned)
+    return cleaned.strip()
+
+
+def build_story_part_prefix(
+    language: str,
+    story_idea: str,
+    part_count: int,
+    part_index: int,
+) -> str:
+    normalized_language = (language or "English").strip().lower()
+    clean_idea = (story_idea or "").strip()
+
+    if normalized_language == "hindi":
+        if part_index == 1:
+            return f"चलिए कहानी शुरू करते हैं। यह कहानी {part_count} भागों में है। भाग {part_index}। "
+        return f"भाग {part_index}। "
+
+    if normalized_language == "hinglish":
+        if part_index == 1:
+            return f"Chaliye kahani shuru karte hain. Yeh kahani {part_count} parts mein hai. Part {part_index}. "
+        return f"Part {part_index}. "
+
+    if part_index == 1:
+        if not clean_idea:
+            clean_idea = "a warm children's story with a gentle lesson"
+        return (
+            f"Before we begin, this story is about {clean_idea}. "
+            f"This story is told in {part_count} parts. "
+            f"Part {part_index}. "
+        )
+    return f"Part {part_index}. "
+
+
+def build_story_audio_part_scripts(
+    script: str,
+    story_idea: str,
+    part_count: int,
+    part_target_seconds: list[int] | None = None,
+    language: str = "English",
+) -> list[str]:
+    parts = split_story_script_into_exact_parts(script, part_count, part_target_seconds)
+    if part_count <= 1:
+        return parts
+
+    scripted_parts = []
+    for index, part in enumerate(parts, start=1):
+        prefix = build_story_part_prefix(language, story_idea, part_count, index)
+        clean_part = strip_story_boundary_pause_text(part)
+        scripted_parts.append(f"{prefix}{clean_part}".strip())
+    return scripted_parts
+
+
+def merge_audio_parts(audio_parts: list[Path], output_path: Path) -> Path:
+    import subprocess
+
+    existing_parts = [part for part in audio_parts if part.exists()]
+    if not existing_parts:
+        raise FileNotFoundError("No generated audio parts were found to merge.")
+    if len(existing_parts) == 1:
+        output_path.write_bytes(existing_parts[0].read_bytes())
+        return output_path
+
+    prepared_parts = []
+    prep_dir = output_path.parent / ".merge_ready"
+    prep_dir.mkdir(parents=True, exist_ok=True)
+    for index, part in enumerate(existing_parts, start=1):
+        prepared_path = prep_dir / f"{output_path.stem}_part_{index:02d}_ready.mp3"
+        filter_chain = (
+            "silenceremove=start_periods=1:start_duration=0.04:start_threshold=-38dB:"
+            "stop_periods=1:stop_duration=0.12:stop_threshold=-38dB,"
+            "highpass=f=80,"
+            "loudnorm=I=-16:TP=-1.5:LRA=9,"
+            "acompressor=threshold=-18dB:ratio=2.2:attack=5:release=80,"
+            "alimiter=limit=0.95"
+        )
+        prep_cmd = [
+            "ffmpeg", "-y", "-i", str(part),
+            "-filter:a", filter_chain,
+            "-codec:a", "libmp3lame", "-qscale:a", "2",
+            str(prepared_path)
+        ]
+        try:
+            subprocess.run(prep_cmd, check=True, capture_output=True, text=True)
+            if prepared_path.exists():
+                prepared_parts.append(prepared_path)
+            else:
+                prepared_parts.append(part)
+        except Exception:
+            prepared_parts.append(part)
+
+    concat_file = output_path.with_name(f"{output_path.stem}_concat.txt")
+    concat_lines = []
+    for part in prepared_parts:
+        safe_path = str(part.resolve()).replace("'", "'\\''")
+        concat_lines.append(f"file '{safe_path}'")
+    concat_file.write_text("\n".join(concat_lines) + "\n", encoding="utf-8")
+
+    merge_cmd = [
+        "ffmpeg", "-y",
+        "-f", "concat", "-safe", "0",
+        "-i", str(concat_file),
+        "-codec:a", "libmp3lame", "-qscale:a", "2",
+        str(output_path)
+    ]
+    subprocess.run(merge_cmd, check=True, capture_output=True, text=True)
+    try:
+        concat_file.unlink()
+    except Exception:
+        pass
+    return output_path
+
+
+def run_with_live_percentage(
+    task,
+    progress_bar,
+    label: str,
+    *,
+    start_percent: int = 1,
+    max_percent: int = 85,
+    estimated_seconds: int = 120,
+):
+    import threading
+
+    result = {}
+
+    def _format_eta(seconds: int) -> str:
+        seconds = max(0, int(seconds))
+        minutes, remaining_seconds = divmod(seconds, 60)
+        if minutes and remaining_seconds:
+            return f"{minutes}mins {remaining_seconds}secs"
+        if minutes:
+            return f"{minutes}mins"
+        return f"{remaining_seconds}secs"
+
+    def _worker() -> None:
+        try:
+            result["value"] = task()
+        except BaseException as exc:
+            result["error"] = exc
+
+    worker = threading.Thread(target=_worker, daemon=True)
+    try:
+        from streamlit.runtime.scriptrunner import add_script_run_ctx, get_script_run_ctx
+        add_script_run_ctx(worker, get_script_run_ctx())
+    except Exception:
+        pass
+    worker.start()
+
+    percent = max(0, min(start_percent, max_percent))
+    start_time = time.monotonic()
+    current_estimate = max(estimated_seconds, 30)
+    heavy_traffic = False
+    progress_bar.progress(
+        percent,
+        text=f"{percent}% - {label} ETA {_format_eta(current_estimate)}"
+    )
+
+    while worker.is_alive():
+        now = time.monotonic()
+        elapsed = now - start_time
+
+        if elapsed > current_estimate * 0.9:
+            current_estimate = int(elapsed * 1.35) + 30
+            heavy_traffic = True
+
+        progress_span = max(max_percent - start_percent, 1)
+        computed_percent = start_percent + int(progress_span * min(elapsed / current_estimate, 0.96))
+        computed_percent = min(computed_percent, max_percent - 1)
+        percent = max(percent, computed_percent)
+
+        remaining = max(0, int(current_estimate - elapsed))
+        traffic_note = " - heavy traffic, extending estimate" if heavy_traffic else ""
+        progress_bar.progress(
+            percent,
+            text=f"{percent}% - {label} {_format_eta(remaining)} remaining{traffic_note}"
+        )
+        time.sleep(1.0)
+
+    worker.join()
+    if "error" in result:
+        raise result["error"]
+    progress_bar.progress(max_percent, text=f"{max_percent}% - {label} complete")
+    return result.get("value")
+
+
+def estimate_story_audio_generation_seconds(target_seconds: int, script: str) -> int:
+    word_count = len((script or "").split())
+    base_overhead = 60
+    if target_seconds <= 120:
+        duration_factor = target_seconds * 1.10
+        word_factor = word_count * 0.22
+    else:
+        short_duration_factor = 120 * 1.10
+        long_extra_seconds = target_seconds - 120
+        long_duration_factor = long_extra_seconds * 2.20
+        word_factor = word_count * 0.34
+        base_overhead += 90
+        duration_factor = short_duration_factor + long_duration_factor
+    return int(max(120, base_overhead + duration_factor + word_factor))
+
+
+def build_local_storytelling_fallback(prompt: str, singer_gender: str) -> tuple[str, str]:
+    target_seconds = _extract_requested_duration_seconds(prompt) or 90
+    target_words = max(140, int(target_seconds * 1.8))
+    p = (prompt or "").lower()
+    hero = "a kind boy"
+    setting = "a small village"
+    if "girl" in p:
+        hero = "a brave girl"
+    elif "turtle" in p:
+        hero = "a wise turtle"
+        setting = "a green forest"
+    elif "boy" in p:
+        hero = "a curious boy"
+    if "space" in p or "sci-fi" in p:
+        setting = "a tiny moon village near a sparkling space station"
+    elif "magic" in p or "fantasy" in p:
+        setting = "a village beside a whispering magical forest"
+    elif "mystery" in p:
+        setting = "a quiet village with a hidden bell tower"
+
+    beats = [
+        f"[pause] Once upon a time, in {setting}, there lived {hero} who noticed small things that others often missed.",
+        "[pause] One morning, the village woke up to a problem that made everyone stop and wonder what to do next.",
+        f"[pause] {hero.capitalize()} listened carefully, asked gentle questions, and decided to help instead of walking away.",
+        "[pause] The first clue was small, but it led to another clue, and soon the path became clearer.",
+        "[pause] Along the way, a friend joined in, and together they learned that courage feels easier when kindness walks beside it.",
+        "[pause] For a moment, the challenge seemed too big, and the sky felt heavy with worry.",
+        f"[pause] But {hero} remembered a simple lesson: every large problem can be solved one careful step at a time.",
+        "[pause] They tried again with patience, shared what they had, and brought the whole village together.",
+        "[pause] By sunset, the problem was solved, and laughter returned to the homes, fields, and little lanes.",
+        "[pause] From that day onward, everyone remembered that helpful hearts can make even an ordinary day feel magical.",
+    ]
+    story_lines = []
+    while len(" ".join(story_lines).split()) < target_words:
+        story_lines.extend(beats)
+
+    lyrics = " ".join(story_lines)
+    style = (
+        f"warm theatrical spoken-word audiobook narrator, gentle bedtime story, calm pacing, "
+        f"soft glockenspiel and warm strings, friendly {singer_gender.lower()} storyteller voice, 0 BPM"
+    )
+    return lyrics, style
+
+
+def get_kids_rhyme_speed_profile(song_speed: str) -> dict[str, object]:
+    normalized = (song_speed or "Mid").strip().lower()
+    profiles: dict[str, dict[str, object]] = {
+        "slow": {
+            "label": "Slow",
+            "target_seconds": 120,
+            "tempo": "76 BPM",
+            "prompt_line": "Use slower pacing, longer vowel sounds, gentle repetition, and roomy pauses between lines.",
+            "default_desc": "cheerful nursery rhyme, magical kids show music, gentle slow melody, 76 BPM, ukulele, soft piano, glockenspiel, bells.",
+        },
+        "mid": {
+            "label": "Mid",
+            "target_seconds": 90,
+            "tempo": "92 BPM",
+            "prompt_line": "Use balanced pacing, clean hooks, steady repetition, and an easy sing-along flow.",
+            "default_desc": "cheerful nursery rhyme, magical kids show music, happy bouncy melody, 92 BPM, ukulele, soft piano, glockenspiel, bells.",
+        },
+        "fast": {
+            "label": "Fast",
+            "target_seconds": 60,
+            "tempo": "108 BPM",
+            "prompt_line": "Use quick pacing, tighter rhyme density, short lines, and a lively bounce.",
+            "default_desc": "cheerful nursery rhyme, magical kids show music, lively fast melody, 108 BPM, ukulele, soft piano, glockenspiel, bells.",
+        },
+    }
+    return profiles.get(normalized, profiles["mid"])
+
+
+def build_kids_lyrics_prompt(
+    idea: str,
+    mode: str,
+    language: str,
+    singer_gender: str,
+    duration_seconds: int = 90,
+    length_descriptor: str = "",
+    song_speed: str = "Mid",
+    story_type: str = "",
+    story_tags: list[str] | None = None,
+) -> str:
+    target_label = "story script" if mode == "Storytelling" else "nursery rhyme / poem"
+    structure = (
+        "Use warm narration with [pause] tags, a clear beginning, middle, ending, and a gentle moral."
+        if mode == "Storytelling"
+        else "Use [verse] and [chorus] tags, simple rhyming couplets, repeatable rhythm, and child-safe imagery."
+    )
+    idea_text = idea.strip() or "create a cheerful kids rhyme"
+    genre_lines = ""
+    if mode == "Storytelling":
+        selected_tags = [tag.strip() for tag in (story_tags or []) if tag.strip()]
+        story_type_text = story_type.strip() or "Fables & Fairy Tales"
+        long_story_direction = ""
+        if duration_seconds > 120:
+            approximate_parts = determine_story_audio_part_count(duration_seconds)
+            long_story_direction = (
+                f"Long story plan: write enough narration for {approximate_parts} short story parts of about 70-80 seconds each when possible. "
+                "Make Part 1 about 90 seconds because it includes the intro. "
+                f"Begin with a short intro in {language} explaining what the story is about, then say in {language} that the story is told in {approximate_parts} parts. "
+                "Each part should have a small beginning, turn, and soft ending beat, while the complete story keeps one continuous plot.\n"
+            )
+        genre_lines = (
+            f"Story type / genre: {story_type_text}.\n"
+            f"Genre tags: {', '.join(selected_tags) if selected_tags else 'None'}.\n"
+            f"{long_story_direction}"
+            "Genre direction: fully commit to this story type with the right setting, conflict, pacing, imagery, and emotional tone, "
+            "but keep everything child-safe, warm, non-graphic, and age-appropriate.\n"
+        )
+    else:
+        speed_profile = get_kids_rhyme_speed_profile(song_speed)
+        genre_lines = (
+            f"Song speed: {speed_profile['label']}.\n"
+            f"Speed direction: {speed_profile['prompt_line']}\n"
+            f"Musical pace target: {speed_profile['tempo']}.\n"
+            "Do not mention exact song length or duration in the generated rhyme. Shape the rhyme only by speed, rhythm, and repetition.\n"
+        )
+    if mode == "Storytelling":
+        length_block = (
+            f"Story size guide: {length_descriptor or 'approximate target length'}.\n"
+            f"Target audio length: about {_format_duration_hint(duration_seconds)}.\n"
+            f"Natural acceptable length range: {_format_duration_hint(max(1, duration_seconds - get_natural_duration_tolerance_seconds(duration_seconds)))} to {_format_duration_hint(duration_seconds + get_natural_duration_tolerance_seconds(duration_seconds))}; prioritize voice quality over exact timing.\n"
+        )
+    else:
+        length_block = ""
+    return (
+        f"Create a {target_label} from this idea: {idea_text}\n"
+        f"{length_block}"
+        f"Target language: {language}.\n"
+        f"Language rule: the final story script, intro, part labels, narration, and moral must be entirely in {language}. Do not use English intro or English part labels unless the target language is English.\n"
+        f"Voice feel: friendly {singer_gender.lower()} voice for toddlers and kids.\n"
+        f"{genre_lines}"
+        "Part transition rule: keep split-part transitions tight. Do not add [pause] at the end of a part or immediately after a part label. Use only short natural sentence breaks.\n"
+        f"Rhythm/poem direction: cheerful, memorable, easy to sing along, with natural pacing.\n"
+        f"Structure: {structure}\n"
+        "Also return a matching music/style description for the audio generator."
+    )
+
+
+def apply_kids_prompt_advice(prompt: str, advice: str, mode: str) -> str:
+    import re
+
+    clean_prompt = (prompt or "").strip()
+    clean_advice = (advice or "").strip()
+    if not clean_advice:
+        return clean_prompt
+
+    refined_prompt = clean_prompt
+
+    if mode == "Storytelling":
+        duration_seconds = _extract_requested_duration_seconds(clean_advice)
+    else:
+        duration_seconds = None
+
+    if duration_seconds:
+        duration_line = f"Target audio length: about {_format_duration_hint(duration_seconds)}."
+        tolerance_seconds = get_natural_duration_tolerance_seconds(duration_seconds)
+        natural_range_line = (
+            "Natural acceptable length range: "
+            f"{_format_duration_hint(max(1, duration_seconds - tolerance_seconds))} to "
+            f"{_format_duration_hint(duration_seconds + tolerance_seconds)}; "
+            "prioritize voice quality over exact timing."
+        )
+        if re.search(r"(?im)^target audio length\s*:.*$", refined_prompt):
+            refined_prompt = re.sub(
+                r"(?im)^target audio length\s*:.*$",
+                duration_line,
+                refined_prompt,
+                count=1,
+            )
+        else:
+            refined_prompt = f"{refined_prompt}\n{duration_line}"
+        if re.search(r"(?im)^natural acceptable length range\s*:.*$", refined_prompt):
+            refined_prompt = re.sub(
+                r"(?im)^natural acceptable length range\s*:.*$",
+                natural_range_line,
+                refined_prompt,
+                count=1,
+            )
+        else:
+            refined_prompt = f"{refined_prompt}\n{natural_range_line}"
+
+    refined_prompt = re.sub(
+        r"(?ims)\n?Latest user advice\s*:.*?(?=\n[A-Z][A-Za-z /-]+:|\Z)",
+        "",
+        refined_prompt,
+    ).strip()
+
+    output_name = "story script" if mode == "Storytelling" else "rhyme/poem lyrics"
+    return (
+        f"{refined_prompt}\n"
+        f"Latest user advice: {clean_advice}\n"
+        f"Revise the {output_name}, structure, pacing, and style so the final audio follows this advice."
+    )
+
+
 def expand_prompt_to_lyrics_and_style(prompt: str, singer_gender: str, mode: str = "Poem/Rhyme") -> tuple[str, str]:
     if mode == "Storytelling":
-        lyrics = (
-            "[pause] Once upon a time, in a beautiful green forest, there lived a very wise turtle. "
-            "[pause] In the same forest, there was also a rabbit who was very proud of his speed. "
-            "[pause] One day, they decided to have a race. "
-            "[pause] The rabbit ran very fast and fell asleep halfway. "
-            "[pause] The turtle walked slowly and steadily, and in the end, he won the race. "
-            "[pause] The moral of the story is that slow and steady wins the race."
-        )
-        style = "warm theatrical spoken-word audiobook narrator, gentle bedtime story, calm pacing, soft glockenspiel and warm strings, 0 BPM"
-        return lyrics, style
+        return build_local_storytelling_fallback(prompt, singer_gender)
 
     import re
     p = prompt.lower()
@@ -5704,7 +7251,19 @@ def expand_prompt_to_lyrics_and_style(prompt: str, singer_gender: str, mode: str
             f"cheerful kids adventure song, bouncy rhythm, 98 BPM, playful friendly {singer_gender.lower()} singing voice, "
             f"acoustic guitar, gentle percussion, glockenspiel, bells, clean mix."
         )
-        
+
+    speed_label = "Mid"
+    if "song speed: slow" in p or "slower pacing" in p or "slow pacing" in p:
+        speed_label = "Slow"
+    elif "song speed: fast" in p or "quick pacing" in p or "fast pace" in p:
+        speed_label = "Fast"
+    speed_profile = get_kids_rhyme_speed_profile(speed_label)
+    tempo_hint = str(speed_profile["tempo"])
+    if re.search(r"\b\d+\s*bpm\b", style, flags=re.IGNORECASE):
+        style = re.sub(r"\b\d+\s*bpm\b", tempo_hint, style, count=1, flags=re.IGNORECASE)
+    else:
+        style = f"{style}, {tempo_hint}"
+
     return lyrics, style
 
 
@@ -5934,7 +7493,10 @@ def expand_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, singer_gend
             Requirements:
             1. If the Target Story Language is 'Hindi', write the script in standard Devanagari script (Hindi characters) like 'एक समय की बात है' rather than Romanized/Hinglish (e.g. 'Ek samay ki baat hai').
             2. Utilize [pause] tags for natural dramatic pauses in the script. Structure it like an audiobook narration.
-            3. The 'style' string must be a comma-separated description of storytelling background, pacing, vocal qualities, and mood suitable for kids/toddlers.
+            3. If the prompt includes a story type, genre, or tags, use strong genre craft: matching setting, conflict, stakes, imagery, pacing, character goals, twist/reveal, and ending.
+            4. Keep every genre child-safe and non-graphic. For horror, thriller, dystopian, supernatural, or cyberpunk, create gentle suspense, wonder, mystery, and emotional safety rather than violence or adult fear.
+            5. Honor every explicit instruction inside the User Kids Story Idea, especially target audio length, pacing, mood, topic, language, story type, tags, and any latest user advice.
+            6. The 'style' string must be a comma-separated description of storytelling background, pacing, vocal qualities, and mood suitable for kids/toddlers.
             
             Return a raw JSON object matching this schema:
             {{
@@ -5962,8 +7524,10 @@ def expand_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, singer_gend
                - 'strictly no heavy synthesizers, no electronic beat drops'
                - 'warm sacred ambient reverb'
             3. If the Target Song Language is 'English', write the lyrics in English.
-            4. Structure the lyrics with standard tags like [verse] and [chorus]. Avoid [intro] or [outro] tags. Keep it to 2-3 short verses and 1-2 choruses.
-            5. The 'style' string must be a comma-separated description of instruments, tempo (BPM), vocal qualities, and musical genre suitable for kids/toddlers.
+            4. Honor every explicit instruction inside the User Kids Song Idea, especially song speed, rhythm, mood, topic, language, verse count, chorus repetition, and any latest user advice.
+            5. If the prompt includes a Song speed line, follow it exactly and shape the rhyme around that speed instead of exact duration.
+            6. Structure the lyrics with standard tags like [verse] and [chorus]. Avoid [intro] or [outro] tags. Use the selected speed to decide line density, hook repetition, and pacing.
+            7. The 'style' string must be a comma-separated description of instruments, tempo (BPM), vocal qualities, and musical genre suitable for kids/toddlers.
             
             Return a raw JSON object matching this schema:
             {{
@@ -6206,7 +7770,19 @@ def expand_prompt_to_lyrics_and_style_hindi_local(prompt: str, singer_gender: st
             f"cheerful kids adventure song, high-energy bouncy kids rhythm, 108 BPM, playful friendly native Indian {singer_gender.lower()} singing voice, Bollywood style kids singer, natural Indian accent, "
             f"acoustic guitar, traditional Indian dholak beats, soft tabla percussion, glockenspiel, bells, clear native pronunciation, clean mix."
         )
-        
+
+    speed_label = "Mid"
+    if "song speed: slow" in p or "slower pacing" in p or "slow pacing" in p:
+        speed_label = "Slow"
+    elif "song speed: fast" in p or "quick pacing" in p or "fast pace" in p:
+        speed_label = "Fast"
+    speed_profile = get_kids_rhyme_speed_profile(speed_label)
+    tempo_hint = str(speed_profile["tempo"])
+    if re.search(r"\b\d+\s*bpm\b", style, flags=re.IGNORECASE):
+        style = re.sub(r"\b\d+\s*bpm\b", tempo_hint, style, count=1, flags=re.IGNORECASE)
+    else:
+        style = f"{style}, {tempo_hint}"
+
     return lyrics, style
 
 
