@@ -9,6 +9,8 @@ KIDS_STUDIO_MASTER_REGISTRY = {
     "KIDS_RHYME_MOUSE": {
         "display_name": "Squeaky Cartoon Mouse (LittleBubbles Style)",
         "base_tts_voice": "hi-IN-SwaraNeural",
+        "edge_rate": "-5%",
+        "edge_pitch": "+12%",
         "pitch_change": 12,                  # Full octave jump for cartoon effect
         "formant_shift": 1.00,               # High-clarity compressed formant range
         "index_rate": 0.40,
@@ -19,6 +21,8 @@ KIDS_STUDIO_MASTER_REGISTRY = {
     "STORY_MALE_PREMIUM": {
         "display_name": "Premium Male Narrator (Wise Baritone Style)",
         "base_tts_voice": "hi-IN-MadhurNeural",
+        "edge_rate": "-12%",
+        "edge_pitch": "-5%",
         "pitch_change": -2,                  # Slightly minimized to keep the frequency track stable
         "formant_shift": 0.96,               # Safe throat scaling to prevent gravelly resonance
         "index_rate": 0.28,                  # Calibrated to allow organic word transitions
@@ -29,6 +33,8 @@ KIDS_STUDIO_MASTER_REGISTRY = {
     "STORY_FEMALE_KIND": {
         "display_name": "Premium Female Storyteller (Koo Koo TV Style)",
         "base_tts_voice": "hi-IN-SwaraNeural",
+        "edge_rate": "-12%",
+        "edge_pitch": "+5%",
         "pitch_change": 0,                   # Hard-locked to zero to eliminate chipmunk leakage
         "formant_shift": 0.98,               # Gently rounds off treble to remove sharp frequencies
         "index_rate": 0.28,                  # Calibrated to allow organic word transitions

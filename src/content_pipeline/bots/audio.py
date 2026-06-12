@@ -3220,12 +3220,29 @@ def generate_hindi_song_via_native_audio(
             
         edge_raw_vocals = temp_dir / "edge_raw_vocals_song.mp3"
         try:
+            r = active_profile.get("edge_rate")
+            p = active_profile.get("edge_pitch")
+            if r is None:
+                if mode == "Storytelling":
+                    r = "-12%"
+                elif mode == "Poem/Rhyme":
+                    r = "-5%"
+                else:
+                    r = "+0%"
+            if p is None:
+                if mode == "Storytelling":
+                    p = "+5%" if "Swara" in fallback_voice or "female" in fallback_voice.lower() or "Aoede" in fallback_voice or "Kore" in fallback_voice else "-5%"
+                elif mode == "Poem/Rhyme":
+                    p = "+12%"
+                else:
+                    p = "+0Hz"
+
             _run_async(_write_edge_voice_sample(
                 edge_raw_vocals,
                 voice=fallback_voice,
                 text=clean_lyrics_edge,
-                rate=active_profile.get("edge_rate", "+0%"),
-                pitch=active_profile.get("edge_pitch", "+0Hz")
+                rate=r,
+                pitch=p
             ))
             # Convert edge mp3 to wav format
             edge_wav = temp_dir / "edge_raw_vocals_song.wav"

@@ -9,7 +9,7 @@ SINGER_MANIFEST = {
     "arijit_singh": {
         "display_name": "Arijit Singh",
         "gender": "male",
-        "url": "https://huggingface.co/QuickWick/Music-AI-Voices/resolve/main/Arijit%20Singh%20(RVC)%20(Crepe%20v2)%20450%20Epoch.zip",
+        "url": "https://huggingface.co/ivaan2003/ai-rvc/resolve/main/arijit-singh.zip",
         "file_prefix": "Arijit_Singh"
     },
     "shreya_ghoshal": {
@@ -41,6 +41,8 @@ SINGER_MANIFEST = {
 # Alias mapping for typo compatibility and kids studio voices
 SINGER_ALIASES = {
     "arijit_singn": "arijit_singh",
+    "Arijit_Singh": "arijit_singh",
+    "shreya": "shreya_ghoshal",
     "hi_kids_ananya": "shreya_ghoshal",
     "en_kids_ana": "shreya_ghoshal",
     "hi_kids_madhur": "arijit_singh",
