@@ -1198,8 +1198,8 @@ def render_frontdoor(settings: Settings) -> None:
         "AI for PM teams using Jira and Scrum. The A.I. flow should sound clear and calm.",
     )
     img_prov = settings.image_provider
-    if img_prov == "mock":
-        img_prov = "gemini"
+    if img_prov == "mock" or img_prov not in ("nvidia", "gemini", "openai", "free-ai", "mock"):
+        img_prov = "nvidia"
     st.session_state.setdefault("image_provider_choice", img_prov)
     st.session_state.setdefault("image_topic", "Agile project management")
     st.session_state.setdefault("image_subject", "a team reviewing a glowing workflow board")
@@ -1722,15 +1722,31 @@ def render_frontdoor(settings: Settings) -> None:
         
     elif active_cat == "Automation":
         st.session_state.setdefault("active_automation_page", "Run Pipeline")
-        sub_cols = st.columns(3)
-        sub_pages = ["Run Pipeline", "Social Publish", "Daily Prompts"]
-        sub_icons = ["⚙️ Run Pipeline", "🚀 Social Publish", "💡 Daily Prompts"]
-        for i, (page, icon) in enumerate(zip(sub_pages, sub_icons)):
-            with sub_cols[i]:
-                is_active = st.session_state["active_automation_page"] == page
-                if st.button(icon, key=f"sub_auto_{page}", use_container_width=True, type="primary" if is_active else "secondary"):
-                    st.session_state["active_automation_page"] = page
-                    st.rerun()
+        auto_rows = [
+            ["Run Pipeline", "Automation Music Studio", "Automation Kids Music Studio"],
+            ["Automation Image Studio", "Social Publish", "Daily Prompts"],
+        ]
+        auto_icons = {
+            "Run Pipeline": "⚙️ Run Pipeline",
+            "Automation Music Studio": "🎵 Automation Music Studio",
+            "Automation Kids Music Studio": "👶 Automation Kids Music Studio",
+            "Automation Image Studio": "🖼️ Automation Image Studio",
+            "Social Publish": "🚀 Social Publish",
+            "Daily Prompts": "💡 Daily Prompts",
+        }
+        for row in auto_rows:
+            sub_cols = st.columns(3)
+            for i, page in enumerate(row):
+                with sub_cols[i]:
+                    is_active = st.session_state["active_automation_page"] == page
+                    if st.button(
+                        auto_icons[page],
+                        key=f"sub_auto_{page}",
+                        use_container_width=True,
+                        type="primary" if is_active else "secondary",
+                    ):
+                        st.session_state["active_automation_page"] = page
+                        st.rerun()
         st.markdown("<br>", unsafe_allow_html=True)
 
     # Resolve active_p variable to sync with original logic
@@ -1756,9 +1772,13 @@ def render_frontdoor(settings: Settings) -> None:
     elif active_cat == "Automation":
         subpage_mapping = {
             "Run Pipeline": "Run",
+            "Automation Music Studio": "Music",
+            "Automation Kids Music Studio": "Kids",
+            "Automation Image Studio": "AutoImage",
             "Social Publish": "Distribution",
             "Daily Prompts": "Prompts"
         }
+        st.session_state["automation_music_combo_mode"] = st.session_state["active_automation_page"] == "Automation Music Studio"
         active_p = subpage_mapping.get(st.session_state["active_automation_page"], "Run")
     elif active_cat == "Files":
         active_p = "Files"
@@ -1994,6 +2014,9 @@ def render_frontdoor(settings: Settings) -> None:
         if dashboard_path.exists():
             st.markdown(f"[Open dashboard file]({dashboard_path.as_uri()})")
 
+    elif active_p == "AutoImage":
+        render_automation_image_studio(settings)
+
     elif active_p == "Music":
         st.markdown("### Music studio")
         st.markdown("<p style='font-size: 14.5px; color: #94a3b8; margin-top: -10px; margin-bottom: 24px;'>Compose premium, high-fidelity songs in any genre featuring warm singing voices powered by Tencent Lyria 3 Pro.</p>", unsafe_allow_html=True)
@@ -2001,6 +2024,7 @@ def render_frontdoor(settings: Settings) -> None:
         if "lyrics_manually_edited" not in st.session_state:
             st.session_state["lyrics_manually_edited"] = bool(st.session_state.get("music_studio_lyrics", "").strip())
         disable_advanced_settings = not st.session_state["lyrics_manually_edited"]
+        automation_combo_mode = bool(st.session_state.get("automation_music_combo_mode", False))
         
         # Target Language Dropdown
         st.session_state.setdefault("music_studio_language", "English")
@@ -2060,6 +2084,20 @@ def render_frontdoor(settings: Settings) -> None:
             else:
                 one_click_gender = st.selectbox("Singer Voice Gender Selection", ["Female", "Male"], key="music_studio_one_click_singer_gender")
                 st.session_state["music_studio_playback_singer_key"] = "arijit_singh" if one_click_gender == "Male" else "shreya_ghoshal"
+
+            song_length_options = ("Short (1-2 mins)", "Long (2-3 mins)")
+            current_song_length = st.session_state.get("music_studio_song_length_choice", "Short (1-2 mins)")
+            if current_song_length not in song_length_options:
+                current_song_length = "Short (1-2 mins)"
+            song_length_choice = st.selectbox(
+                "Song Length",
+                options=song_length_options,
+                index=song_length_options.index(current_song_length),
+                key="music_studio_song_length_choice",
+            )
+            song_length_profile = get_music_song_length_profile(song_length_choice, seed_text=st.session_state.get("music_studio_one_click_song_idea", ""))
+            st.session_state["music_duration_seconds"] = int(song_length_profile["target_seconds"])
+            st.session_state["music_studio_song_length_seconds"] = int(song_length_profile["target_seconds"])
             
             if st.session_state.get("gemini_api_error"):
                 lang = st.session_state.get("music_studio_language", "English")
@@ -2078,7 +2116,17 @@ def render_frontdoor(settings: Settings) -> None:
                 else:
                     with st.spinner("Writing lyrics and composing style..."):
                         lang = st.session_state.get("music_studio_language", "English")
-                        lyrics_exp, desc_exp = expand_general_prompt_to_lyrics_and_style_dynamic(settings, one_click_prompt, one_click_gender, lang)
+                        song_length_profile = get_music_song_length_profile(
+                            st.session_state.get("music_studio_song_length_choice", "Short (1-2 mins)"),
+                            seed_text=one_click_prompt.strip(),
+                        )
+                        lyrics_exp, desc_exp = expand_general_prompt_to_lyrics_and_style_dynamic(
+                            settings,
+                            one_click_prompt.strip(),
+                            one_click_gender,
+                            lang,
+                            song_length_profile=song_length_profile,
+                        )
                         if lang in ["Hindi", "Hinglish"]:
                             desc_exp = clean_style_description_for_instrumental(desc_exp)
                         st.session_state["music_studio_lyrics"] = lyrics_exp
@@ -2110,6 +2158,24 @@ def render_frontdoor(settings: Settings) -> None:
                             st.session_state["music_studio_ref_audio_choice"] = "None (Text-only)"
                             
                         st.session_state["lyrics_manually_edited"] = False
+                        if automation_combo_mode:
+                            st.session_state["automation_music_singer_gender"] = one_click_gender
+                            image_topic = one_click_prompt.strip() or lyrics_exp.splitlines()[0].strip("[]")
+                            creative_topic, creative_subject = _automation_music_image_seed(
+                                image_topic,
+                                desc_exp or one_click_prompt,
+                                one_click_gender,
+                            )
+                            st.session_state["automation_music_image_provider_choice"] = st.session_state.get("image_provider_choice", settings.image_provider or "gemini")
+                            st.session_state["automation_music_image_topic"] = creative_topic
+                            st.session_state["automation_music_image_subject"] = creative_subject[:240]
+                            st.session_state["automation_music_image_art_style"] = "3D Claymation / Pixar"
+                            st.session_state["automation_music_image_studio_prompt"] = build_cinematic_image_prompt(
+                                st.session_state["automation_music_image_topic"],
+                                st.session_state["automation_music_image_subject"],
+                                style_name=st.session_state["automation_music_image_art_style"],
+                            )
+                            st.session_state["automation_music_image_prompt_input"] = st.session_state["automation_music_image_studio_prompt"]
                         st.success("Lyrics & Style drafted successfully!")
                         st.rerun()
 
@@ -2342,71 +2408,7 @@ def render_frontdoor(settings: Settings) -> None:
             singer_gender = st.session_state.get("music_studio_one_click_singer_gender", "Male")
             st.session_state["music_studio_singer_gender"] = singer_gender
 
-        st.markdown("---")
-        st.markdown("### Playback & Generation")
-        
-        generated_file_path = st.session_state.get("music_studio_generated_mp3", "")
-        default_out = PROJECT_ROOT / "output" / "Music_Studio_Generated_Song.mp3"
-        if not default_out.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio/Music_Studio_Generated_Song.mp3").exists():
-            default_out = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio/Music_Studio_Generated_Song.mp3")
-        if not generated_file_path and default_out.exists():
-            generated_file_path = str(default_out)
-            st.session_state["music_studio_generated_mp3"] = generated_file_path
-
-        bottom_cols = st.columns([1.2, 1.8, 1.0])
-        
-        with bottom_cols[0]:
-            if generated_file_path and Path(generated_file_path).exists():
-                st.markdown(
-                    f"""
-                    <div style="padding: 10px; border-radius: 8px; background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(56, 189, 248, 0.15);">
-                      <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase;">Active Track</div>
-                      <div style="font-size: 14px; font-weight: 800; color: #f8fafc; margin-top: 2px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
-                        Music_Studio_Generated_Song.mp3
-                      </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
-            else:
-                st.markdown(
-                    """
-                    <div style="padding: 10px; border-radius: 8px; background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(244, 63, 94, 0.15);">
-                      <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase;">Active Track</div>
-                      <div style="font-size: 14px; font-weight: 800; color: #f43f5e; margin-top: 2px;">
-                        No track generated yet
-                      </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
-                
-        with bottom_cols[1]:
-            if generated_file_path and Path(generated_file_path).exists():
-                st.audio(generated_file_path)
-            else:
-                st.write("")
-                
-        with bottom_cols[2]:
-            btn_cols = st.columns(2)
-            with btn_cols[0]:
-                if generated_file_path and Path(generated_file_path).exists():
-                    with open(generated_file_path, "rb") as f:
-                        btn_data = f.read()
-                    st.download_button(
-                        label="Download",
-                        data=btn_data,
-                        file_name="Music_Studio_Generated_Song.mp3",
-                        mime="audio/mp3",
-                        use_container_width=True,
-                        key="music_studio_btn_download"
-                    )
-                else:
-                    st.button("Download", disabled=True, use_container_width=True, key="music_studio_btn_download_disabled")
-            with btn_cols[1]:
-                generate_clicked = st.button("Generate", type="primary", use_container_width=True, key="music_studio_btn_generate")
-
-        if generate_clicked or st.session_state.get("music_studio_trigger_generation_now"):
+        if st.session_state.get("music_studio_trigger_generation_now"):
             if st.session_state.get("music_studio_trigger_generation_now"):
                 st.session_state["music_studio_trigger_generation_now"] = False
             with st.spinner("Connecting to tencent/SongGeneration space and generating audio... (This may take 1-3 minutes)"):
@@ -2612,7 +2614,13 @@ def render_frontdoor(settings: Settings) -> None:
                             style_description=desc,
                             singer_key=st.session_state.get("music_studio_playback_singer_key", "arijit_singh")
                         )
+                        out_path = normalize_music_studio_audio_length(
+                            out_path,
+                            int(st.session_state.get("music_duration_seconds", 90)),
+                        )
                         st.session_state["music_studio_generated_mp3"] = str(out_path)
+                        st.session_state["music_studio_mixed_video_path"] = ""
+                        maybe_generate_linked_automation_music_image(settings)
                         st.success("🎉 Hindi Song generated successfully using Native Audio Pipeline!")
                         st.rerun()
                     elif lang == "Hinglish":
@@ -2670,8 +2678,14 @@ def render_frontdoor(settings: Settings) -> None:
                             str(out_path)
                         ]
                         subprocess.run(transcode_cmd, check=True)
+                        out_path = normalize_music_studio_audio_length(
+                            out_path,
+                            int(st.session_state.get("music_duration_seconds", 90)),
+                        )
                         
                         st.session_state["music_studio_generated_mp3"] = str(out_path)
+                        st.session_state["music_studio_mixed_video_path"] = ""
+                        maybe_generate_linked_automation_music_image(settings)
                         st.success("🎉 Song generated successfully!")
                         st.rerun()
                     except Exception as hf_exc:
@@ -2686,11 +2700,146 @@ def render_frontdoor(settings: Settings) -> None:
                             singer_gender=singer_gender,
                             selected_ref=selected_ref
                         )
+                        out_path = normalize_music_studio_audio_length(
+                            out_path,
+                            int(st.session_state.get("music_duration_seconds", 90)),
+                        )
                         st.session_state["music_studio_generated_mp3"] = str(out_path)
+                        st.session_state["music_studio_mixed_video_path"] = ""
+                        maybe_generate_linked_automation_music_image(settings)
                         st.success("🎉 Backup Song generated successfully using Edge-TTS fallback mixer!")
                         st.rerun()
                 except Exception as exc:
                     st.error(f"❌ Error during song preparation: {exc}")
+
+        if automation_combo_mode:
+            render_automation_music_image_section(settings)
+
+        st.markdown("---")
+        st.markdown("### Playback & Generation")
+
+        generated_file_path = st.session_state.get("music_studio_generated_mp3", "")
+        default_out = PROJECT_ROOT / "output" / "Music_Studio_Generated_Song.mp3"
+        if not default_out.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio/Music_Studio_Generated_Song.mp3").exists():
+            default_out = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio/Music_Studio_Generated_Song.mp3")
+        if not generated_file_path and default_out.exists():
+            generated_file_path = str(default_out)
+            st.session_state["music_studio_generated_mp3"] = generated_file_path
+
+        bottom_cols = st.columns([1.2, 1.8, 1.0])
+
+        with bottom_cols[0]:
+            if generated_file_path and Path(generated_file_path).exists():
+                st.markdown(
+                    f"""
+                    <div style="padding: 10px; border-radius: 8px; background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(56, 189, 248, 0.15);">
+                      <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase;">Active Track</div>
+                      <div style="font-size: 14px; font-weight: 800; color: #f8fafc; margin-top: 2px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
+                        Music_Studio_Generated_Song.mp3
+                      </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+            else:
+                st.markdown(
+                    """
+                    <div style="padding: 10px; border-radius: 8px; background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(244, 63, 94, 0.15);">
+                      <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase;">Active Track</div>
+                      <div style="font-size: 14px; font-weight: 800; color: #f43f5e; margin-top: 2px;">
+                        No track generated yet
+                      </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+        with bottom_cols[1]:
+            if generated_file_path and Path(generated_file_path).exists():
+                st.audio(generated_file_path)
+            else:
+                st.write("")
+
+        with bottom_cols[2]:
+            btn_cols = st.columns(2)
+            with btn_cols[0]:
+                if generated_file_path and Path(generated_file_path).exists():
+                    with open(generated_file_path, "rb") as f:
+                        btn_data = f.read()
+                    st.download_button(
+                        label="Download",
+                        data=btn_data,
+                        file_name="Music_Studio_Generated_Song.mp3",
+                        mime="audio/mp3",
+                        use_container_width=True,
+                        key="music_studio_btn_download"
+                    )
+                else:
+                    st.button("Download", disabled=True, use_container_width=True, key="music_studio_btn_download_disabled")
+            with btn_cols[1]:
+                if st.button("Generate", type="primary", use_container_width=True, key="music_studio_btn_generate"):
+                    st.session_state["music_studio_trigger_generation_now"] = True
+                    st.rerun()
+
+        mixed_video_path = st.session_state.get("music_studio_mixed_video_path", "")
+        mix_audio_path = Path(generated_file_path) if generated_file_path and Path(generated_file_path).exists() else None
+        mix_image_paths = [Path(p) for p in st.session_state.get("automation_music_image_preview_paths", []) if p]
+        if not mix_image_paths:
+            preview_path = st.session_state.get("automation_music_image_preview_path", "")
+            if preview_path:
+                mix_image_paths = [Path(preview_path)]
+
+        mix_status_cols = st.columns([1.2, 1.2, 1.1])
+        with mix_status_cols[0]:
+            st.markdown(
+                f"""
+                <div style="padding: 10px; border-radius: 8px; background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(56, 189, 248, 0.15);">
+                  <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase;">Video Mix</div>
+                  <div style="font-size: 14px; font-weight: 800; color: #f8fafc; margin-top: 2px;">
+                    {len(mix_image_paths) if mix_image_paths else 0} image{'s' if len(mix_image_paths) != 1 else ''}
+                  </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        with mix_status_cols[1]:
+            if st.button("🎬 Mix Song + Images", use_container_width=True, key="music_studio_btn_mix_video"):
+                if not mix_audio_path:
+                    st.warning("Please generate the song first.")
+                elif not mix_image_paths:
+                    st.warning("No generated images found to mix into a video.")
+                else:
+                    try:
+                        mix_output_dir = resolve_output_dir(st.session_state.get("output_dir_pref", str(settings.output_dir)))
+                        video_path = mix_music_and_images_to_mp4(
+                            audio_path=mix_audio_path,
+                            image_paths=mix_image_paths,
+                            output_dir=mix_output_dir,
+                            output_name="Music_Studio_Mixed_Song_Images.mp4",
+                        )
+                        st.session_state["music_studio_mixed_video_path"] = str(video_path)
+                        st.success("🎉 Mixed MP4 created successfully!")
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(f"❌ Video mix error: {exc}")
+        with mix_status_cols[2]:
+            if mixed_video_path and Path(mixed_video_path).exists():
+                with open(mixed_video_path, "rb") as f:
+                    mix_data = f.read()
+                st.download_button(
+                    label="Download MP4",
+                    data=mix_data,
+                    file_name="Music_Studio_Mixed_Song_Images.mp4",
+                    mime="video/mp4",
+                    use_container_width=True,
+                    key="music_studio_btn_download_mixed_video",
+                )
+            else:
+                st.button("Download MP4", disabled=True, use_container_width=True, key="music_studio_btn_download_mixed_video_disabled")
+
+        if mixed_video_path and Path(mixed_video_path).exists():
+            st.markdown("#### Mixed Video Preview")
+            st.video(mixed_video_path)
 
     elif active_p == "Instrumental":
         st.markdown("### Instrumental Music Studio")
@@ -3425,9 +3574,9 @@ def render_frontdoor(settings: Settings) -> None:
                 selected_project = st.selectbox("Select Project Workspace", options=available_projects, index=default_index)
             with setup_cols[1]:
                 current_val = st.session_state.get("image_provider_choice", "free-ai")
-                if current_val not in ("free-ai", "gemini", "openai"):
-                    current_val = "free-ai"
-                options = ("free-ai", "gemini", "openai")
+                if current_val not in ("nvidia", "free-ai", "gemini", "openai"):
+                    current_val = "nvidia"
+                options = ("nvidia", "free-ai", "gemini", "openai")
                 selected_provider = st.selectbox(
                     "Image Provider",
                     options=options,
@@ -4023,7 +4172,7 @@ def render_frontdoor(settings: Settings) -> None:
             with param_cols[0]:
                 st.selectbox(
                     "Image synthesis Provider",
-                    options=("gemini", "openai", "free-ai"),
+                    options=("nvidia", "gemini", "openai", "free-ai"),
                     key="image_provider_choice"
                 )
             with param_cols[1]:
@@ -4041,6 +4190,10 @@ def render_frontdoor(settings: Settings) -> None:
                 st.info(
                     "💡 **Note on Gemini:** Dedicated image generation (`Imagen 3`/`4`) is only supported on Google AI Studio keys that have **billing enabled** (paid plan). "
                     "If your key is on the free tier, please select the **`free-ai`** (Pollinations) provider to generate real Pixar 3D illustrations for free."
+                )
+            elif st.session_state.get("image_provider_choice") == "nvidia":
+                st.info(
+                    "⚡ **NVIDIA selected:** This routes image generation through the NVIDIA-backed provider path first, before any fallback provider."
                 )
 
             prompt_input = st.text_area("Engine-Injected Style Prompt", value=st.session_state.get("image_studio_prompt", ""), height=120)
@@ -7005,6 +7158,163 @@ def normalize_audio_to_duration_window(
     return adjusted_path, original_seconds, int(adjustment_target), False
 
 
+def normalize_music_studio_audio_length(audio_path: Path, target_seconds: int) -> Path:
+    try:
+        target_seconds = int(target_seconds or 0)
+    except Exception:
+        target_seconds = 0
+    if target_seconds <= 0 or not audio_path.exists():
+        return audio_path
+
+    try:
+        current_seconds = get_audio_duration_seconds(audio_path)
+    except Exception:
+        return audio_path
+
+    tolerance_seconds = max(5, int(round(target_seconds * 0.08)))
+    if abs(current_seconds - target_seconds) <= tolerance_seconds:
+        return audio_path
+
+    adjusted_path = audio_path.with_name(f"{audio_path.stem}_{target_seconds}s{audio_path.suffix}")
+    try:
+        final_path, _ = adjust_audio_to_target_duration(audio_path, target_seconds, adjusted_path)
+        return final_path
+    except Exception:
+        return audio_path
+
+
+def _music_studio_zoompan_filter(frame_count: int, zoom_direction: str = "in", width: int = 1280, height: int = 720) -> str:
+    zoom_step = 0.00035
+    max_zoom = 1.08
+    if zoom_direction == "out":
+        zoom_expr = f"if(eq(on,0),{max_zoom},max(1.0,zoom-{zoom_step}))"
+    else:
+        zoom_expr = f"min(zoom+{zoom_step},{max_zoom})"
+    return (
+        f"scale={width}:{height}:force_original_aspect_ratio=increase,"
+        f"crop={width}:{height},"
+        f"zoompan=z='{zoom_expr}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
+        f"d={frame_count}:s={width}x{height}:fps=30,"
+        "format=yuv420p"
+    )
+
+
+def mix_music_and_images_to_mp4(
+    audio_path: Path,
+    image_paths: list[Path],
+    output_dir: Path,
+    output_name: str = "Music_Studio_Mixed_Video.mp4",
+) -> Path:
+    import shutil
+    import subprocess
+
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise RuntimeError("FFmpeg is required to mix song and images. Install it with: brew install ffmpeg")
+    if not audio_path.exists():
+        raise FileNotFoundError(f"Audio file not found: {audio_path}")
+    existing_images = [Path(p) for p in image_paths if Path(p).exists()]
+    if not existing_images:
+        raise FileNotFoundError("No generated images were available to mix into the video.")
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    mix_root = output_dir / ".runtime" / "music_video_mix"
+    mix_root.mkdir(parents=True, exist_ok=True)
+
+    total_seconds = get_audio_duration_seconds(audio_path)
+    if total_seconds <= 0:
+        raise ValueError("Could not detect a valid audio duration.")
+
+    per_image_seconds = max(1.0, total_seconds / len(existing_images))
+    clip_paths: list[Path] = []
+    concat_path = mix_root / "music_video_concat.txt"
+
+    for idx, image_path in enumerate(existing_images, start=1):
+        clip_path = mix_root / f"scene_{idx:02d}.mp4"
+        frames = max(30, int(math.ceil(per_image_seconds * 30)))
+        zoom_direction = "in" if idx % 2 else "out"
+        subprocess.run(
+            [
+                ffmpeg,
+                "-y",
+                "-loop",
+                "1",
+                "-i",
+                str(image_path),
+                "-vf",
+                _music_studio_zoompan_filter(frames, zoom_direction=zoom_direction),
+                "-frames:v",
+                str(frames),
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                "-movflags",
+                "+faststart",
+                "-an",
+                str(clip_path),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        clip_paths.append(clip_path)
+
+    concat_path.write_text(
+        "\n".join(f"file '{path}'" for path in clip_paths) + "\n",
+        encoding="utf-8",
+    )
+    video_only_path = mix_root / "music_video_only.mp4"
+    subprocess.run(
+        [
+            ffmpeg,
+            "-y",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            str(concat_path),
+            "-c",
+            "copy",
+            "-movflags",
+            "+faststart",
+            str(video_only_path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    final_path = output_dir / output_name
+    subprocess.run(
+        [
+            ffmpeg,
+            "-y",
+            "-i",
+            str(video_only_path),
+            "-i",
+            str(audio_path),
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            "-shortest",
+            "-movflags",
+            "+faststart",
+            str(final_path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return final_path
+
+
 def split_story_script_for_audio_chunks(
     script: str,
     target_seconds: int,
@@ -7421,6 +7731,123 @@ def get_kids_rhyme_speed_profile(song_speed: str) -> dict[str, object]:
     return profiles.get(normalized, profiles["mid"])
 
 
+def get_music_song_length_profile(song_length: str, seed_text: str = "") -> dict[str, object]:
+    normalized = (song_length or "Short (1-2 mins)").strip().lower()
+    profiles: dict[str, dict[str, object]] = {
+        "short (1-2 mins)": {
+            "label": "Short",
+            "target_seconds": 90,
+            "duration_range_text": "about 1 to 2 minutes",
+            "prompt_line": "Keep the song compact, with tighter verses, a clear hook, and a crisp ending.",
+        },
+        "long (2-3 mins)": {
+            "label": "Long",
+            "target_seconds": 165,
+            "duration_range_text": "about 2 to 3 minutes",
+            "prompt_line": "Allow slightly fuller verses, an extra chorus lift, and a more complete ending.",
+        },
+    }
+    profile = dict(profiles.get(normalized, profiles["short (1-2 mins)"]))
+    if normalized == "long (2-3 mins)":
+        seed = (seed_text or "").strip().lower()
+        if seed:
+            import hashlib
+
+            digest = hashlib.sha1(seed.encode("utf-8")).hexdigest()
+            variation = int(digest[:8], 16) % 31  # 0-30 seconds
+            profile["target_seconds"] = 150 + variation
+            profile["duration_range_text"] = "about 2 to 3 minutes"
+    return profile
+
+
+def build_music_length_prompt_block(song_length_profile: dict[str, object] | None) -> str:
+    if not song_length_profile:
+        return ""
+
+    label = str(song_length_profile.get("label", "Short")).strip()
+    duration_range = str(song_length_profile.get("duration_range_text", "")).strip()
+    prompt_line = str(song_length_profile.get("prompt_line", "")).strip()
+    target_seconds = int(song_length_profile.get("target_seconds", 90) or 90)
+
+    if target_seconds >= 140:
+        architecture = (
+            "Song architecture: create a polished core song with 2 verses, 2 choruses, and a short bridge.\n"
+            "Core-song rule: keep the first draft tight and high quality. The app will expand this into long form after generation.\n"
+        )
+    else:
+        architecture = (
+            "Song architecture: use 2 verses, 1 to 2 choruses, and a concise ending.\n"
+            "Expansion rule: keep the hook immediate, the lyrics compact, and the emotional arc clean.\n"
+        )
+
+    return (
+        f"Song length target: {label} ({duration_range}).\n"
+        f"Length direction: {prompt_line}\n"
+        f"{architecture}"
+        "Quality rule: keep the song emotionally rich and musically complete; use length to deepen the story, not to dilute it.\n"
+    )
+
+
+def expand_song_lyrics_for_length(
+    lyrics: str,
+    song_length_profile: dict[str, object] | None,
+    language: str,
+) -> str:
+    if not song_length_profile:
+        return lyrics
+
+    target_seconds = int(song_length_profile.get("target_seconds", 90) or 90)
+    if target_seconds < 140:
+        return lyrics
+
+    clean = (lyrics or "").strip()
+    if not clean:
+        return clean
+
+    lower = clean.lower()
+    chorus_match = re.search(r"(?ims)^\[chorus\]\s*(.+?)(?=^\[|\Z)", clean)
+    verse_match = re.search(r"(?ims)^\[verse\]\s*(.+?)(?=^\[|\Z)", clean)
+    bridge_present = "[bridge]" in lower
+
+    chorus_block = chorus_match.group(1).strip() if chorus_match else ""
+    verse_block = verse_match.group(1).strip() if verse_match else ""
+
+    if language.lower() == "hindi":
+        bridge_lines = (
+            "[bridge]\n"
+            "राहें बदलें फिर भी दिल वही गीत गाए,\n"
+            "हर नई सुबह हमें और करीब लाए।\n"
+        )
+        verse_addition = (
+            "[verse]\n"
+            "हर धड़कन में एक नई कहानी छुपी,\n"
+            "हर मुस्कान में एक रौशनी जुड़ी।\n"
+        )
+        chorus_intro = "[chorus]\n"
+    else:
+        bridge_lines = (
+            "[bridge]\n"
+            "When the night feels wide, we keep the glow alive,\n"
+            "Every little feeling helps the melody survive.\n"
+        )
+        verse_addition = (
+            "[verse]\n"
+            "Every heartbeat leaves a brighter trace,\n"
+            "Turning small goodbyes into a lasting embrace.\n"
+        )
+        chorus_intro = "[chorus]\n"
+
+    expanded = clean
+    if verse_block:
+        expanded += "\n\n" + verse_addition.strip()
+    if not bridge_present:
+        expanded += "\n\n" + bridge_lines.strip()
+    if chorus_block:
+        expanded += "\n\n" + chorus_intro + chorus_block
+
+    return expanded.strip()
+
+
 def build_kids_lyrics_prompt(
     idea: str,
     mode: str,
@@ -7666,7 +8093,11 @@ def expand_prompt_to_lyrics_and_style(prompt: str, singer_gender: str, mode: str
     return lyrics, style
 
 
-def expand_general_prompt_to_lyrics_and_style(prompt: str, singer_gender: str) -> tuple[str, str]:
+def expand_general_prompt_to_lyrics_and_style(
+    prompt: str,
+    singer_gender: str,
+    song_length_profile: dict[str, object] | None = None,
+) -> tuple[str, str]:
     import re
     p = prompt.lower()
     
@@ -7772,6 +8203,20 @@ def expand_general_prompt_to_lyrics_and_style(prompt: str, singer_gender: str) -
             f"bright acoustic bass, expressive friendly {singer_gender.lower()} vocal, clean mix."
         )
         
+    if song_length_profile and int(song_length_profile.get("target_seconds", 90) or 90) >= 140:
+        lyrics += (
+            "\n\n[bridge]\n"
+            "When the night gets quiet and the road feels long,\n"
+            "We remember why we started singing this song.\n\n"
+            "[verse]\n"
+            "Every heartbeat leaves a brighter trace,\n"
+            "Every small goodbye becomes part of the chase.\n\n"
+            "[chorus]\n"
+            "So hold on close and let the feeling stay,\n"
+            "We can make the moment bloom in a bigger way."
+        )
+        style += " fuller long-form structure, stronger chorus return, extended emotional arc."
+
     return lyrics, style
 
 
@@ -7782,11 +8227,19 @@ def generate_lyrics_and_style_unified(
     language: str,
     mode: str = "Poem/Rhyme",
     is_kids: bool = False,
-    script_generator: str = "NVIDIA Llama 3.3"
+    script_generator: str = "NVIDIA Llama 3.3",
+    song_length_profile: dict[str, object] | None = None,
 ) -> tuple[str, str]:
     import os
     import json
     import requests
+
+    def _finalize_song_output(lyrics: str, style: str) -> tuple[str, str]:
+        if song_length_profile:
+            lyrics = expand_song_lyrics_for_length(lyrics, song_length_profile, language)
+            if int(song_length_profile.get("target_seconds", 90) or 90) >= 140:
+                style = f"{style} fuller long-form arrangement, extra chorus return, extended emotional arc."
+        return lyrics, style
     
     if "gemini_api_error" in st.session_state:
         del st.session_state["gemini_api_error"]
@@ -7849,13 +8302,20 @@ def generate_lyrics_and_style_unified(
             """
     else:
         system_instruction = (
-            "You are a music composer and lyricist. Expand the user's idea into complete lyrics and style description. "
+            "You are a senior music composer and lyricist. Expand the user's idea into complete lyrics and style description with a strong hook, clear emotional arc, and polished song structure. "
             "The output must be JSON with keys 'lyrics' and 'style'."
         )
+        length_block = build_music_length_prompt_block(song_length_profile)
+        if length_block:
+            system_instruction += (
+                " When a song length target is provided, expand the song by increasing structure and emotional progression, "
+                "not by padding with filler or dull repetition."
+            )
         user_prompt = f"""
         User Song Idea: "{prompt}"
         Singer Voice Gender Selection: "{singer_gender}"
         Target Song Language: "{language}"
+        {length_block}
         
         Requirements:
         1. If the Target Song Language is 'Hindi', write the lyrics in standard Devanagari script (Hindi characters) like 'जय हनुमान ज्ञान गुन सागर' rather than Romanized/Hinglish (e.g. 'Jai Hanuman'). This forces the neural network to activate its native Indian mouth-shape and dental consonant engines for a perfect native accent. Explicitly mention 'native Indian {singer_gender.lower()} singing voice with natural Indian accent', 'Bollywood style playback singer (e.g. Arijit Singh/Atif Aslam style male, Shreya Ghoshal style female)', 'expressive emotional delivery with traditional vocal ornamentations (gamaq and murki)', 'clear native pronunciation', 'traditional Indian instruments (sitar, bansuri flute, dholak, tabla, acoustic guitar)', and 'highly polished T-Series/Saregama style commercial pop mix with grand cinematic reverb and spacious stereo delay' in the style description.
@@ -7917,7 +8377,7 @@ def generate_lyrics_and_style_unified(
                         content = data["choices"][0]["message"]["content"]
                         parsed = json.loads(content)
                         if "lyrics" in parsed and "style" in parsed:
-                            return parsed["lyrics"], parsed["style"]
+                            return _finalize_song_output(parsed["lyrics"], parsed["style"])
                 except Exception:
                     pass
                     
@@ -7949,7 +8409,7 @@ def generate_lyrics_and_style_unified(
                     )
                     parsed = json.loads(response.text)
                     if "lyrics" in parsed and "style" in parsed:
-                        return parsed["lyrics"], parsed["style"]
+                        return _finalize_song_output(parsed["lyrics"], parsed["style"])
                 except Exception:
                     pass
                     
@@ -7973,24 +8433,34 @@ def generate_lyrics_and_style_unified(
                     content = data["choices"][0]["message"]["content"]
                     parsed = json.loads(content)
                     if "lyrics" in parsed and "style" in parsed:
-                        return parsed["lyrics"], parsed["style"]
+                        return _finalize_song_output(parsed["lyrics"], parsed["style"])
             except Exception:
                 pass
 
     # Offline fallbacks if all API calls failed
     if language == "Hindi":
         if is_kids:
-            return expand_prompt_to_lyrics_and_style_hindi_local(prompt, singer_gender, mode=mode)
+            lyrics, style = expand_prompt_to_lyrics_and_style_hindi_local(prompt, singer_gender, mode=mode)
         else:
-            return expand_general_prompt_to_lyrics_and_style_hindi_local(prompt, singer_gender)
+            lyrics, style = expand_general_prompt_to_lyrics_and_style_hindi_local(
+                prompt,
+                singer_gender,
+                song_length_profile=song_length_profile,
+            )
+        return _finalize_song_output(lyrics, style)
     else:
         if is_kids:
-            return expand_prompt_to_lyrics_and_style(prompt, singer_gender, mode=mode)
+            lyrics, style = expand_prompt_to_lyrics_and_style(prompt, singer_gender, mode=mode)
         else:
-            return expand_general_prompt_to_lyrics_and_style(prompt, singer_gender)
+            lyrics, style = expand_general_prompt_to_lyrics_and_style(
+                prompt,
+                singer_gender,
+                song_length_profile=song_length_profile,
+            )
+        return _finalize_song_output(lyrics, style)
 
 
-def expand_general_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, singer_gender: str, language: str) -> tuple[str, str]:
+def expand_general_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, singer_gender: str, language: str, song_length_profile: dict[str, object] | None = None) -> tuple[str, str]:
     script_generator = st.session_state.get("music_studio_script_generator", "NVIDIA Llama 3.3")
     return generate_lyrics_and_style_unified(
         settings=settings,
@@ -7998,7 +8468,8 @@ def expand_general_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, sin
         singer_gender=singer_gender,
         language=language,
         is_kids=False,
-        script_generator=script_generator
+        script_generator=script_generator,
+        song_length_profile=song_length_profile,
     )
 
 
@@ -8015,7 +8486,11 @@ def expand_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, singer_gend
     )
 
 
-def expand_general_prompt_to_lyrics_and_style_hindi_local(prompt: str, singer_gender: str) -> tuple[str, str]:
+def expand_general_prompt_to_lyrics_and_style_hindi_local(
+    prompt: str,
+    singer_gender: str,
+    song_length_profile: dict[str, object] | None = None,
+) -> tuple[str, str]:
     import re
     p = prompt.lower()
     
@@ -8111,6 +8586,20 @@ def expand_general_prompt_to_lyrics_and_style_hindi_local(prompt: str, singer_ge
             f"bright acoustic bass, expressive friendly native Indian {singer_gender.lower()} vocal, Bollywood style singer, natural Indian accent, clear native pronunciation, clean mix."
         )
         
+    if song_length_profile and int(song_length_profile.get("target_seconds", 90) or 90) >= 140:
+        lyrics += (
+            "\n\n[bridge]\n"
+            "राहें मुड़ें फिर भी दिल कहता रहे,\n"
+            "सच्चे सुरों में ये सफ़र बहता रहे।\n\n"
+            "[verse]\n"
+            "हर धड़कन में एक नई कहानी छुपी,\n"
+            "हर मुलाक़ात में एक रौशनी जुड़ी।\n\n"
+            "[chorus]\n"
+            "थाम लो मुझे, ये पल न खो जाए,\n"
+            "लंबे सफ़र में भी ये गीत गूंज जाए।"
+        )
+        style += " fuller long-form structure, stronger chorus return, extended emotional arc."
+
     return lyrics, style
 
 
@@ -8232,6 +8721,547 @@ def expand_prompt_to_lyrics_and_style_hindi_local(prompt: str, singer_gender: st
         style = f"{style}, {tempo_hint}"
 
     return lyrics, style
+
+
+def render_automation_image_studio(settings) -> None:
+    prefix = "automation_image"
+
+    def k(name: str) -> str:
+        return f"{prefix}_{name}"
+
+    img_prov = settings.image_provider
+    if img_prov == "mock":
+        img_prov = "gemini"
+    if img_prov not in ("gemini", "openai", "free-ai"):
+        img_prov = "gemini"
+
+    ui_output_dir = resolve_output_dir(st.session_state.get("output_dir_pref", str(settings.output_dir)))
+
+    st.session_state.setdefault(k("provider_choice"), img_prov)
+    st.session_state.setdefault(k("topic"), "Agile project management")
+    st.session_state.setdefault(k("subject"), "a team reviewing a glowing workflow board")
+    st.session_state.setdefault(k("art_style"), "3D Claymation / Pixar")
+    st.session_state.setdefault(
+        k("studio_prompt"),
+        build_cinematic_image_prompt(
+            st.session_state[k("topic")],
+            st.session_state[k("subject")],
+            style_name=st.session_state[k("art_style")],
+        ),
+    )
+    st.session_state.setdefault(k("prompt_input"), st.session_state[k("studio_prompt")])
+    st.session_state.setdefault(k("preview_path"), "")
+    st.session_state.setdefault(k("last_topic"), st.session_state[k("topic")])
+    st.session_state.setdefault(k("last_subject"), st.session_state[k("subject")])
+    st.session_state.setdefault(k("last_style"), st.session_state[k("art_style")])
+
+    current_topic = st.session_state.get(k("topic"), "")
+    current_subject = st.session_state.get(k("subject"), "")
+    current_style = st.session_state.get(k("art_style"), "3D Claymation / Pixar")
+    if (
+        current_topic != st.session_state[k("last_topic")]
+        or current_subject != st.session_state[k("last_subject")]
+        or current_style != st.session_state[k("last_style")]
+    ):
+        st.session_state[k("studio_prompt")] = build_cinematic_image_prompt(
+            current_topic,
+            current_subject,
+            style_name=current_style,
+        )
+        st.session_state[k("prompt_input")] = st.session_state[k("studio_prompt")]
+        st.session_state[k("last_topic")] = current_topic
+        st.session_state[k("last_subject")] = current_subject
+        st.session_state[k("last_style")] = current_style
+
+    left_col, right_col = st.columns([6, 4])
+
+    with left_col:
+        st.markdown(
+            """
+            <div class="canvas-box">
+                <div class="canvas-title">🖼️ Pixar-Style Image Synthesis Canvas</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        image_preview_path = st.session_state.get(k("preview_path"))
+        if image_preview_path and os.path.exists(image_preview_path):
+            render_image_preview(Path(image_preview_path))
+            st.caption(f"Loaded generated canvas path: `{Path(image_preview_path).name}`")
+
+            try:
+                preview_file_path = Path(image_preview_path)
+                img_data = preview_file_path.read_bytes()
+                st.download_button(
+                    label="📥 Download Generated Widescreen Canvas",
+                    data=img_data,
+                    file_name=preview_file_path.name,
+                    mime="image/png" if preview_file_path.suffix.lower() == ".png" else "image/svg+xml",
+                    use_container_width=True,
+                    key=f"{prefix}_download_canvas_img",
+                )
+            except Exception as e:
+                st.error(f"Error reading image for download: {e}")
+
+            try:
+                preview_file_path = Path(image_preview_path)
+                content_bytes = preview_file_path.read_bytes()
+                is_fallback_svg = content_bytes.strip().startswith(b"<svg") or b"<svg" in content_bytes[:200]
+            except Exception:
+                is_fallback_svg = False
+
+            if is_fallback_svg and st.session_state.get(k("provider_choice")) != "mock":
+                st.warning(
+                    "⚠️ **Fallback to Mock:** The selected provider failed to generate the image (likely due to API billing/limit constraints) and silently fell back to the Mock provider. "
+                    "Please check your API keys or switch to the **`free-ai`** (Pollinations) provider to generate real Pixar illustrations for free."
+                )
+        else:
+            st.info("No visual canvas synthesized yet. Tweak subject descriptions under the screen and generate!")
+
+        st.markdown("#### 🎨 Prompt Engineering & synthesis")
+        param_cols = st.columns(4)
+        with param_cols[0]:
+            st.selectbox(
+                "Image synthesis Provider",
+                options=("nvidia", "gemini", "openai", "free-ai"),
+                key=k("provider_choice"),
+            )
+        with param_cols[1]:
+            st.text_input("Explainer Topic", key=k("topic"))
+        with param_cols[2]:
+            st.text_input("Scene Subject", key=k("subject"))
+        with param_cols[3]:
+            st.selectbox(
+                "Art Style",
+                options=("3D Claymation / Pixar", "Photorealistic", "Flat Vector", "Cinematic Anime", "None (Raw Prompt)"),
+                key=k("art_style"),
+            )
+
+        if st.session_state.get(k("provider_choice")) == "gemini":
+            st.info(
+                "💡 **Note on Gemini:** Dedicated image generation (`Imagen 3`/`4`) is only supported on Google AI Studio keys that have **billing enabled** (paid plan). "
+                "If your key is on the free tier, please select the **`free-ai`** (Pollinations) provider to generate real Pixar 3D illustrations for free."
+            )
+        elif st.session_state.get(k("provider_choice")) == "nvidia":
+            st.info(
+                "⚡ **NVIDIA selected:** This routes image generation through the NVIDIA-backed provider path first, before any fallback provider."
+            )
+
+        prompt_input = st.text_area(
+            "Engine-Injected Style Prompt",
+            height=120,
+            key=k("prompt_input"),
+        )
+        st.session_state[k("studio_prompt")] = prompt_input
+
+        act_cols = st.columns(2)
+        with act_cols[0]:
+            if st.button("🧙‍♂️ Build Cinematic style-pack Prompt", use_container_width=True, key=f"{prefix}_btn_build_prompt"):
+                st.session_state[k("studio_prompt")] = build_cinematic_image_prompt(
+                    st.session_state[k("topic")],
+                    st.session_state[k("subject")],
+                    style_name=st.session_state.get(k("art_style"), "3D Claymation / Pixar"),
+                )
+                st.session_state[k("prompt_input")] = st.session_state[k("studio_prompt")]
+                st.rerun()
+        with act_cols[1]:
+            if st.button("✨ Synthesize Widescreen Canvas", type="primary", use_container_width=True, key=f"{prefix}_btn_gen_preview"):
+                with st.spinner("Synthesizing pristine illustration..."):
+                    try:
+                        image_settings = replace(settings, output_dir=ui_output_dir)
+                        provider = image_provider(replace(image_settings, image_provider=st.session_state[k("provider_choice")]))
+                        variant = ImageVariant("16:9", 2560, 1440, "image_preview")
+                        preview_path = ui_output_dir / ".runtime" / "image_previews" / (
+                            f"automation_{_slugify(st.session_state[k('topic')])}_{_slugify(st.session_state[k('subject')])}_{st.session_state[k('provider_choice')]}"
+                            f"{provider.extension}"
+                        )
+                        preview_path.parent.mkdir(parents=True, exist_ok=True)
+                        preview_path.write_bytes(provider.create(st.session_state[k("studio_prompt")], variant))
+                        st.session_state[k("preview_path")] = str(preview_path)
+                        st.success("Image successfully rendered!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Image generation error: {e}")
+
+    with right_col:
+        st.markdown("### Visual Theme & metadata")
+        image_style_pack = build_image_style_pack(
+            st.session_state[k("topic")],
+            subject=st.session_state[k("subject")],
+            style_name=st.session_state.get(k("art_style"), "3D Claymation / Pixar"),
+        )
+        st.json(image_style_pack.as_dict())
+
+        st.markdown("#### Prompt Safety audit")
+        safety_state, safety_msg = image_prompt_safety_status(st.session_state[k("studio_prompt")])
+        st.markdown(
+            f"""
+            <div class="metric-box">
+                <div class="metric-label">Safety State</div>
+                <div class="metric-value" style="font-size:16px;">{safety_state.upper()}</div>
+                <div style="font-size:13px; color:#cbd5e1; margin-top:4px;">{safety_msg}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.markdown("#### Active Provider backend details")
+        backend_state, backend_msg = image_backend_status(settings, st.session_state[k("provider_choice")])
+        st.markdown(
+            f"""
+            <div class="metric-box">
+                <div class="metric-label">Provider Pipeline</div>
+                <div class="metric-value" style="font-size:16px;">{backend_state.upper()}</div>
+                <div style="font-size:13px; color:#cbd5e1; margin-top:4px;">{backend_msg}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
+def _automation_image_preview_path(
+    output_dir: Path,
+    topic: str,
+    subject: str,
+    provider_name: str,
+    extension: str,
+    prefix: str,
+) -> Path:
+    preview_dir = output_dir / ".runtime" / "image_previews"
+    preview_dir.mkdir(parents=True, exist_ok=True)
+    import hashlib
+
+    topic_slug = _slugify(topic)[:24]
+    subject_slug = _slugify(subject)[:24]
+    provider_slug = _slugify(provider_name)[:12]
+    fingerprint = hashlib.sha1(f"{topic}|{subject}|{provider_name}".encode("utf-8")).hexdigest()[:10]
+    filename = f"{prefix}_{topic_slug}_{subject_slug}_{provider_slug}_{fingerprint}{extension}"
+    return preview_dir / filename
+
+
+def _generate_automation_image_preview(
+    settings,
+    output_dir: Path,
+    provider_name: str,
+    prompt: str,
+    topic: str,
+    subject: str,
+    prefix: str,
+) -> Path:
+    image_settings = replace(settings, output_dir=output_dir)
+    provider = image_provider(replace(image_settings, image_provider=provider_name))
+    variant = ImageVariant("16:9", 2560, 1440, "image_preview")
+    preview_path = _automation_image_preview_path(
+        output_dir=output_dir,
+        topic=topic,
+        subject=subject,
+        provider_name=provider_name,
+        extension=provider.extension,
+        prefix=prefix,
+    )
+    preview_path.write_bytes(provider.create(prompt, variant))
+    return preview_path
+
+
+def _automation_music_image_seed(topic: str, subject: str, singer_gender: str) -> tuple[str, str]:
+    topic_clean = sanitize_image_prompt_text((topic or "").strip()) or "the song"
+    subject_clean = sanitize_image_prompt_text((subject or "").strip())
+    combined = f"{topic_clean} {subject_clean}".lower()
+    gender = (singer_gender or "").strip().lower()
+    female_lead = any(word in gender for word in ["female", "woman", "girl", "f"])
+    lead_phrase = "female singer" if female_lead else "male singer" if any(word in gender for word in ["male", "man", "boy", "m"]) else "lead singer"
+
+    if "birds of a feather" in combined:
+        return (
+            "Birds of a Feather",
+            (
+                f"{lead_phrase} in an intimate acoustic performance, exploring deep love, vulnerability, and the fear of losing the connection; "
+                "soft twilight sky, gentle wind, cinematic close-up, expressive eyes, tender body language, warm romantic atmosphere, "
+                "acoustic guitar, no text, no logos."
+            ),
+        )
+
+    emotional_markers = [
+        "love", "heart", "vulnerable", "vulnerability", "longing", "loss", "fear of losing",
+        "romance", "tender", "emotional", "soulmate", "together", "forever", "goodbye"
+    ]
+    if any(marker in combined for marker in emotional_markers):
+        return (
+            topic_clean,
+            (
+                f"{lead_phrase} in a soft cinematic acoustic performance, intense vulnerability and tender love, "
+                "fear of losing the connection, heartfelt expression, close-up portrait energy, golden-hour haze, "
+                "gentle wind, dreamy romantic bokeh, acoustic guitar, no text, no logos."
+            ),
+        )
+
+    if female_lead:
+        return (
+            topic_clean,
+            (
+                "female singer as the central hero subject, expressive and emotionally present, natural body language, "
+                "cinematic lighting, clean background, premium music-video still, acoustic guitar, no text, no logos."
+            ),
+        )
+
+    return (
+        topic_clean,
+        subject_clean or "a cinematic music performance portrait, no text, no logos.",
+    )
+
+
+def _automation_image_prompt_variants(topic: str, subject: str, style_name: str, image_count: int, singer_gender: str = "") -> list[str]:
+    image_count = max(1, min(8, int(image_count)))
+    creative_topic, creative_subject = _automation_music_image_seed(topic, subject, singer_gender)
+    base_prompt = build_cinematic_image_prompt(creative_topic, creative_subject, style_name=style_name)
+    if image_count == 1:
+        return [base_prompt]
+
+    prompts = []
+    for idx in range(1, image_count + 1):
+        prompts.append(
+            f"{base_prompt} Create image variation {idx} of {image_count}. "
+            "Keep the same main character, outfit, palette, and setting. "
+            "Change the camera angle or framing slightly so each image feels unique while staying consistent with the story."
+        )
+    return prompts
+
+
+def render_automation_music_image_section(settings) -> None:
+    prefix = "automation_music_image"
+
+    def k(name: str) -> str:
+        return f"{prefix}_{name}"
+
+    ui_output_dir = resolve_output_dir(st.session_state.get("output_dir_pref", str(settings.output_dir)))
+    st.session_state.setdefault(k("provider_choice"), st.session_state.get("image_provider_choice", settings.image_provider or "gemini"))
+    st.session_state.setdefault(k("topic"), st.session_state.get("music_studio_one_click_song_idea", ""))
+    st.session_state.setdefault(k("subject"), st.session_state.get("music_studio_description", "a cheerful kids music scene"))
+    st.session_state.setdefault(
+        k("singer_gender"),
+        (st.session_state.get("automation_music_singer_gender")
+        or st.session_state.get("music_studio_one_click_singer_gender")
+        or st.session_state.get("music_studio_singer_gender")
+        or "").strip().lower(),
+    )
+    st.session_state.setdefault(k("art_style"), "3D Claymation / Pixar")
+    st.session_state.setdefault(k("count"), 1)
+    st.session_state.setdefault(
+        k("studio_prompt"),
+        build_cinematic_image_prompt(
+            st.session_state[k("topic")],
+            st.session_state[k("subject")],
+            style_name=st.session_state[k("art_style")],
+        ),
+    )
+    st.session_state.setdefault(k("prompt_input"), st.session_state[k("studio_prompt")])
+    st.session_state.setdefault(k("preview_path"), "")
+    st.session_state.setdefault(k("last_topic"), st.session_state[k("topic")])
+    st.session_state.setdefault(k("last_subject"), st.session_state[k("subject")])
+    st.session_state.setdefault(k("last_style"), st.session_state[k("art_style")])
+
+    current_topic = st.session_state.get(k("topic"), "")
+    current_subject = st.session_state.get(k("subject"), "")
+    current_style = st.session_state.get(k("art_style"), "3D Claymation / Pixar")
+    if (
+        current_topic != st.session_state[k("last_topic")]
+        or current_subject != st.session_state[k("last_subject")]
+        or current_style != st.session_state[k("last_style")]
+    ):
+        st.session_state[k("studio_prompt")] = build_cinematic_image_prompt(
+            current_topic,
+            current_subject,
+            style_name=current_style,
+        )
+        st.session_state[k("prompt_input")] = st.session_state[k("studio_prompt")]
+        st.session_state[k("last_topic")] = current_topic
+        st.session_state[k("last_subject")] = current_subject
+        st.session_state[k("last_style")] = current_style
+
+    image_count = max(1, min(8, int(st.session_state.get(k("count"), 1))))
+    st.session_state[k("count")] = image_count
+    prompt_variants = _automation_image_prompt_variants(
+        topic=st.session_state[k("topic")],
+        subject=st.session_state[k("subject")],
+        style_name=st.session_state[k("art_style")],
+        image_count=image_count,
+        singer_gender=st.session_state[k("singer_gender")],
+    )
+    st.session_state[k("prompt_series")] = prompt_variants
+    st.session_state[k("studio_prompt")] = prompt_variants[0]
+    st.session_state[k("prompt_input")] = prompt_variants[0]
+
+    st.markdown("---")
+    st.markdown("### 🖼️ Automation Image Studio")
+    left_col, right_col = st.columns([6, 4])
+
+    with left_col:
+        image_preview_path = st.session_state.get(k("preview_path"))
+        if image_preview_path and os.path.exists(image_preview_path):
+            render_image_preview(Path(image_preview_path))
+            st.caption(f"Linked image preview: `{Path(image_preview_path).name}`")
+        else:
+            st.info("No linked image generated yet. It will populate from the song draft and generate step.")
+
+        preview_paths = st.session_state.get(k("preview_paths"), [])
+        if preview_paths:
+            st.markdown("#### Generated Images")
+            cols = st.columns(min(3, len(preview_paths)))
+            for idx, path_str in enumerate(preview_paths):
+                col = cols[idx % len(cols)]
+                with col:
+                    path = Path(path_str)
+                    if path.exists():
+                        render_image_preview(path)
+                        st.caption(f"Image {idx + 1}")
+
+        st.selectbox(
+            "Number of images",
+            options=list(range(1, 9)),
+            index=image_count - 1,
+            key=k("count"),
+        )
+        st.selectbox(
+            "Image Provider",
+            options=("nvidia", "gemini", "openai", "free-ai"),
+            key=k("provider_choice"),
+        )
+        st.selectbox(
+            "Singer Gender",
+            options=("female", "male"),
+            key=k("singer_gender"),
+        )
+        st.text_input("Image Topic", key=k("topic"))
+        st.text_input("Image Subject", key=k("subject"))
+        st.selectbox(
+            "Art Style",
+            options=("3D Claymation / Pixar", "Photorealistic", "Flat Vector", "Cinematic Anime", "None (Raw Prompt)"),
+            key=k("art_style"),
+        )
+        st.markdown("#### Image Prompt Preview")
+        for idx, prompt_text in enumerate(prompt_variants, start=1):
+            st.text_area(
+                f"Prompt {idx}",
+                value=prompt_text,
+                height=120,
+                key=f"{prefix}_prompt_view_{idx}",
+            )
+
+        act_cols = st.columns(2)
+        with act_cols[0]:
+            if st.button("🧙‍♂️ Build Image Prompt", use_container_width=True, key=f"{prefix}_btn_build_prompt"):
+                creative_topic, creative_subject = _automation_music_image_seed(
+                    st.session_state[k("topic")],
+                    st.session_state[k("subject")],
+                    st.session_state.get(k("singer_gender"), ""),
+                )
+                st.session_state[k("studio_prompt")] = build_cinematic_image_prompt(
+                    creative_topic,
+                    creative_subject,
+                    style_name=st.session_state.get(k("art_style"), "3D Claymation / Pixar"),
+                )
+                st.session_state[k("prompt_input")] = st.session_state[k("studio_prompt")]
+                st.rerun()
+        with act_cols[1]:
+            if st.button("✨ Generate Image", type="primary", use_container_width=True, key=f"{prefix}_btn_generate"):
+                try:
+                    preview_paths = []
+                    for idx, prompt_text in enumerate(prompt_variants, start=1):
+                        preview_path = _generate_automation_image_preview(
+                            settings=settings,
+                            output_dir=ui_output_dir,
+                            provider_name=st.session_state[k("provider_choice")],
+                            prompt=prompt_text,
+                            topic=st.session_state[k("topic")],
+                            subject=f"{st.session_state[k('subject')]} variation {idx}",
+                            prefix="automation_music",
+                        )
+                        preview_paths.append(str(preview_path))
+                    st.session_state[k("preview_paths")] = preview_paths
+                    st.session_state[k("preview_path")] = preview_paths[0] if preview_paths else ""
+                    st.success("Automation image generated.")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Image generation error: {exc}")
+
+    with right_col:
+        st.markdown("#### Prompt Summary")
+        st.markdown(
+            f"""
+            <div class="metric-box">
+                <div class="metric-label">Images Requested</div>
+                <div class="metric-value" style="font-size:18px;">{image_count}</div>
+                <div style="font-size:13px; color:#cbd5e1; margin-top:4px;">Showing exactly {image_count} prompt{'s' if image_count != 1 else ''} for this song.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        for idx, prompt_text in enumerate(prompt_variants, start=1):
+            st.markdown(f"**Prompt {idx}**")
+            st.code(prompt_text, language="text")
+
+        st.markdown("#### Prompt Safety audit")
+        safety_state, safety_msg = image_prompt_safety_status(st.session_state[k("studio_prompt")])
+        st.markdown(
+            f"""
+            <div class="metric-box">
+                <div class="metric-label">Safety State</div>
+                <div class="metric-value" style="font-size:16px;">{safety_state.upper()}</div>
+                <div style="font-size:13px; color:#cbd5e1; margin-top:4px;">{safety_msg}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.markdown("#### Active Provider backend details")
+        backend_state, backend_msg = image_backend_status(settings, st.session_state[k("provider_choice")])
+        st.markdown(
+            f"""
+            <div class="metric-box">
+                <div class="metric-label">Provider Pipeline</div>
+                <div class="metric-value" style="font-size:16px;">{backend_state.upper()}</div>
+                <div style="font-size:13px; color:#cbd5e1; margin-top:4px;">{backend_msg}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
+def maybe_generate_linked_automation_music_image(settings) -> Path | None:
+    if not st.session_state.get("automation_music_combo_mode"):
+        return None
+
+    output_dir = resolve_output_dir(st.session_state.get("output_dir_pref", str(settings.output_dir)))
+    provider_name = st.session_state.get("automation_music_image_provider_choice") or st.session_state.get("image_provider_choice") or settings.image_provider or "gemini"
+    topic = st.session_state.get("automation_music_image_topic") or st.session_state.get("music_studio_one_click_song_idea") or st.session_state.get("music_studio_lyrics", "")
+    subject = st.session_state.get("automation_music_image_subject") or st.session_state.get("music_studio_description") or topic or "a cheerful kids music scene"
+    art_style = st.session_state.get("automation_music_image_art_style", "3D Claymation / Pixar")
+    singer_gender = st.session_state.get("automation_music_singer_gender") or st.session_state.get("music_studio_one_click_singer_gender") or st.session_state.get("music_studio_singer_gender") or ""
+    image_count = max(1, min(8, int(st.session_state.get("automation_music_image_count", 1))))
+    prompts = _automation_image_prompt_variants(topic=topic, subject=subject, style_name=art_style, image_count=image_count, singer_gender=singer_gender)
+    st.session_state["automation_music_image_prompt_series"] = prompts
+    st.session_state["automation_music_image_studio_prompt"] = prompts[0]
+    st.session_state["automation_music_image_prompt_input"] = prompts[0]
+    try:
+        preview_paths = []
+        for idx, prompt_text in enumerate(prompts, start=1):
+            preview_path = _generate_automation_image_preview(
+                settings=settings,
+                output_dir=output_dir,
+                provider_name=provider_name,
+                prompt=prompt_text,
+                topic=topic,
+                subject=f"{subject} variation {idx}",
+                prefix="automation_music",
+            )
+            preview_paths.append(str(preview_path))
+        st.session_state["automation_music_image_preview_paths"] = preview_paths
+        st.session_state["automation_music_image_preview_path"] = preview_paths[0] if preview_paths else ""
+        return Path(preview_paths[0]) if preview_paths else None
+    except Exception as exc:
+        st.warning(f"⚠️ Automation linked image generation skipped: {exc}")
+        return None
 
 
 def get_git_info() -> str:
