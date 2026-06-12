@@ -3367,6 +3367,15 @@ def generate_hindi_song_via_native_audio(
         vocals_doubled = apply_studio_stereo_doubling(vocals_clean)
         vocals = apply_ambient_reverb_space(vocals_doubled)
 
+    # Apply vocal warmth: 0.94x pitch shift to give a warmer chest resonance
+    try:
+        vocals = vocals._spawn(vocals.raw_data, overrides={
+            "frame_rate": int(vocals.frame_rate * 0.94)
+        }).set_frame_rate(vocals.frame_rate)
+        print("🎛️ DSP Master: Applied 0.94x pitch shift for vocal warmth.")
+    except Exception as e:
+        print(f"⚠️ Failed to apply 0.94x pitch shift: {e}")
+
     profile_vocal_gain = float(active_profile.get("vocal_gain_db", 0.0) or 0.0)
     if profile_vocal_gain:
         print(f"🎚️ Voice Profile Gain: Boosting selected profile by +{profile_vocal_gain:.1f}dB for clarity.")

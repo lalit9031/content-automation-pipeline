@@ -862,12 +862,20 @@ def run_autonomous_creator_and_upload(
         
         # Resolve speed details for backing track description
         normalized = (speed or "Mid").strip().lower()
-        if normalized == "slow":
-            bg_prompt = "cheerful nursery rhyme, magical kids show music, gentle slow melody, 76 BPM, ukulele, soft piano, glockenspiel, bells."
-        elif normalized in ("fast", "high"):
-            bg_prompt = "cheerful nursery rhyme, magical kids show music, lively fast melody, 108 BPM, ukulele, soft piano, glockenspiel, bells."
+        if language.strip().lower() == "hindi":
+            if normalized == "slow":
+                bg_prompt = "Happy Indian folk kids beats, gentle slow melody, 76 BPM, sitar, bansuri flute, dholak, tabla, bright happy major key."
+            elif normalized in ("fast", "high"):
+                bg_prompt = "Happy Indian folk kids beats, lively fast melody, 108 BPM, sitar, bansuri flute, dholak, tabla, bright happy major key."
+            else:
+                bg_prompt = "Happy Indian folk kids beats, sitar, bansuri flute, dholak, tabla, bright happy major key, 92 BPM."
         else:
-            bg_prompt = "cheerful nursery rhyme, magical kids show music, happy bouncy melody, 92 BPM, ukulele, soft piano, glockenspiel, bells."
+            if normalized == "slow":
+                bg_prompt = "cheerful nursery rhyme, magical kids show music, gentle slow melody, 76 BPM, ukulele, soft piano, glockenspiel, bells."
+            elif normalized in ("fast", "high"):
+                bg_prompt = "cheerful nursery rhyme, magical kids show music, lively fast melody, 108 BPM, ukulele, soft piano, glockenspiel, bells."
+            else:
+                bg_prompt = "cheerful nursery rhyme, magical kids show music, happy bouncy melody, 92 BPM, ukulele, soft piano, glockenspiel, bells."
             
         log_callback(f"🎵 Generating master Kids Song via Native Audio Pipeline [{singer_key}, {speed}]...")
         from content_pipeline.bots.audio import generate_hindi_song_via_native_audio
