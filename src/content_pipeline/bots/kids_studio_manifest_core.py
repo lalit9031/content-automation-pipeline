@@ -9,8 +9,8 @@ KIDS_STUDIO_MASTER_REGISTRY = {
     "KIDS_RHYME_MOUSE": {
         "display_name": "Squeaky Cartoon Mouse (LittleBubbles Style)",
         "base_tts_voice": "hi-IN-SwaraNeural",
-        "edge_rate": "-5%",
-        "edge_pitch": "+12%",
+        "edge_rate": "-8%",
+        "edge_pitch": "+0Hz",
         "pitch_change": 12,                  # Full octave jump for cartoon effect
         "formant_shift": 1.00,               # High-clarity compressed formant range
         "index_rate": 0.40,
@@ -22,7 +22,7 @@ KIDS_STUDIO_MASTER_REGISTRY = {
         "display_name": "Premium Male Narrator (Wise Baritone Style)",
         "base_tts_voice": "hi-IN-MadhurNeural",
         "edge_rate": "-12%",
-        "edge_pitch": "-5%",
+        "edge_pitch": "+0Hz",
         "pitch_change": -2,                  # Slightly minimized to keep the frequency track stable
         "formant_shift": 0.96,               # Safe throat scaling to prevent gravelly resonance
         "index_rate": 0.28,                  # Calibrated to allow organic word transitions
@@ -34,7 +34,7 @@ KIDS_STUDIO_MASTER_REGISTRY = {
         "display_name": "Premium Female Storyteller (Koo Koo TV Style)",
         "base_tts_voice": "hi-IN-SwaraNeural",
         "edge_rate": "-12%",
-        "edge_pitch": "+5%",
+        "edge_pitch": "+0Hz",
         "pitch_change": 0,                   # Hard-locked to zero to eliminate chipmunk leakage
         "formant_shift": 0.98,               # Gently rounds off treble to remove sharp frequencies
         "index_rate": 0.28,                  # Calibrated to allow organic word transitions
@@ -46,7 +46,7 @@ KIDS_STUDIO_MASTER_REGISTRY = {
         "display_name": "Teacher Ana (Preschool Voice - English)",
         "base_tts_voice": "en-US-AnaNeural",
         "gemini_tts_voice": "Aoede",
-        "edge_rate": "+0%",
+        "edge_rate": "-8%",
         "edge_pitch": "+0Hz",
         "vocal_gain_db": 3.0,
         "pitch_change": 0,
@@ -60,8 +60,8 @@ KIDS_STUDIO_MASTER_REGISTRY = {
         "display_name": "Clear English Storyteller Female (Loud & Crisp)",
         "base_tts_voice": "en-IN-NeerjaNeural",
         "gemini_tts_voice": "Kore",
-        "edge_rate": "-4%",
-        "edge_pitch": "+1Hz",
+        "edge_rate": "-12%",
+        "edge_pitch": "+0Hz",
         "vocal_gain_db": 5.5,
         "pitch_change": 0,
         "formant_shift": 1.00,
@@ -74,8 +74,8 @@ KIDS_STUDIO_MASTER_REGISTRY = {
         "display_name": "Clear English Storyteller Male (Warm & Strong)",
         "base_tts_voice": "en-IN-PrabhatNeural",
         "gemini_tts_voice": "Fenrir",
-        "edge_rate": "-6%",
-        "edge_pitch": "-1Hz",
+        "edge_rate": "-12%",
+        "edge_pitch": "+0Hz",
         "vocal_gain_db": 5.0,
         "pitch_change": -1,
         "formant_shift": 0.98,
@@ -88,8 +88,8 @@ KIDS_STUDIO_MASTER_REGISTRY = {
         "display_name": "Bright Child Story Voice (English Clear)",
         "base_tts_voice": "en-US-AnaNeural",
         "gemini_tts_voice": "Aoede",
-        "edge_rate": "-2%",
-        "edge_pitch": "+2Hz",
+        "edge_rate": "-12%",
+        "edge_pitch": "+0Hz",
         "vocal_gain_db": 5.0,
         "pitch_change": 1,
         "formant_shift": 1.02,
@@ -102,8 +102,8 @@ KIDS_STUDIO_MASTER_REGISTRY = {
         "display_name": "Clear English Rhyme Voice (Bright Kid)",
         "base_tts_voice": "en-US-AnaNeural",
         "gemini_tts_voice": "Aoede",
-        "edge_rate": "+2%",
-        "edge_pitch": "+2Hz",
+        "edge_rate": "-8%",
+        "edge_pitch": "+0Hz",
         "vocal_gain_db": 5.0,
         "pitch_change": 2,
         "formant_shift": 1.02,
@@ -117,8 +117,8 @@ KIDS_STUDIO_MASTER_REGISTRY = {
         "display_name": "Clear English Rhyme Voice (Female Teacher)",
         "base_tts_voice": "en-IN-NeerjaNeural",
         "gemini_tts_voice": "Kore",
-        "edge_rate": "+0%",
-        "edge_pitch": "+1Hz",
+        "edge_rate": "-8%",
+        "edge_pitch": "+0Hz",
         "vocal_gain_db": 5.5,
         "pitch_change": 0,
         "formant_shift": 1.00,
