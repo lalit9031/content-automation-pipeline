@@ -2064,8 +2064,18 @@ def render_frontdoor(settings: Settings) -> None:
 
         # One-Click Creator
         with st.expander("⚡ One-Click Song Creator", expanded=True):
-            st.markdown("<small style='color: #94a3b8;'>Type a simple idea (e.g., 'create an emotional song') and generate a complete song in one click.</small>", unsafe_allow_html=True)
-            one_click_prompt = st.text_input("Song Idea", placeholder="e.g., create an emotional song", key="music_studio_one_click_song_idea")
+            st.markdown("<small style='color: #94a3b8;'>Type a topic, select emotion, genre, and duration, and generate a complete song in one click.</small>", unsafe_allow_html=True)
+            one_click_prompt = st.text_input("Song Topic / Subject", placeholder="e.g., childhood memories, moving on, rainy day", key="music_studio_one_click_song_idea")
+            
+            # Mood and Genre Selectors
+            col_mood, col_genre = st.columns(2)
+            with col_mood:
+                mood_options = ["Sad", "Love", "Happy", "Pain", "Energetic", "Peaceful", "Angry", "Devotional / Spiritual"]
+                mood_val = st.selectbox("Song Mood / Emotion", options=mood_options, key="music_studio_one_click_mood")
+            with col_genre:
+                genre_options = ["Melody", "Rap / Hip-Hop", "Rock", "Pop", "Acoustic / Ghazal", "Electronic / Dance", "EDM", "Tomorrowland", "Classical / Traditional"]
+                genre_val = st.selectbox("Musical Genre / Style", options=genre_options, key="music_studio_one_click_genre")
+
             lang = st.session_state.get("music_studio_language", "English")
             if lang in ["Hindi", "Hinglish"]:
                 from content_pipeline.bots.singer_manifest import SINGER_MANIFEST
@@ -2085,19 +2095,39 @@ def render_frontdoor(settings: Settings) -> None:
                 one_click_gender = st.selectbox("Singer Voice Gender Selection", ["Female", "Male"], key="music_studio_one_click_singer_gender")
                 st.session_state["music_studio_playback_singer_key"] = "arijit_singh" if one_click_gender == "Male" else "shreya_ghoshal"
 
-            song_length_options = ("Short (1-2 mins)", "Long (2-3 mins)")
-            current_song_length = st.session_state.get("music_studio_song_length_choice", "Short (1-2 mins)")
-            if current_song_length not in song_length_options:
-                current_song_length = "Short (1-2 mins)"
-            song_length_choice = st.selectbox(
-                "Song Length",
-                options=song_length_options,
-                index=song_length_options.index(current_song_length),
-                key="music_studio_song_length_choice",
+            # ── Duration picker (approx lengths) ───────────────────────────────
+            DURATION_OPTIONS = {
+                "~1 min (Short)": 60,
+                "~1.5 mins (Standard)": 90,
+                "~2 mins": 120,
+                "~3 mins": 180,
+                "~4 mins": 240,
+                "~5 mins": 300,
+                "~6 mins": 360,
+            }
+            current_dur_label = st.session_state.get("music_studio_duration_label", "~2 mins")
+            if current_dur_label not in DURATION_OPTIONS:
+                current_dur_label = "~2 mins"
+            song_dur_label = st.selectbox(
+                "Approximate Song Length",
+                options=list(DURATION_OPTIONS.keys()),
+                index=list(DURATION_OPTIONS.keys()).index(current_dur_label),
+                key="music_studio_duration_label",
+                help="Pick a rough target length. The AI may be ±20 sec off this value.",
             )
-            song_length_profile = get_music_song_length_profile(song_length_choice, seed_text=st.session_state.get("music_studio_one_click_song_idea", ""))
-            st.session_state["music_duration_seconds"] = int(song_length_profile["target_seconds"])
-            st.session_state["music_studio_song_length_seconds"] = int(song_length_profile["target_seconds"])
+            target_dur_seconds = DURATION_OPTIONS[song_dur_label]
+            st.session_state["music_duration_seconds"] = target_dur_seconds
+            st.session_state["music_studio_song_length_seconds"] = target_dur_seconds
+            st.caption(f"Target: {song_dur_label} (≈ {target_dur_seconds}s). Actual may vary slightly.")
+
+            # Pacing/Tempo Selector to solve slow/overstretched vocals
+            pacing_options = ["Auto", "Fast / Upbeat", "Medium / Mid-tempo", "Slow / Ballad"]
+            st.selectbox(
+                "Song Pacing / Tempo",
+                options=pacing_options,
+                key="music_studio_pacing_tempo",
+                help="Control the tempo and singing speed. Select 'Fast / Upbeat' to prevent slow-drawn vocals or overstretching, especially for rap/hip-hop."
+            )
             
             if st.session_state.get("gemini_api_error"):
                 lang = st.session_state.get("music_studio_language", "English")
@@ -2116,10 +2146,25 @@ def render_frontdoor(settings: Settings) -> None:
                 else:
                     with st.spinner("Writing lyrics and composing style..."):
                         lang = st.session_state.get("music_studio_language", "English")
-                        song_length_profile = get_music_song_length_profile(
-                            st.session_state.get("music_studio_song_length_choice", "Short (1-2 mins)"),
-                            seed_text=one_click_prompt.strip(),
-                        )
+                        target_dur_seconds = DURATION_OPTIONS[st.session_state.get("music_studio_duration_label", "~2 mins")]
+                        pacing_val = st.session_state.get("music_studio_pacing_tempo", "Auto")
+                        
+                        # Calculate combination-based pacing and structure
+                        comb_info = get_song_structure_and_pacing(genre_val, mood_val, target_dur_seconds)
+                        resolved_pacing = comb_info["pacing_tempo"] if pacing_val == "Auto" else pacing_val
+                        
+                        song_length_profile = {
+                            "label": "Short" if target_dur_seconds <= 90 else "Long",
+                            "target_seconds": target_dur_seconds,
+                            "duration_range_text": f"about {target_dur_seconds} seconds",
+                            "prompt_line": f"Keep the song compact, with tighter verses, a clear hook, and a crisp ending." if target_dur_seconds <= 90 else "Allow slightly fuller verses, an extra chorus lift, and a more complete ending.",
+                            "pacing_tempo": resolved_pacing,
+                            "emotion_mood": mood_val,
+                            "music_genre": genre_val,
+                            "resolved_structure": comb_info["structure_instruction"],
+                            "bpm_range": comb_info["bpm_range"],
+                            "syllable_density": comb_info["syllable_density"]
+                        }
                         lyrics_exp, desc_exp = expand_general_prompt_to_lyrics_and_style_dynamic(
                             settings,
                             one_click_prompt.strip(),
@@ -2247,8 +2292,8 @@ def render_frontdoor(settings: Settings) -> None:
 
             st.markdown(
                 """
-                <div style="display: flex; gap: 16px; margin-top: 20px;">
-                  <div style="flex: 1; padding: 16px; border-radius: 12px; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(56, 189, 248, 0.25);">
+                <div style="display: flex; gap: 12px; margin-top: 20px; flex-direction: column;">
+                  <div style="padding: 14px; border-radius: 12px; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(56, 189, 248, 0.25);">
                     <div style="font-size: 12px; color: #38bdf8; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 6px;">
                       <span>💡</span> Pro tip: Structure
                     </div>
@@ -2256,12 +2301,20 @@ def render_frontdoor(settings: Settings) -> None:
                       Use standard tags like [verse] and [chorus] to structure sections. Keep lyrics to 2-3 verses.
                     </div>
                   </div>
-                  <div style="flex: 1; padding: 16px; border-radius: 12px; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(168, 85, 247, 0.25);">
+                  <div style="padding: 14px; border-radius: 12px; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(168, 85, 247, 0.25);">
                     <div style="font-size: 12px; color: #a855f7; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 6px;">
                       <span>🎵</span> Pro tip: Details
                     </div>
                     <div style="font-size: 13px; color: #e2e8f0; margin-top: 6px; line-height: 1.4;">
                       Specify clear instruments (e.g. acoustic guitar, grand piano, synth drums) to shape the sound.
+                    </div>
+                  </div>
+                  <div style="padding: 14px; border-radius: 12px; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(245, 158, 11, 0.25);">
+                    <div style="font-size: 12px; color: #f59e0b; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 6px;">
+                      <span>⚡</span> Pro tip: Pacing & Tempo
+                    </div>
+                    <div style="font-size: 13px; color: #e2e8f0; margin-top: 6px; line-height: 1.4;">
+                      If vocals feel overstretched, select a shorter duration (~1 min / ~1.5 mins) or explicitly include "fast tempo, 130 BPM, rapid rap flow, energetic double-time delivery" in your style settings.
                     </div>
                   </div>
                 </div>
@@ -2273,40 +2326,76 @@ def render_frontdoor(settings: Settings) -> None:
             st.markdown("#### Run settings")
             
             lang_choice = st.session_state.get("music_studio_language", "English")
-            model_options = ["Lyria 3 Pro Preview (tencent/SongGeneration)"]
             if lang_choice == "Hindi":
-                model_options = ["Gemini 2.5 Flash + Edge-TTS (Native Accent)"]
+                model_options = [
+                    "DiffRhythm2 High-Fidelity Song Generation (ASLP-lab/DiffRhythm2)",
+                    "Gemini 2.5 Flash + Edge-TTS (Native Accent)"
+                ]
+            else:
+                model_options = [
+                    "DiffRhythm2 High-Fidelity Song Generation (ASLP-lab/DiffRhythm2)"
+                ]
 
-            st.selectbox(
+            current_model = st.session_state.get("music_studio_model_select", model_options[0])
+            if current_model not in model_options:
+                current_model = model_options[0]
+
+            selected_model = st.selectbox(
                 "Model",
                 options=model_options,
-                index=0,
-                disabled=True,
-                key="music_studio_model_select",
-                help="Lyria 3 Pro is used for English/Hinglish. Gemini 2.5/Edge-TTS Native Audio is used for Hindi to achieve perfect pronunciation."
+                index=model_options.index(current_model),
+                disabled=False,
+                key="music_studio_model_select_temp",
+                help="Choose DiffRhythm2 for high-fidelity singing, or Gemini/Edge-TTS for speech-like narration with a native Indian accent."
             )
+            st.session_state["music_studio_model_select"] = selected_model
             
-            SOUNDSCAPE_PRESETS = {
-                "Meditative Acoustic (Shekhar Style)": {
+            SONG_STYLE_PRESETS = {
+                "Emotional Soft / Slow Ballad": {
+                    "style_description": "emotional soft slow pop ballad, gentle acoustic piano chords, warm ambient strings, slow breathing tempo, sad heartfelt mood, 75 BPM, emotional singing.",
+                    "temperature": 0.80,
+                    "genre": "Pop/Ballad"
+                },
+                "Rock / Pop Rock": {
+                    "style_description": "energetic pop rock, driving acoustic drums, electric guitar hooks, bright bass, melodic hooks, 120 BPM, clean vocal style.",
+                    "temperature": 0.80,
+                    "genre": "Rock"
+                },
+                "Hip-Hop / Rap": {
+                    "style_description": "catchy modern hip hop, rhythmic trap beats, sub bass, clean production, smooth rap tempo, 95 BPM.",
+                    "temperature": 0.80,
+                    "genre": "Hip-Hop"
+                },
+                "Cheerful Pop / Dance": {
+                    "style_description": "upbeat cheerful dance pop, bright synthesizer chords, groovy electronic bassline, hand claps, energetic tempo, 125 BPM, bright singing.",
+                    "temperature": 0.80,
+                    "genre": "Dance-Pop"
+                },
+                "Acoustic Indie Pop": {
+                    "style_description": "intimate indie folk acoustic pop, warm fingerpicked acoustic guitar, soft tambourine, cozy melody, 88 BPM, warm natural vocals.",
+                    "temperature": 0.80,
+                    "genre": "Indie/Acoustic"
+                },
+                "Meditative Acoustic (Instrumental)": {
                     "style_description": "Pure instrumental. Soft fingerpicked acoustic guitar arpeggios, deep warm bass guitar, airy ambient synthesizer pads, soulful solo bansuri flute, gentle meditative pace, 65 BPM, sacred hall acoustics.",
                     "temperature": 0.30,
-                    "genre": "Auto"
+                    "genre": "Meditative"
                 },
-                "Epic Classical Cinematic": {
-                    "style_description": "Pure instrumental. Booming traditional dhol and taiko percussion layers, heavy dramatic orchestral string sections, deep brass swells, rhythmic sitar strabs, massive stadium echo, fast tempo, 115 BPM.",
+                "Epic Classical Cinematic (Instrumental)": {
+                    "style_description": "Pure instrumental. Booming traditional dhol and taiko percussion layers, heavy dramatic orchestral string sections, deep brass swells, rhythmic sitar stabs, massive stadium echo, fast tempo, 115 BPM.",
                     "temperature": 0.35,
-                    "genre": "Auto"
+                    "genre": "Cinematic"
                 },
-                "Soulful Sufi / Ghazal Studio": {
+                "Soulful Sufi / Ghazal Studio (Instrumental)": {
                     "style_description": "Pure instrumental. Traditional hand-pumped wooden harmonium sweeps, organic acoustic tabla loops, calm acoustic sarangi strokes, slow steady studio recording, 80 BPM, clean proximity environment.",
                     "temperature": 0.30,
-                    "genre": "Auto"
+                    "genre": "Sufi"
                 }
             }
             
             selected_vibe = st.selectbox(
-                "Soundscape Vibe Preset",
-                options=["Custom"] + list(SOUNDSCAPE_PRESETS.keys()),
+                "Song Style / Genre Preset",
+                options=["Custom"] + list(SONG_STYLE_PRESETS.keys()),
                 key="music_studio_vibe_preset",
                 help="Select a musical style preset to automatically populate the Style Description.",
                 disabled=disable_advanced_settings
@@ -2318,7 +2407,7 @@ def render_frontdoor(settings: Settings) -> None:
             if st.session_state["prev_music_studio_vibe"] != selected_vibe:
                 st.session_state["prev_music_studio_vibe"] = selected_vibe
                 if selected_vibe != "Custom":
-                    preset_data = SOUNDSCAPE_PRESETS[selected_vibe]
+                    preset_data = SONG_STYLE_PRESETS[selected_vibe]
                     st.session_state["music_studio_description_input"] = preset_data["style_description"]
                     st.session_state["music_studio_description"] = preset_data["style_description"]
                     st.session_state["music_studio_genre_input"] = preset_data["genre"]
@@ -2348,9 +2437,9 @@ def render_frontdoor(settings: Settings) -> None:
                 raw_files = sorted([f.name for f in ref_dir.glob("*.mp3")])
                 lang = st.session_state.get("music_studio_language", "English")
                 if lang in ["Hindi", "Hinglish"]:
-                    ref_files = [f for f in raw_files if any(x in f.lower() for x in ["titli", "barnaby", "hindi", "squirrel"])]
+                    ref_files = [f for f in raw_files if any(x in f.lower() for x in ["titli", "barnaby", "hindi", "squirrel", "littlebubbles", "bubbles", "custom", "ref"])]
                 else:
-                    ref_files = [f for f in raw_files if not any(x in f.lower() for x in ["titli", "barnaby", "squirrel"])]
+                    ref_files = [f for f in raw_files if not any(x in f.lower() for x in ["titli", "barnaby", "squirrel"]) or any(x in f.lower() for x in ["littlebubbles", "bubbles", "custom", "ref"])]
             
             options = ["None (Text-only)"] + ref_files
             default_index = 0
@@ -2411,23 +2500,43 @@ def render_frontdoor(settings: Settings) -> None:
         if st.session_state.get("music_studio_trigger_generation_now"):
             if st.session_state.get("music_studio_trigger_generation_now"):
                 st.session_state["music_studio_trigger_generation_now"] = False
-            with st.spinner("Connecting to tencent/SongGeneration space and generating audio... (This may take 1-3 minutes)"):
+            with st.spinner("Connecting to ASLP-lab/DiffRhythm2 space and generating audio... (This may take 1-3 minutes)"):
                 try:
                     import subprocess
                     import shutil
                     from gradio_client import Client, handle_file
 
                     prompt_audio_param = None
-                    if selected_ref != "None (Text-only)":
-                        ref_full_path = PROJECT_ROOT / "output" / "reference_audio" / selected_ref
+                    active_ref = selected_ref
+                    singer_gender_local = st.session_state.get("music_studio_singer_gender", "Male").lower()
+                    if singer_gender_local == "male":
+                        is_female_ref = active_ref != "None (Text-only)" and any(x in active_ref.lower() for x in ["barnaby", "titli", "squirrel", "alphabet", "bubbles", "female"])
+                        if active_ref == "None (Text-only)" or is_female_ref:
+                            arijit_file = "Sajni (Lyrical Video)_ Arijit Singh, Ram Sampath  Laapataa Ladies   Aamir Khan Productions.mp3"
+                            if (PROJECT_ROOT / "output" / "reference_audio" / arijit_file).exists():
+                                active_ref = arijit_file
+                                st.info("ℹ️ Using default male reference audio (Arijit Singh) to force male vocals for DiffRhythm2.")
+                    else:
+                        is_male_ref = active_ref != "None (Text-only)" and any(x in active_ref.lower() for x in ["arijit", "sajni", "male"])
+                        if active_ref == "None (Text-only)" or is_male_ref:
+                            lang = st.session_state.get("music_studio_language", "English")
+                            if lang in ["Hindi", "Hinglish"]:
+                                female_file = "Barnaby_Squirrel_Song.mp3"
+                                if (PROJECT_ROOT / "output" / "reference_audio" / female_file).exists():
+                                    active_ref = female_file
+                                    st.info("ℹ️ Using default female reference audio (Barnaby) to force female vocals for DiffRhythm2.")
+                    
+                    
+                    if active_ref != "None (Text-only)":
+                        ref_full_path = PROJECT_ROOT / "output" / "reference_audio" / active_ref
                         if not ref_full_path.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio").exists():
-                            ref_full_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio") / selected_ref
+                            ref_full_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio") / active_ref
                         if ref_full_path.exists():
                             temp_dir = PROJECT_ROOT / "output" / ".runtime"
                             temp_dir.mkdir(parents=True, exist_ok=True)
                             cropped_ref_path = temp_dir / "music_studio_ref_cropped.mp3"
                             
-                            st.write(f"ℹ️ Cropping style reference '{selected_ref}' to 15 seconds...")
+                            st.write(f"ℹ️ Cropping style reference '{active_ref}' to 15 seconds...")
                             start_time = "0"
                             if ref_full_path.name == "बार्नबी गिलहरी की व्यर्थ खोज.mp3":
                                 start_time = "4.5"
@@ -2441,7 +2550,7 @@ def render_frontdoor(settings: Settings) -> None:
                             subprocess.run(cmd, check=True)
                             prompt_audio_param = handle_file(str(cropped_ref_path))
                         else:
-                            st.warning(f"Reference audio '{selected_ref}' not found. Falling back to text-only generation.")
+                            st.warning(f"Reference audio '{active_ref}' not found. Falling back to text-only generation.")
 
                     st.write("📝 Checking and sanitizing prompt structure...")
                     lyrics_to_process = lyrics.strip()
@@ -2575,14 +2684,16 @@ def render_frontdoor(settings: Settings) -> None:
                         sanitized_lyrics = "[verse]\n" + sanitized_lyrics
 
                     lang = st.session_state.get("music_studio_language", "English")
-                    if lang == "Hindi":
+                    selected_model = st.session_state.get("music_studio_model_select", "DiffRhythm2 High-Fidelity Song Generation (ASLP-lab/DiffRhythm2)")
+                    
+                    if lang == "Hindi" and "Native Accent" in selected_model:
                         if not any("\u0900" <= char <= "\u097f" for char in sanitized_lyrics):
                             st.write("🔮 Converting Romanized lyrics to native Devanagari script for perfect Indian accent...")
                             from content_pipeline.bots.gemini_tts import transliterate_to_devanagari
                             sanitized_lyrics = transliterate_to_devanagari(sanitized_lyrics, settings)
                             st.info(f"📝 Transliterated Devanagari Lyrics:\n{sanitized_lyrics}")
                         
-                        st.write("🔀 Language: Hindi detected. Bypassing Hugging Face Lyria to use Native Audio Pipeline...")
+                        st.write("🔀 Language: Hindi detected with Native Accent model. Bypassing Hugging Face Lyria to use Native Audio Pipeline...")
                         import sys
                         import importlib
                         if "content_pipeline.bots.singing_synthesis" in sys.modules:
@@ -2623,54 +2734,36 @@ def render_frontdoor(settings: Settings) -> None:
                         maybe_generate_linked_automation_music_image(settings)
                         st.success("🎉 Hindi Song generated successfully using Native Audio Pipeline!")
                         st.rerun()
-                    elif lang == "Hinglish":
+                    elif lang == "Hinglish" or (lang == "Hindi" and "DiffRhythm2" in selected_model):
                         st.write("🔮 Applying advanced phonetic transcription layer for perfect Indian accent...")
                         from content_pipeline.bots.phonetic_mapper import hindi_to_phonetic_hinglish
                         sanitized_lyrics = hindi_to_phonetic_hinglish(sanitized_lyrics, gemini_api_key=settings.gemini_api_key)
                         st.info(f"📝 Transcribed Phonetic Lyrics:\n{sanitized_lyrics}")
 
-                    st.write("🎵 Dispatching song generation request to Hugging Face...")
+                    st.write("🎵 Dispatching song generation request to Hugging Face prioritized spaces...")
                     try:
-                        client = None
-                        tokens_to_try = list(settings.hf_tokens) if settings.hf_tokens else []
-                        if not tokens_to_try and settings.hf_token:
-                            tokens_to_try = [settings.hf_token]
-                        tokens_to_try.append(None)
+                        formatted_lyrics = sanitized_lyrics.strip()
+                        if not formatted_lyrics.startswith("[start]"):
+                            formatted_lyrics = f"[start]\n{formatted_lyrics}"
+                            
+                        from content_pipeline.bots.audio import generate_song_via_prioritized_spaces
                         
-                        last_err = None
-                        for token in tokens_to_try:
-                            try:
-                                if token:
-                                    client = Client("tencent/SongGeneration", token=token, httpx_kwargs={"timeout": 600.0})
-                                else:
-                                    client = Client("tencent/SongGeneration", httpx_kwargs={"timeout": 600.0})
-                                break
-                            except Exception as client_err:
-                                last_err = client_err
-                                if token:
-                                    st.warning(f"⚠️ Hugging Face token {token[:8]}...{token[-4:] if len(token)>8 else ''} failed: {client_err}. Trying next token...")
-                                else:
-                                    st.warning(f"⚠️ Anonymous connection failed: {client_err}")
-                        
-                        if client is None:
-                            raise last_err if last_err else RuntimeError("Failed to connect to Hugging Face client")
-                        
-                        # Translate UI-only genres (Folk, Traditional) to valid Lyria Space genres
-                        valid_genres = ['Auto', 'Pop', 'Latin', 'Rock', 'Electronic', 'Metal', 'Country', 'R&B/Soul', 'Ballad', 'Jazz', 'World', 'Hip-Hop', 'Funk', 'Soundtrack']
-                        api_genre = genre if genre in valid_genres else "World"
-                        
-                        result_path, info = client.predict(
-                            lyric=sanitized_lyrics,
-                            description=desc,
-                            prompt_audio=prompt_audio_param,
-                            genre=api_genre,
-                            cfg_coef=cfg,
+                        spaces_priority = ["tencent/SongGeneration", "ASLP-lab/DiffRhythm2", "multimodalart/khala"]
+                        result_path, info = generate_song_via_prioritized_spaces(
+                            lrc=formatted_lyrics,
+                            text_prompt=f"{genre}, {desc}",
+                            audio_prompt=prompt_audio_param,
+                            genre=genre,
                             temperature=temp,
-                            api_name="/generate_song"
+                            cfg_coef=cfg,
+                            duration_seconds=float(st.session_state.get("music_duration_seconds", 90)),
+                            language="Hindi" if lang == "Hindi" else "English",
+                            spaces_priority=spaces_priority,
+                            st_write_func=st.write
                         )
                         
                         if not result_path or str(result_path).strip().lower() == "none":
-                            raise ValueError(f"Hugging Face space did not return a valid audio track. Details: {info}")
+                            raise ValueError(f"Hugging Face spaces did not return a valid audio track. Details: {info}")
 
                         st.write("🔄 Transcoding generated audio from FLAC to genuine MP3 with smooth fade-out...")
                         out_path = PROJECT_ROOT / "output" / "Music_Studio_Generated_Song.mp3"
@@ -4396,90 +4489,130 @@ def render_frontdoor(settings: Settings) -> None:
             
             st.session_state["kids_song_singer_gender"] = resolved_gender
 
-        # Define and manage all backend run settings here silently since right column is hidden
-        selected_ref = st.session_state.setdefault("kids_song_ref_audio_choice", "None (Text-only)")
+        # Reference audio selection
+        ref_dir = PROJECT_ROOT / "output" / "reference_audio"
+        if not ref_dir.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio").exists():
+            ref_dir = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio")
+        else:
+            ref_dir.mkdir(parents=True, exist_ok=True)
+        ref_files = []
+        if ref_dir.exists():
+            raw_files = sorted([f.name for f in ref_dir.glob("*.mp3")])
+            kids_lang = st.session_state.get("kids_studio_language", "English")
+            if kids_lang in ["Hindi", "Hinglish"]:
+                ref_files = [f for f in raw_files if any(x in f.lower() for x in ["titli", "barnaby", "hindi", "squirrel", "littlebubbles", "bubbles", "custom", "ref"])]
+            else:
+                ref_files = [f for f in raw_files if not any(x in f.lower() for x in ["titli", "barnaby", "squirrel"]) or any(x in f.lower() for x in ["littlebubbles", "bubbles", "custom", "ref"])]
+        
+        options = ["None (Text-only)"] + ref_files
+        default_index = 0
+        default_val = st.session_state.get("kids_song_ref_audio_choice", "None (Text-only)")
+        if default_val in options:
+            default_index = options.index(default_val)
+            
+        selected_ref = st.selectbox(
+            "Style Reference Audio (Optional)",
+            options=options,
+            index=default_index,
+            key="kids_song_ref_audio_choice_input",
+            help="Select an existing track to guide the style, melody, and rhythm of the kids rhyme.",
+        )
+        st.session_state["kids_song_ref_audio_choice"] = selected_ref
+
+        # ── Default style description: derive from rhyme duration or mode ──────
+        _rhyme_dur_secs = st.session_state.get("kids_effective_target_duration_seconds", 120)
+        if kids_mode == "Storytelling":
+            default_desc = "warm theatrical spoken-word audiobook narrator, gentle bedtime story, calm pacing, soft glockenspiel and warm strings, 0 BPM"
+        elif _rhyme_dur_secs <= 150:
+            default_desc = "cheerful nursery rhyme, magical kids show music, happy bouncy melody, 120 BPM, ukulele, soft piano, glockenspiel, bells."
+        elif _rhyme_dur_secs <= 240:
+            default_desc = "cheerful nursery rhyme, magical kids show music, medium paced sing-along, 110 BPM, ukulele, piano, glockenspiel."
+        else:
+            default_desc = "cheerful nursery rhyme, magical kids show music, gentle slow melody, 95 BPM, ukulele, soft piano, glockenspiel, bells."
+
+        if kids_mode != "Storytelling":
+            KIDS_STYLE_PRESETS = {
+                "Cheerful Pop / Nursery Rhyme": "cheerful nursery rhyme, magical kids show music, happy bouncy melody, 120 BPM, ukulele, soft piano, glockenspiel, bells.",
+                "Indian Kids Folk / Festival": "happy traditional Indian kids folk, bansuri flute melody, lively dholak and tabla groove, acoustic guitar strumming, bright and festive, 115 BPM.",
+                "Gentle Bedtime Lullaby": "gentle sleep lullaby, sweet magical music box, warm ambient strings, slow harp melody, extremely calm and soothing, 70 BPM.",
+                "Playful Ukulele Sing-Along": "happy acoustic ukulele sing-along, sunny slide guitar accents, bright shaker, whistling melody, warm and simple kids tune, 110 BPM.",
+                "Upbeat Kids Disco / Dance": "funky kids disco, groovy bassline, upbeat retro synth bells, electric guitar muting, happy dance beat, 122 BPM.",
+                "Whimsical Orchestral Cartoon": "whimsical cartoon orchestral theme, pizzicato strings, comedic xylophone jumps, clarinet melody, playful marching rhythm, 105 BPM."
+            }
+
+            selected_kids_vibe = st.selectbox(
+                "Kids Song Style Preset",
+                options=["Custom"] + list(KIDS_STYLE_PRESETS.keys()),
+                key="kids_song_vibe_preset",
+                help="Select a kids musical style preset to automatically populate the Style Description.",
+            )
+
+            if "prev_kids_song_vibe" not in st.session_state:
+                st.session_state["prev_kids_song_vibe"] = selected_kids_vibe
+
+            # Preset changed → update backing store BEFORE text_area is born
+            if st.session_state["prev_kids_song_vibe"] != selected_kids_vibe:
+                st.session_state["prev_kids_song_vibe"] = selected_kids_vibe
+                if selected_kids_vibe != "Custom":
+                    new_desc = KIDS_STYLE_PRESETS[selected_kids_vibe]
+                    st.session_state["kids_song_description"] = new_desc
+                    # Safe: widget not yet instantiated this render cycle
+                    st.session_state["kids_song_description_input"] = new_desc
+
+            # Bootstrap widget key from backing store if first render
+            if "kids_song_description_input" not in st.session_state:
+                st.session_state["kids_song_description_input"] = st.session_state.get(
+                    "kids_song_description", default_desc
+                )
+
+            desc = st.text_area(
+                "Style Description",
+                height=120,
+                key="kids_song_description_input",
+                help="Describe instruments, tempo (BPM), and musical style. Populated by presets above — edit freely.",
+            )
+            st.session_state["kids_song_description"] = desc
+
+        # Define and manage all backend run settings silently
         cfg = float(st.session_state.setdefault("kids_song_cfg_coef", 1.8))
         temp = float(st.session_state.setdefault("kids_song_temperature", 0.8))
         genre = st.session_state.setdefault("kids_song_genre", "Auto")
-        st.session_state.setdefault("kids_song_speed", "Mid")
-        
-        # Set default description based on mode if not already set
-        if kids_mode == "Storytelling":
-            default_desc = "warm theatrical spoken-word audiobook narrator, gentle bedtime story, calm pacing, soft glockenspiel and warm strings, 0 BPM"
-        else:
-            speed_profile = get_kids_rhyme_speed_profile(st.session_state.get("kids_song_speed", "Mid"))
-            default_desc = str(speed_profile["default_desc"])
-            if st.session_state.get("prev_kids_song_speed") != speed_profile["label"]:
-                st.session_state["prev_kids_song_speed"] = speed_profile["label"]
-                st.session_state["kids_song_description"] = default_desc
         desc = st.session_state.setdefault("kids_song_description", default_desc)
+
 
         expander_title = "⚡ One-Click Story Creator" if kids_mode == "Storytelling" else "⚡ One-Click Song Creator"
         with st.expander(expander_title, expanded=True):
             st.markdown(
-                f"<small style='color: #94a3b8;'>Type a simple idea (e.g., {'a story about a wise turtle' if kids_mode == 'Storytelling' else 'create a song about alphabet'}) and generate in one click.</small>",
-                unsafe_allow_html=True
+                f"<small style='color: #94a3b8;'>Type a simple idea (e.g., {'a story about a wise turtle' if kids_mode == 'Storytelling' else 'create a rhyme about a brave rabbit'}) and generate in one click.</small>",
+                unsafe_allow_html=True,
             )
-            prompt_label = "Story Idea" if kids_mode == "Storytelling" else "Song Idea"
-            prompt_placeholder = "e.g., a story about a wise turtle" if kids_mode == "Storytelling" else "e.g., create an emotional song"
+            prompt_label = "Story Idea" if kids_mode == "Storytelling" else "Rhyme Idea"
+            prompt_placeholder = "e.g., a story about a wise turtle" if kids_mode == "Storytelling" else "e.g., a rhyme about a brave rabbit"
             one_click_prompt = st.text_input(prompt_label, placeholder=prompt_placeholder, key="one_click_song_idea")
 
-            st.session_state.setdefault("kids_initial_target_duration_text", "1:30")
-            if kids_mode == "Storytelling":
-                story_length_preset = st.selectbox(
-                    "Story Size",
-                    options=story_length_preset_options(),
-                    key="kids_story_length_preset",
-                    help="Choose an approximate story size. The final audio can naturally be 30-45 seconds shorter or longer to preserve quality.",
-                )
-                if story_length_preset == "Custom time":
-                    initial_duration_text = st.text_input(
-                        "Custom Story Length",
-                        key="kids_initial_target_duration_text",
-                        placeholder="e.g., 1:30, 3 mins, 6 mins",
-                        help="Use this as an approximate target. The app keeps a natural timing range to avoid quality loss.",
-                    )
-                else:
-                    initial_duration_text = ""
+            # ── Approximate Rhyme Length picker (used for both Poem/Rhyme and Storytelling) ───────
+            RHYME_DURATION_OPTIONS = {
+                "~0 to 2 mins": 120,
+                "~2 mins": 120,
+                "~3 mins": 180,
+                "~4 mins": 240,
+                "~5 mins": 300,
+                "~6 mins": 360,
+            }
+            current_rhyme_dur = st.session_state.get("kids_rhyme_duration_label", "~0 to 2 mins")
+            if current_rhyme_dur not in RHYME_DURATION_OPTIONS:
+                current_rhyme_dur = "~0 to 2 mins"
+            rhyme_dur_label = st.selectbox(
+                "Approximate Rhyme Length",
+                options=list(RHYME_DURATION_OPTIONS.keys()),
+                index=list(RHYME_DURATION_OPTIONS.keys()).index(current_rhyme_dur),
+                key="kids_rhyme_duration_label",
+                help="Pick a rough target length. The AI may be ±20 sec off this value.",
+            )
+            initial_duration_seconds = RHYME_DURATION_OPTIONS[rhyme_dur_label]
+            initial_duration_descriptor = rhyme_dur_label
+            st.caption(f"Target: {rhyme_dur_label} (≈ {initial_duration_seconds}s). Actual may vary slightly.")
 
-                initial_duration_seconds, initial_duration_descriptor = resolve_story_length_seconds(
-                    story_length_preset,
-                    initial_duration_text,
-                )
-                tolerance_seconds = get_natural_duration_tolerance_seconds(initial_duration_seconds)
-                st.caption(
-                    "Approx target: "
-                    f"{initial_duration_descriptor}. Natural range: "
-                    f"{_format_duration_hint(max(1, initial_duration_seconds - tolerance_seconds))} to "
-                    f"{_format_duration_hint(initial_duration_seconds + tolerance_seconds)}."
-                )
-                planned_part_count = determine_story_audio_part_count(initial_duration_seconds)
-                if planned_part_count > 1:
-                    planned_part_targets = get_story_part_target_seconds(initial_duration_seconds, planned_part_count)
-                    st.caption(
-                        "Generation plan: "
-                        f"{planned_part_count} parts. Part targets: "
-                        f"{', '.join(_format_duration_hint(seconds) for seconds in planned_part_targets)}."
-                    )
-                if (
-                    story_length_preset == "Custom time"
-                    and initial_duration_text.strip()
-                    and not _extract_requested_duration_seconds(initial_duration_text)
-                ):
-                    st.warning("Length not understood yet. Using the default 1:30 target.")
-            else:
-                song_speed = st.selectbox(
-                    "Song Speed",
-                    options=["Slow", "Mid", "Fast"],
-                    key="kids_song_speed",
-                    help="Choose the rhyme pacing. The prompt, lyric density, and music energy will adapt automatically.",
-                )
-                speed_profile = get_kids_rhyme_speed_profile(song_speed)
-                initial_duration_seconds = int(speed_profile["target_seconds"])
-                initial_duration_descriptor = f"{speed_profile['label']} speed"
-                st.caption(
-                    f"Selected speed: {speed_profile['label']}. The rhyme prompt and music will adapt automatically."
-                )
 
             st.session_state["kids_effective_target_duration_seconds"] = initial_duration_seconds
             st.session_state["kids_effective_target_duration_descriptor"] = initial_duration_descriptor
@@ -5045,23 +5178,43 @@ def render_frontdoor(settings: Settings) -> None:
         if generate_clicked or st.session_state.get("trigger_generation_now"):
             if st.session_state.get("trigger_generation_now"):
                 st.session_state["trigger_generation_now"] = False
-            with st.spinner("Connecting to tencent/SongGeneration space and generating audio... (This may take 1-3 minutes)"):
+            with st.spinner("Connecting to ASLP-lab/DiffRhythm2 space and generating audio... (This may take 1-3 minutes)"):
                 try:
                     import subprocess
                     import shutil
                     from gradio_client import Client, handle_file
 
                     prompt_audio_param = None
-                    if selected_ref != "None (Text-only)":
-                        ref_full_path = PROJECT_ROOT / "output" / "reference_audio" / selected_ref
+                    active_ref = selected_ref
+                    kids_gender_local = st.session_state.get("kids_song_singer_gender", "Male").lower()
+                    if kids_gender_local == "male":
+                        is_female_ref = active_ref != "None (Text-only)" and any(x in active_ref.lower() for x in ["barnaby", "titli", "squirrel", "alphabet", "bubbles", "female"])
+                        if active_ref == "None (Text-only)" or is_female_ref:
+                            arijit_file = "Sajni (Lyrical Video)_ Arijit Singh, Ram Sampath  Laapataa Ladies   Aamir Khan Productions.mp3"
+                            if (PROJECT_ROOT / "output" / "reference_audio" / arijit_file).exists():
+                                active_ref = arijit_file
+                                st.info("ℹ️ Using default male reference audio (Arijit Singh) to force male vocals for DiffRhythm2.")
+                    else:
+                        is_male_ref = active_ref != "None (Text-only)" and any(x in active_ref.lower() for x in ["arijit", "sajni", "male"])
+                        if active_ref == "None (Text-only)" or is_male_ref:
+                            lang = st.session_state.get("kids_studio_language", "English")
+                            if lang in ["Hindi", "Hinglish"]:
+                                female_file = "Barnaby_Squirrel_Song.mp3"
+                                if (PROJECT_ROOT / "output" / "reference_audio" / female_file).exists():
+                                    active_ref = female_file
+                                    st.info("ℹ️ Using default female reference audio (Barnaby) to force female vocals for DiffRhythm2.")
+                    
+                    
+                    if active_ref != "None (Text-only)":
+                        ref_full_path = PROJECT_ROOT / "output" / "reference_audio" / active_ref
                         if not ref_full_path.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio").exists():
-                            ref_full_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio") / selected_ref
+                            ref_full_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio") / active_ref
                         if ref_full_path.exists():
                             temp_dir = PROJECT_ROOT / "output" / ".runtime"
                             temp_dir.mkdir(parents=True, exist_ok=True)
                             cropped_ref_path = temp_dir / "kids_song_ref_cropped.mp3"
                             
-                            st.write(f"ℹ️ Cropping style reference '{selected_ref}' to 15 seconds...")
+                            st.write(f"ℹ️ Cropping style reference '{active_ref}' to 15 seconds...")
                             start_time = "0"
                             if ref_full_path.name == "बार्नबी गिलहरी की व्यर्थ खोज.mp3":
                                 start_time = "4.5"
@@ -5075,7 +5228,7 @@ def render_frontdoor(settings: Settings) -> None:
                             subprocess.run(cmd, check=True)
                             prompt_audio_param = handle_file(str(cropped_ref_path))
                         else:
-                            st.warning(f"Reference audio '{selected_ref}' not found. Falling back to text-only generation.")
+                            st.warning(f"Reference audio '{active_ref}' not found. Falling back to text-only generation.")
 
                     st.write("📝 Checking and sanitizing prompt structure...")
                     lyrics_to_process = lyrics.strip()
@@ -5386,48 +5539,30 @@ def render_frontdoor(settings: Settings) -> None:
                         sanitized_lyrics = hindi_to_phonetic_hinglish(sanitized_lyrics, gemini_api_key=settings.gemini_api_key)
                         st.info(f"📝 Transcribed Phonetic Lyrics:\n{sanitized_lyrics}")
 
-                    st.write("🎵 Dispatching song generation request to Hugging Face...")
+                    st.write("🎵 Dispatching song generation request to Hugging Face prioritized spaces...")
                     try:
-                        client = None
-                        tokens_to_try = list(settings.hf_tokens) if settings.hf_tokens else []
-                        if not tokens_to_try and settings.hf_token:
-                            tokens_to_try = [settings.hf_token]
-                        tokens_to_try.append(None)
+                        formatted_lyrics = sanitized_lyrics.strip()
+                        if not formatted_lyrics.startswith("[start]"):
+                            formatted_lyrics = f"[start]\n{formatted_lyrics}"
+                            
+                        from content_pipeline.bots.audio import generate_song_via_prioritized_spaces
                         
-                        last_err = None
-                        for token in tokens_to_try:
-                            try:
-                                if token:
-                                    client = Client("tencent/SongGeneration", token=token, httpx_kwargs={"timeout": 600.0})
-                                else:
-                                    client = Client("tencent/SongGeneration", httpx_kwargs={"timeout": 600.0})
-                                break
-                            except Exception as client_err:
-                                last_err = client_err
-                                if token:
-                                    st.warning(f"⚠️ Hugging Face token {token[:8]}...{token[-4:] if len(token)>8 else ''} failed: {client_err}. Trying next token...")
-                                else:
-                                    st.warning(f"⚠️ Anonymous connection failed: {client_err}")
-                        
-                        if client is None:
-                            raise last_err if last_err else RuntimeError("Failed to connect to Hugging Face client")
-                        
-                        # Translate UI-only genres (Folk, Traditional) to valid Lyria Space genres
-                        valid_genres = ['Auto', 'Pop', 'Latin', 'Rock', 'Electronic', 'Metal', 'Country', 'R&B/Soul', 'Ballad', 'Jazz', 'World', 'Hip-Hop', 'Funk', 'Soundtrack']
-                        api_genre = genre if genre in valid_genres else "World"
-                        
-                        result_path, info = client.predict(
-                            lyric=sanitized_lyrics,
-                            description=desc,
-                            prompt_audio=prompt_audio_param,
-                            genre=api_genre,
-                            cfg_coef=cfg,
+                        spaces_priority = ["tencent/SongGeneration", "ASLP-lab/DiffRhythm2", "multimodalart/khala"]
+                        result_path, info = generate_song_via_prioritized_spaces(
+                            lrc=formatted_lyrics,
+                            text_prompt=f"{genre}, {desc}",
+                            audio_prompt=prompt_audio_param,
+                            genre=genre,
                             temperature=temp,
-                            api_name="/generate_song"
+                            cfg_coef=cfg,
+                            duration_seconds=float(st.session_state.get("kids_effective_target_duration_seconds", 90)),
+                            language="Hindi" if lang == "Hindi" else "English",
+                            spaces_priority=spaces_priority,
+                            st_write_func=st.write
                         )
                         
                         if not result_path or str(result_path).strip().lower() == "none":
-                            raise ValueError(f"Hugging Face space did not return a valid audio track. Details: {info}")
+                            raise ValueError(f"Hugging Face spaces did not return a valid audio track. Details: {info}")
 
                         st.write("🔄 Transcoding generated audio from FLAC to genuine MP3 with smooth fade-out...")
                         out_path = PROJECT_ROOT / "output" / "LittleBubbles_Generated_Song.mp3"
@@ -7206,7 +7341,11 @@ def normalize_audio_to_duration_window(
     return adjusted_path, original_seconds, int(adjustment_target), False
 
 
-def normalize_music_studio_audio_length(audio_path: Path, target_seconds: int) -> Path:
+def normalize_music_studio_audio_length(audio_path: Path, target_seconds: int, bypass_stretching: bool = True) -> Path:
+    if bypass_stretching:
+        # Simply return the path to preserve pristine natural audio quality and pacing.
+        return audio_path
+
     try:
         target_seconds = int(target_seconds or 0)
     except Exception:
@@ -7757,23 +7896,23 @@ def get_kids_rhyme_speed_profile(song_speed: str) -> dict[str, object]:
         "slow": {
             "label": "Slow",
             "target_seconds": 120,
-            "tempo": "76 BPM",
+            "tempo": "90 BPM",
             "prompt_line": "Use slower pacing, longer vowel sounds, gentle repetition, and roomy pauses between lines.",
-            "default_desc": "cheerful nursery rhyme, magical kids show music, gentle slow melody, 76 BPM, ukulele, soft piano, glockenspiel, bells.",
+            "default_desc": "cheerful nursery rhyme, magical kids show music, gentle slow melody, 90 BPM, ukulele, soft piano, glockenspiel, bells.",
         },
         "mid": {
             "label": "Mid",
             "target_seconds": 90,
-            "tempo": "92 BPM",
+            "tempo": "120 BPM",
             "prompt_line": "Use balanced pacing, clean hooks, steady repetition, and an easy sing-along flow.",
-            "default_desc": "cheerful nursery rhyme, magical kids show music, happy bouncy melody, 92 BPM, ukulele, soft piano, glockenspiel, bells.",
+            "default_desc": "cheerful nursery rhyme, magical kids show music, happy bouncy melody, 120 BPM, ukulele, soft piano, glockenspiel, bells.",
         },
         "fast": {
             "label": "Fast",
             "target_seconds": 60,
-            "tempo": "108 BPM",
+            "tempo": "138 BPM",
             "prompt_line": "Use quick pacing, tighter rhyme density, short lines, and a lively bounce.",
-            "default_desc": "cheerful nursery rhyme, magical kids show music, lively fast melody, 108 BPM, ukulele, soft piano, glockenspiel, bells.",
+            "default_desc": "cheerful nursery rhyme, magical kids show music, lively fast melody, 138 BPM, ukulele, soft piano, glockenspiel, bells.",
         },
     }
     return profiles.get(normalized, profiles["mid"])
@@ -7808,32 +7947,140 @@ def get_music_song_length_profile(song_length: str, seed_text: str = "") -> dict
     return profile
 
 
+def get_song_structure_and_pacing(genre: str, emotion: str, target_seconds: int) -> dict:
+    """
+    Determines song pacing, target BPM, syllable density, and structure instruction 
+    dynamically based on the selected combination of genre, emotion, and target duration.
+    """
+    genre_lower = str(genre).lower()
+    emotion_lower = str(emotion).lower()
+    
+    # 1. Determine pacing, BPM, and syllable density
+    if "rap" in genre_lower:
+        pacing = "Fast / Upbeat"
+        bpm = "120-145 BPM"
+        density = "dense, close-together syllables with rapid phrasing and flow to match rap delivery"
+    elif "electronic" in genre_lower or "dance" in genre_lower or "edm" in genre_lower or "tomorrowland" in genre_lower:
+        pacing = "Fast / Upbeat"
+        bpm = "120-135 BPM"
+        density = "medium-dense syllables with upbeat rhythm and anthemic dance phrasing"
+    elif emotion_lower in ["sad", "pain"]:
+        pacing = "Slow / Ballad"
+        bpm = "65-80 BPM"
+        density = "relaxed, spacious phrasing with longer vowels and natural breathing space"
+    elif emotion_lower in ["love", "devotional"]:
+        pacing = "Slow / Ballad" if "ghazal" in genre_lower or "acoustic" in genre_lower else "Medium / Mid-tempo"
+        bpm = "75-90 BPM" if pacing == "Slow / Ballad" else "90-105 BPM"
+        density = "medium phrasing with emotional warmth and expressive vocal holds"
+    elif "rock" in genre_lower:
+        pacing = "Fast / Upbeat" if emotion_lower in ["energetic", "angry"] else "Medium / Mid-tempo"
+        bpm = "115-130 BPM" if pacing == "Fast / Upbeat" else "95-110 BPM"
+        density = "punchy, rhythmic phrasing with strong vocal emphasis"
+    else:
+        # Default fallback based on emotion
+        if emotion_lower in ["energetic", "angry", "happy"]:
+            pacing = "Fast / Upbeat"
+            bpm = "120-135 BPM"
+            density = "upbeat, rhythmic phrasing"
+        elif emotion_lower in ["sad", "pain", "peaceful"]:
+            pacing = "Slow / Ballad"
+            bpm = "70-85 BPM"
+            density = "relaxed phrasing with spacious transitions"
+        else:
+            pacing = "Medium / Mid-tempo"
+            bpm = "90-110 BPM"
+            density = "standard phrasing and syllable density"
+
+    # 2. Determine Structure based on pacing and target seconds
+    if pacing == "Fast / Upbeat":
+        if target_seconds <= 60:  # ~1 min
+            verses, choruses, has_bridge = "2-3", "2", False
+        elif target_seconds <= 90:  # ~1.5 mins
+            verses, choruses, has_bridge = "3-4", "2-3", True
+        elif target_seconds <= 120:  # ~2 mins
+            verses, choruses, has_bridge = "4-5", "3", True
+        elif target_seconds <= 180:  # ~3 mins
+            verses, choruses, has_bridge = "6-7", "4", True
+        elif target_seconds <= 240:  # ~4 mins
+            verses, choruses, has_bridge = "8-9", "4", True
+        else:  # ~5+ mins
+            verses, choruses, has_bridge = "10-12", "5", True
+    elif pacing == "Slow / Ballad":
+        if target_seconds <= 60:  # ~1 min
+            verses, choruses, has_bridge = "1-2", "1", False
+        elif target_seconds <= 90:  # ~1.5 mins
+            verses, choruses, has_bridge = "2", "2", False
+        elif target_seconds <= 120:  # ~2 mins
+            verses, choruses, has_bridge = "3", "2", True
+        elif target_seconds <= 180:  # ~3 mins
+            verses, choruses, has_bridge = "4-5", "3", True
+        elif target_seconds <= 240:  # ~4 mins
+            verses, choruses, has_bridge = "5-6", "3-4", True
+        else:  # ~5+ mins
+            verses, choruses, has_bridge = "7-8", "4", True
+    else:  # Medium / Mid-tempo
+        if target_seconds <= 60:  # ~1 min
+            verses, choruses, has_bridge = "2", "2", False
+        elif target_seconds <= 90:  # ~1.5 mins
+            verses, choruses, has_bridge = "2-3", "2", True
+        elif target_seconds <= 120:  # ~2 mins
+            verses, choruses, has_bridge = "3-4", "2-3", True
+        elif target_seconds <= 180:  # ~3 mins
+            verses, choruses, has_bridge = "5", "3", True
+        elif target_seconds <= 240:  # ~4 mins
+            verses, choruses, has_bridge = "6-7", "4", True
+        else:  # ~5+ mins
+            verses, choruses, has_bridge = "8-9", "4", True
+
+    bridge_str = "and a bridge" if has_bridge else "no bridge"
+    structure_instruction = f"at least {verses} verses, {choruses} choruses, {bridge_str}"
+
+    return {
+        "pacing_tempo": pacing,
+        "structure_instruction": structure_instruction,
+        "bpm_range": bpm,
+        "syllable_density": density
+    }
+
+
 def build_music_length_prompt_block(song_length_profile: dict[str, object] | None) -> str:
     if not song_length_profile:
         return ""
 
     label = str(song_length_profile.get("label", "Short")).strip()
     duration_range = str(song_length_profile.get("duration_range_text", "")).strip()
-    prompt_line = str(song_length_profile.get("prompt_line", "")).strip()
     target_seconds = int(song_length_profile.get("target_seconds", 90) or 90)
 
-    if target_seconds >= 140:
+    # Use combination-derived architecture if present!
+    if "resolved_structure" in song_length_profile:
         architecture = (
-            "Song architecture: create a polished core song with 2 verses, 2 choruses, and a short bridge.\n"
-            "Core-song rule: keep the first draft tight and high quality. The app will expand this into long form after generation.\n"
+            f"Song architecture: You MUST generate a song to fill {target_seconds} seconds of audio.\n"
+            f"Required Structure: Using {song_length_profile['resolved_structure']}.\n"
+            f"Write enough lines and verses to match this target density so the model does not have to stretch or slow down lyrics.\n"
         )
     else:
-        architecture = (
-            "Song architecture: use 2 verses, 1 to 2 choruses, and a concise ending.\n"
-            "Expansion rule: keep the hook immediate, the lyrics compact, and the emotional arc clean.\n"
-        )
+        if target_seconds >= 180:
+            architecture = (
+                f"Song architecture: You MUST generate a full-length, complete song to fill {target_seconds} seconds of audio.\n"
+                "Structure: Use at least 4-5 verses, 3 choruses, and 1 bridge. Write enough lines so the model does not have to stretch them.\n"
+            )
+        elif target_seconds >= 120:
+            architecture = (
+                f"Song architecture: You MUST generate a standard-length song to fill {target_seconds} seconds of audio.\n"
+                "Structure: Use 3-4 verses, 2-3 choruses, and 1 bridge.\n"
+            )
+        else:
+            architecture = (
+                f"Song architecture: Generate a short song to fill {target_seconds} seconds of audio.\n"
+                "Structure: Use 2 verses, 1-2 choruses, and a concise ending.\n"
+            )
 
     return (
-        f"Song length target: {label} ({duration_range}).\n"
-        f"Length direction: {prompt_line}\n"
+        f"Song length target: {target_seconds} seconds ({duration_range}).\n"
         f"{architecture}"
-        "Quality rule: keep the song emotionally rich and musically complete; use length to deepen the story, not to dilute it.\n"
+        "Quality rule: Keep the song structure rich, write complete and unique verses natively, and make sure word count matches the duration to prevent overstretching.\n"
     )
+
 
 
 def expand_song_lyrics_for_length(
@@ -7841,12 +8088,8 @@ def expand_song_lyrics_for_length(
     song_length_profile: dict[str, object] | None,
     language: str,
 ) -> str:
-    if not song_length_profile:
-        return lyrics
-
-    target_seconds = int(song_length_profile.get("target_seconds", 90) or 90)
-    if target_seconds < 140:
-        return lyrics
+    # Disable generic hardcoded template expansion; trust the LLM to write full-length lyrics natively.
+    return lyrics
 
     clean = (lyrics or "").strip()
     if not clean:
@@ -8149,56 +8392,49 @@ def expand_general_prompt_to_lyrics_and_style(
     import re
     p = prompt.lower()
     
-    # 1. Match Emotional/Ballad/Love
-    if any(k in p for k in ["emotional", "sad", "touch", "heart", "ballad", "acoustic", "slow", "love"]):
+    genre_lower = ""
+    mood_lower = ""
+    genre_val = ""
+    mood_val = ""
+    bpm_range = "90-110 BPM"
+    pacing_val = "Medium"
+    
+    if song_length_profile:
+        genre_val = str(song_length_profile.get("music_genre", ""))
+        mood_val = str(song_length_profile.get("emotion_mood", ""))
+        genre_lower = genre_val.lower()
+        mood_lower = mood_val.lower()
+        bpm_range = str(song_length_profile.get("bpm_range", "90-110 BPM"))
+        pacing_val = str(song_length_profile.get("pacing_tempo", "Medium"))
+        
+    # 1. Match Rap/Hip-hop
+    if "rap" in genre_lower or "hip-hop" in genre_lower or "rap" in p or "hip-hop" in p:
         lyrics = (
             "[verse]\n"
-            "Shadows fall across the floor,\n"
-            "I don't hear your footsteps anymore.\n"
-            "But the memories still remain,\n"
-            "Like a whisper in the autumn rain.\n\n"
+            "Walking down the street with a heavy pace,\n"
+            "Looking at the shadows in this crowded place.\n"
+            "Gotta find a way, gotta make a move,\n"
+            "Find the rhythm now, gotta get in the groove.\n"
+            "No time to waste, gotta run the mile,\n"
+            "See the neon lights stretch out for a while.\n\n"
             "[chorus]\n"
-            "If only time would trace a line,\n"
-            "To place your warm hand back in mine.\n"
-            "Through every storm that comes to pass,\n"
-            "True love will hold, true love will last.\n\n"
+            "This is the rhythm of the city beat,\n"
+            "Can you feel the drum pounding in your feet?\n"
+            "Rise up now, we don't ever slow,\n"
+            "This is the moment, here we go!\n\n"
             "[verse]\n"
-            "Silence is a heavy sound,\n"
-            "When the world is spinning round.\n"
-            "But I'll search the starlit sky,\n"
-            "Until the shadows pass us by."
+            "Turn the volume up, let the speakers blow,\n"
+            "Watch the crowd move in a steady flow.\n"
+            "Got the mic in hand, got the words to say,\n"
+            "We gonna light it up, write a brand new day."
         )
         style = (
-            f"gentle emotional pop ballad, slow acoustic feel, warm piano, soft acoustic guitar, slow building strings, 78 BPM, "
-            f"heart-touching emotional melody, warm clear friendly {singer_gender.lower()} singing voice, expressive vocal delivery, clean mix."
+            f"energetic modern rap hip-hop, {pacing_val.lower()} tempo, {bpm_range}, deep sub-bass, clean electronic synth chords, "
+            f"rapid rhythmic spoken-word {singer_gender.lower()} vocals, clear native pronunciation, clean professional studio mix."
         )
         
-    # 2. Match Upbeat Pop/Dance/Happy
-    elif any(k in p for k in ["happy", "fun", "dance", "upbeat", "energetic", "pop", "party", "cheerful"]):
-        lyrics = (
-            "[verse]\n"
-            "Woke up to the morning sun,\n"
-            "Feeling like a brand new day's begun.\n"
-            "Leave the worries far behind,\n"
-            "We've got a rhythm of a different kind.\n\n"
-            "[chorus]\n"
-            "So dance along, let the music play,\n"
-            "We're gonna shine through the dark away.\n"
-            "Hands in the air, feel the beat so strong,\n"
-            "This is the place where we belong!\n\n"
-            "[verse]\n"
-            "Step by step we feel the glow,\n"
-            "Watch the summer energy flow.\n"
-            "No looking back, we're on our way,\n"
-            "Making the most of every day."
-        )
-        style = (
-            f"catchy modern pop, upbeat dance rhythm, 120 BPM, driving synth bass, electronic drums, sparkling synthesizers, "
-            f"bright friendly {singer_gender.lower()} vocals, energetic vocal delivery, clean mix."
-        )
-        
-    # 3. Match Rock/Alternative/Energetic
-    elif any(k in p for k in ["rock", "guitar", "metal", "heavy", "alternative", "band", "drums"]):
+    # 2. Match Rock
+    elif "rock" in genre_lower or "metal" in genre_lower or any(k in p for k in ["rock", "guitar", "metal", "heavy", "alternative", "band", "drums"]):
         lyrics = (
             "[verse]\n"
             "Running through the neon light,\n"
@@ -8217,37 +8453,80 @@ def expand_general_prompt_to_lyrics_and_style(
             "Loudest chord in all the land."
         )
         style = (
-            f"energetic alternative rock, driving electric guitars, powerful bassline, rock drum kit, 112 BPM, "
+            f"energetic alternative rock, {pacing_val.lower()} tempo, {bpm_range}, driving electric guitars, powerful bassline, rock drum kit, "
             f"strong passionate {singer_gender.lower()} rock vocals, clean professional studio mix."
         )
         
-    # 4. Default general song (Modern Acoustic Pop Songwriter)
-    else:
-        subject = "a journey through the night"
-        for word in ["dream", "journey", "street", "city", "ocean", "river", "road", "friend", "home", "sky"]:
-            if word in p:
-                subject = f"a journey about {word}s"
-                break
-                
+    # 3. Match Electronic/Dance/Pop/Happy
+    elif "electronic" in genre_lower or "dance" in genre_lower or "edm" in genre_lower or "tomorrowland" in genre_lower or "pop" in genre_lower or mood_lower in ["happy", "energetic"] or any(k in p for k in ["happy", "fun", "dance", "upbeat", "energetic", "pop", "party", "cheerful", "edm", "tomorrowland"]):
         lyrics = (
-            f"[verse]\n"
-            f"Packed my bags and took a train,\n"
-            f"Leaving behind the winter rain.\n"
-            f"Looking for a brand new sign,\n"
-            f"Tracing a path that's yours and mine.\n\n"
-            f"[chorus]\n"
-            f"This is the start of the road ahead,\n"
-            f"Following where our feet have led.\n"
-            f"With every step the sky gets bright,\n"
-            f"We are moving into the light.\n\n"
-            f"[verse]\n"
-            f"Miles go by and the mountains rise,\n"
-            f"Reflected in your searching eyes.\n"
-            f"We'll keep on going, come what may,\n"
-            f"Finding our own path today."
+            "[verse]\n"
+            "Woke up to the morning sun,\n"
+            "Feeling like a brand new day's begun.\n"
+            "Leave the worries far behind,\n"
+            "We've got a rhythm of a different kind.\n\n"
+            "[chorus]\n"
+            "So dance along, let the music play,\n"
+            "We're gonna shine through the dark away.\n"
+            "Hands in the air, feel the beat so strong,\n"
+            "This is the place where we belong!\n\n"
+            "[verse]\n"
+            "Step by step we feel the glow,\n"
+            "Watch the summer energy flow.\n"
+            "No looking back, we're on our way,\n"
+            "Making the most of every day."
         )
         style = (
-            f"modern acoustic pop songwriter, gentle steady rhythm, 92 BPM, warm piano, soft acoustic guitar, "
+            f"high-energy modern {genre_val.upper() if genre_val in ['EDM', 'Tomorrowland'] else 'electronic dance pop'}, progressive house style, "
+            f"{pacing_val.lower()} tempo, {bpm_range}, massive supersaw synths, punchy kick drum, sidechained bass, rise and drop transitions, "
+            f"bright friendly {singer_gender.lower()} vocals, energetic expressive vocal delivery, wide stereo field, polished production mix."
+        )
+        
+    # 4. Match Sad/Ballad/Acoustic/Ghazal/Pain/Love
+    elif "ghazal" in genre_lower or "acoustic" in genre_lower or mood_lower in ["sad", "pain", "love"] or any(k in p for k in ["emotional", "sad", "touch", "heart", "ballad", "acoustic", "slow", "love"]):
+        lyrics = (
+            "[verse]\n"
+            "Shadows fall across the floor,\n"
+            "I don't hear your footsteps anymore.\n"
+            "But the memories still remain,\n"
+            "Like a whisper in the autumn rain.\n\n"
+            "[chorus]\n"
+            "If only time would trace a line,\n"
+            "To place your warm hand back in mine.\n"
+            "Through every storm that comes to pass,\n"
+            "True love will hold, true love will last.\n\n"
+            "[verse]\n"
+            "Silence is a heavy sound,\n"
+            "When the world is spinning round.\n"
+            "But I'll search the starlit sky,\n"
+            "Until the shadows pass us by."
+        )
+        style = (
+            f"gentle emotional pop ballad, {pacing_val.lower()} tempo, {bpm_range}, warm piano, soft acoustic guitar, slow building strings, "
+            f"heart-touching emotional melody, warm clear friendly {singer_gender.lower()} singing voice, expressive vocal delivery, clean mix."
+        )
+        
+    # 5. Default general song (Modern Acoustic Pop Songwriter)
+    else:
+        lyrics = (
+            "[verse]\n"
+            "Packed my bags and took a train,\n"
+            "Leaving behind the winter rain.\n"
+            "Looking for a brand new sign,\n"
+            "Tracing a path that's yours and mine.\n\n"
+            "[chorus]\n"
+            "This is the start of the road ahead,\n"
+            "Following where our feet have led.\n"
+            "With every step the sky gets bright,\n"
+            "We are moving into the light.\n\n"
+            "[verse]\n"
+            "Miles go by and the mountains rise,\n"
+            "Reflected in your searching eyes.\n"
+            "We'll keep on going, come what may,\n"
+            "Finding our own path today."
+        )
+        style = (
+            f"modern acoustic pop songwriter, {pacing_val.lower()} tempo, {bpm_range}, warm piano, soft acoustic guitar, "
             f"bright acoustic bass, expressive friendly {singer_gender.lower()} vocal, clean mix."
         )
         
@@ -8322,10 +8601,19 @@ def generate_lyrics_and_style_unified(
                 "You are a children's song and nursery rhyme composer. Expand the kids' song idea into complete lyrics and style description. "
                 "The output must be JSON with keys 'lyrics' and 'style'."
             )
+            speed_block = ""
+            if song_length_profile:
+                speed_block = (
+                    f"\n            Required Song Speed: {song_length_profile.get('label')} ({song_length_profile.get('tempo')})\n"
+                    f"            Speed Guidance: {song_length_profile.get('prompt_line')}\n"
+                    f"            You MUST explicitly include the tempo '{song_length_profile.get('tempo')}' and tempo descriptors (like 'lively fast melody', 'happy bouncy melody', or 'gentle slow melody') in the output 'style' string.\n"
+                )
+
             user_prompt = f"""
             User Kids Song Idea: "{prompt}"
             Singer Voice Gender Selection: "{singer_gender}"
             Target Song Language: "{language}"
+            {speed_block}
             
             Requirements:
             1. If the Target Song Language is 'Hindi', write the lyrics in standard Devanagari script (Hindi characters) like 'जय हनुमान ज्ञान गुन सागर' rather than Romanized/Hinglish (e.g. 'Jai Hanuman'). This forces the network to use native accent filters. Explicitly require 'native Indian {singer_gender.lower()} singing voice', 'Bollywood style kids singer', 'natural Indian accent', 'clear native pronunciation', and appropriate kids instruments (glockenspiel, bells, sitar, bansuri flute, dholak, tabla, acoustic guitar).
@@ -8359,11 +8647,76 @@ def generate_lyrics_and_style_unified(
                 " When a song length target is provided, expand the song by increasing structure and emotional progression, "
                 "not by padding with filler or dull repetition."
             )
+        
+        pacing_block = ""
+        pacing_val = "Auto"
+        genre_mood_block = ""
+        req_structure = "Structure the lyrics with standard tags like [verse] and [chorus]. Avoid [intro] or [outro] tags. Keep it to 2-3 short verses and 1-2 choruses."
+        
+        if song_length_profile:
+            pacing_val = song_length_profile.get("pacing_tempo", "Auto")
+            
+            mood_val = song_length_profile.get("emotion_mood", "")
+            genre_val = song_length_profile.get("music_genre", "")
+            bpm_range = song_length_profile.get("bpm_range", "")
+            syllable_density = song_length_profile.get("syllable_density", "")
+            resolved_structure = song_length_profile.get("resolved_structure", "")
+            
+            if mood_val or genre_val:
+                edm_guidance = ""
+                if str(genre_val).lower() in ["edm", "tomorrowland"]:
+                    edm_guidance = (
+                        " For EDM and Tomorrowland songs, guide the AI model by describing progressive house or big room house textures: "
+                        "massive supersaw synths, punchy kick drums, sidechained basslines, risers, drop transitions, and wide stereo fields."
+                    )
+                genre_mood_block = (
+                    f"\n        REQUIRED GENRE & MOOD STYLE CONFIGURATION:\n"
+                    f"        - Target Genre/Style: {genre_val}\n"
+                    f"        - Target Mood/Emotion: {mood_val}\n"
+                    f"        - Expected Tempo/BPM: {bpm_range}\n"
+                    f"        - Expected Syllable/Word Pacing: {syllable_density}\n"
+                    f"        Instructions:\n"
+                    f"        1. You MUST write the lyrics to reflect the '{mood_val}' emotion and '{genre_val}' genre conventions perfectly.\n"
+                    f"        2. In the 'style' string, you MUST include '{genre_val}', '{mood_val}', and appropriate instrumental description that matches this combination (e.g., piano and strings for sad melody, heavy beat and high BPM for rap, aggressive drums and electric guitar for rock).{edm_guidance}\n"
+                )
+            
+            if resolved_structure:
+                req_structure = (
+                    f"Structure the lyrics with standard tags like [verse], [chorus], and [bridge]. Avoid [intro] or [outro] tags. "
+                    f"You MUST generate a full-length lyric sheet that satisfies this structure exactly: {resolved_structure}. "
+                    "Make sure there are enough lines and syllables to cover the target seconds without overstretching."
+                )
+            
+        if pacing_val == "Fast / Upbeat":
+            pacing_block = (
+                "\n        REQUIRED PACING/TEMPO: Fast, energetic flow, high BPM (120-145 BPM).\n"
+                "        Instructions for Lyrics & Style:\n"
+                "        1. Write the lyrics with short, punchy lines and dense, close-together syllables to allow fast singing.\n"
+                "        2. If the user prompt is rap, hip-hop, or fast pop, write more syllables/words per line to prevent overstretching.\n"
+                "        3. In the 'style' string, explicitly require 'fast tempo', 'high BPM (120-145 BPM)', 'energetic rhythm', 'fast-paced vocals', and 'quick phrasing'.\n"
+            )
+        elif pacing_val == "Slow / Ballad":
+            pacing_block = (
+                "\n        REQUIRED PACING/TEMPO: Slow, gentle, relaxed pacing, low BPM (65-80 BPM).\n"
+                "        Instructions for Lyrics & Style:\n"
+                "        1. Write lyrics with longer vowels, spacious lines, and breathing room.\n"
+                "        2. In the 'style' string, explicitly require 'slow tempo', 'low BPM (65-80 BPM)', 'relaxed pacing', and 'soft emotional vocals'.\n"
+            )
+        elif pacing_val == "Medium / Mid-tempo":
+            pacing_block = (
+                "\n        REQUIRED PACING/TEMPO: Medium pacing, standard rhythm, 95-110 BPM.\n"
+                "        Instructions for Lyrics & Style:\n"
+                "        1. Write lyrics with standard syllable density.\n"
+                "        2. In the 'style' string, explicitly require 'moderate tempo', '95-110 BPM', and 'standard vocal pacing'.\n"
+            )
+
         user_prompt = f"""
         User Song Idea: "{prompt}"
         Singer Voice Gender Selection: "{singer_gender}"
         Target Song Language: "{language}"
         {length_block}
+        {pacing_block}
+        {genre_mood_block}
         
         Requirements:
         1. If the Target Song Language is 'Hindi', write the lyrics in standard Devanagari script (Hindi characters) like 'जय हनुमान ज्ञान गुन सागर' rather than Romanized/Hinglish (e.g. 'Jai Hanuman'). This forces the neural network to activate its native Indian mouth-shape and dental consonant engines for a perfect native accent. Explicitly mention 'native Indian {singer_gender.lower()} singing voice with natural Indian accent', 'Bollywood style playback singer (e.g. Arijit Singh/Atif Aslam style male, Shreya Ghoshal style female)', 'expressive emotional delivery with traditional vocal ornamentations (gamaq and murki)', 'clear native pronunciation', 'traditional Indian instruments (sitar, bansuri flute, dholak, tabla, acoustic guitar)', and 'highly polished T-Series/Saregama style commercial pop mix with grand cinematic reverb and spacious stereo delay' in the style description.
@@ -8375,7 +8728,7 @@ def generate_lyrics_and_style_unified(
            - 'strictly no modern electronic dance drums, no heavy synthesizers, no modern EDM elements'
            - 'sacred temple hall acoustics with warm ambient reverb'
         3. If the Target Song Language is 'English', write the lyrics in English.
-        4. Structure the lyrics with standard tags like [verse] and [chorus]. Avoid [intro] or [outro] tags. Keep it to 2-3 short verses and 1-2 choruses.
+        4. {req_structure}
         5. The 'style' string must be a comma-separated description of instruments, tempo (BPM), vocal qualities, and musical genre. Make it match the song idea.
         
         Return a raw JSON object matching this schema:
@@ -8523,6 +8876,8 @@ def expand_general_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, sin
 
 def expand_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, singer_gender: str, language: str, mode: str = "Poem/Rhyme") -> tuple[str, str]:
     script_generator = st.session_state.get("kids_studio_script_generator", "NVIDIA Llama 3.3")
+    song_speed = st.session_state.get("kids_song_speed", "Mid")
+    speed_profile = get_kids_rhyme_speed_profile(song_speed)
     return generate_lyrics_and_style_unified(
         settings=settings,
         prompt=prompt,
@@ -8530,7 +8885,8 @@ def expand_prompt_to_lyrics_and_style_dynamic(settings, prompt: str, singer_gend
         language=language,
         mode=mode,
         is_kids=True,
-        script_generator=script_generator
+        script_generator=script_generator,
+        song_length_profile=speed_profile
     )
 
 
@@ -8542,53 +8898,49 @@ def expand_general_prompt_to_lyrics_and_style_hindi_local(
     import re
     p = prompt.lower()
     
-    if any(k in p for k in ["emotional", "sad", "touch", "heart", "ballad", "acoustic", "slow", "love"]):
+    genre_lower = ""
+    mood_lower = ""
+    genre_val = ""
+    mood_val = ""
+    bpm_range = "90-110 BPM"
+    pacing_val = "Medium"
+    
+    if song_length_profile:
+        genre_val = str(song_length_profile.get("music_genre", ""))
+        mood_val = str(song_length_profile.get("emotion_mood", ""))
+        genre_lower = genre_val.lower()
+        mood_lower = mood_val.lower()
+        bpm_range = str(song_length_profile.get("bpm_range", "90-110 BPM"))
+        pacing_val = str(song_length_profile.get("pacing_tempo", "Medium"))
+
+    # 1. Match Rap/Hip-hop
+    if "rap" in genre_lower or "hip-hop" in genre_lower or "rap" in p or "hip-hop" in p:
         lyrics = (
             "[verse]\n"
-            "दिल की राहों में खामोशी है बसी,\n"
-            "तुम बिन अधूरी है हर एक खुशी।\n"
-            "यादों की बारिश में भीगता हूं मैं,\n"
-            "आँखों में छुपी है वही बेखुदी।\n\n"
+            "शहर की इन सड़कों पे चलता हूँ मैं,\n"
+            "भीड़ के इस शोर में पलता हूँ मैं।\n"
+            "वक्त कम है, राहें हैं बड़ी,\n"
+            "मंजिल की तलाश में थमता नहीं कभी।\n"
+            "आँखों में है सपना, सीने में है आग,\n"
+            "लिखूँगा खुद अपना नया एक भाग।\n\n"
             "[chorus]\n"
-            "आ भी जा मेरे पास, कहदे दिल की बात,\n"
-            "हाथों में हो तेरा हाथ, गुज़रे ये रात।\n"
-            "हर लम्हा हर घड़ी, बस तेरा ही इंतज़ार,\n"
-            "सच्चा है मेरा प्यार, सच्चा है मेरा प्यार।\n\n"
+            "ये है शहर की धड़कन का राग,\n"
+            "कम नहीं हमारा कोई भी ख़्वाब।\n"
+            "उठो अब, पीछे न हटना कभी,\n"
+            "मंजिल को पाएंगे हम अभी!\n\n"
             "[verse]\n"
-            "सन्नाटा है अब तो हर सू यहाँ,\n"
-            "बिन तेरे सूना है मेरा जहाँ।\n"
-            "तारों की रोशनी में ढूँढे नज़र,\n"
-            "मिलोगे तुम कहाँ, मिलोगे तुम कहाँ।"
+            "आवाज़ बढ़ाओ, अब शोर होने दो,\n"
+            "दिल की बातों को आज बहने दो।\n"
+            "हाथों में है कलम, दिल में है बात,\n"
+            "बदल देंगे हम आज ये रात।"
         )
         style = (
-            f"gentle emotional pop ballad, slow acoustic feel, warm piano, soft acoustic guitar, slow building strings, 78 BPM, "
-            f"heart-touching emotional melody, warm clear friendly native Indian {singer_gender.lower()} singing voice, Bollywood style singer, natural Indian accent, expressive vocal delivery, clear native pronunciation, clean mix."
+            f"energetic modern Bollywood rap hip-hop, {pacing_val.lower()} tempo, {bpm_range}, deep sub-bass, clean electronic synth chords, "
+            f"rhythmic fast spoken-word native Indian {singer_gender.lower()} rap vocals, Bollywood style rapper, natural Indian accent, clear native pronunciation, clean professional studio mix."
         )
-        
-    elif any(k in p for k in ["happy", "fun", "dance", "upbeat", "energetic", "pop", "party", "cheerful"]):
-        lyrics = (
-            "[verse]\n"
-            "सुबह की धूप में है नया रंग छाया,\n"
-            "दिल ने हमारे एक नया गीत गाया।\n"
-            "छोड़ो ये बातें जो बीती कल यहाँ,\n"
-            "खुशियों की महफ़िल को हमने सजाया।\n\n"
-            "[chorus]\n"
-            "नाचलो सारे अब तो मिलके मेरे यार,\n"
-            "मौज मनालो आया दिन दिलदार।\n"
-            "हवाओं में है मस्ती, दिल है बेक़रार,\n"
-            "ज़िंदगी से करलो थोड़ा सा प्यार!\n\n"
-            "[verse]\n"
-            "एक एक कदम पे नयी धूप खिले,\n"
-            "हम तुम जहाँ भी अब मिलते चलें।\n"
-            "पीछे न देखना आगे ही बढ़ना,\n"
-            "ज़िंदगी का मज़ा अब हमने लिया।"
-        )
-        style = (
-            f"catchy modern pop, upbeat dance rhythm, 120 BPM, driving synth bass, electronic drums, sparkling synthesizers, "
-            f"bright friendly native Indian {singer_gender.lower()} vocals, Bollywood style singer, natural Indian accent, energetic vocal delivery, clear native pronunciation, clean mix."
-        )
-        
-    elif any(k in p for k in ["rock", "guitar", "metal", "heavy", "alternative", "band", "drums"]):
+
+    # 2. Match Rock
+    elif "rock" in genre_lower or "metal" in genre_lower or any(k in p for k in ["rock", "guitar", "metal", "heavy", "alternative", "band", "drums"]):
         lyrics = (
             "[verse]\n"
             "नियोन रोशनी में हम भागे चले,\n"
@@ -8607,10 +8959,60 @@ def expand_general_prompt_to_lyrics_and_style_hindi_local(
             "सबसे बड़ा सुर छेड़ेंगे अभी।"
         )
         style = (
-            f"energetic alternative rock, driving electric guitars, powerful bassline, rock drum kit, 112 BPM, "
+            f"energetic alternative rock, {pacing_val.lower()} tempo, {bpm_range}, driving electric guitars, powerful bassline, rock drum kit, "
             f"strong passionate native Indian {singer_gender.lower()} rock vocals, Bollywood style rock singer, natural Indian accent, clear native pronunciation, clean professional studio mix."
         )
-        
+
+    # 3. Match Electronic/Dance/Pop/Happy
+    elif "electronic" in genre_lower or "dance" in genre_lower or "edm" in genre_lower or "tomorrowland" in genre_lower or "pop" in genre_lower or mood_lower in ["happy", "energetic"] or any(k in p for k in ["happy", "fun", "dance", "upbeat", "energetic", "pop", "party", "cheerful", "edm", "tomorrowland"]):
+        lyrics = (
+            "[verse]\n"
+            "सुबह की धूप में है नया रंग छाया,\n"
+            "दिल ने हमारे एक नया गीत गाया।\n"
+            "छोड़ो ये बातें जो बीती कल यहाँ,\n"
+            "खुशियों की महफ़िल को हमने सजाया।\n\n"
+            "[chorus]\n"
+            "नाचलो सारे अब तो मिलके मेरे यार,\n"
+            "मौज मनालो आया दिन दिलदार।\n"
+            "हवाओं में है मस्ती, दिल है बेक़रार,\n"
+            "ज़िंदगी से करलो थोड़ा सा प्यार!\n\n"
+            "[verse]\n"
+            "एक एक कदम पे नयी धूप खिले,\n"
+            "हम तुम जहाँ भी अब मिलते चलें।\n"
+            "पीछे न देखना आगे ही बढ़ना,\n"
+            "ज़िंदगी का मज़ा अब हमने लिया।"
+        )
+        style = (
+            f"high-energy modern Bollywood {genre_val.upper() if genre_val in ['EDM', 'Tomorrowland'] else 'electronic dance pop'}, progressive house style, "
+            f"{pacing_val.lower()} tempo, {bpm_range}, massive supersaw synths, punchy kick drum, sidechained bass, Bollywood style build and drop, "
+            f"bright friendly native Indian {singer_gender.lower()} vocals, Bollywood style singer, natural Indian accent, energetic vocal delivery, clear native pronunciation, wide stereo field, polished commercial mix."
+        )
+
+    # 4. Match Sad/Ballad/Acoustic/Ghazal/Pain/Love
+    elif "ghazal" in genre_lower or "acoustic" in genre_lower or mood_lower in ["sad", "pain", "love"] or any(k in p for k in ["emotional", "sad", "touch", "heart", "ballad", "acoustic", "slow", "love"]):
+        lyrics = (
+            "[verse]\n"
+            "दिल की राहों में खामोशी है बसी,\n"
+            "तुम बिन अधूरी है हर एक खुशी।\n"
+            "यादों की बारिश में भीगता हूं मैं,\n"
+            "आँखों में छुपी है वही बेखुदी।\n\n"
+            "[chorus]\n"
+            "आ भी जा मेरे पास, कहदे दिल की बात,\n"
+            "हाथों में हो तेरा हाथ, गुज़रे ये रात।\n"
+            "हर लम्हा हर घड़ी, बस तेरा ही इंतज़ार,\n"
+            "सच्चा है मेरा प्यार, सच्चा है मेरा प्यार।\n\n"
+            "[verse]\n"
+            "सन्नाटा है अब तो हर सू यहाँ,\n"
+            "बिन तेरे सूना है मेरा जहाँ।\n"
+            "तारों की रोशनी में ढूँढे नज़र,\n"
+            "मिलोगे तुम कहाँ, मिलोगे तुम कहाँ।"
+        )
+        style = (
+            f"gentle emotional pop ballad, {pacing_val.lower()} tempo, {bpm_range}, warm piano, soft acoustic guitar, slow building strings, "
+            f"heart-touching emotional melody, warm clear friendly native Indian {singer_gender.lower()} singing voice, Bollywood style singer, natural Indian accent, expressive vocal delivery, clear native pronunciation, clean mix."
+        )
+
+    # 5. Default general song (Modern Acoustic Pop Songwriter)
     else:
         lyrics = (
             "[verse]\n"
@@ -8630,10 +9032,10 @@ def expand_general_prompt_to_lyrics_and_style_hindi_local(
             "अपना नया राही आज बनाएं।"
         )
         style = (
-            f"modern acoustic pop songwriter, gentle steady rhythm, 92 BPM, warm piano, soft acoustic guitar, "
+            f"modern acoustic pop songwriter, {pacing_val.lower()} tempo, {bpm_range}, warm piano, soft acoustic guitar, "
             f"bright acoustic bass, expressive friendly native Indian {singer_gender.lower()} vocal, Bollywood style singer, natural Indian accent, clear native pronunciation, clean mix."
         )
-        
+
     if song_length_profile and int(song_length_profile.get("target_seconds", 90) or 90) >= 140:
         lyrics += (
             "\n\n[bridge]\n"

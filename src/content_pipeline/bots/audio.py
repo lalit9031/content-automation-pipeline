@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import math
+import os
 import struct
 import re
 import subprocess
@@ -1352,24 +1353,19 @@ def generate_instrumental_audio_track(
                 if cropped_ref_path.exists():
                     prompt_audio_param = handle_file(str(cropped_ref_path))
 
-        client = Client("tencent/SongGeneration", token=hf_token, httpx_kwargs={"timeout": 600.0})
-        valid_genres = [
-            "Auto", "Pop", "Latin", "Rock", "Electronic", "Metal", "Country",
-            "R&B/Soul", "Ballad", "Jazz", "World", "Hip-Hop", "Funk", "Soundtrack",
-        ]
-        active_genre = genre if genre in valid_genres else "Pop"
-        inst_lyric = "[intro-medium]\n\n[verse]\n[silence]\n\n[chorus]\n[silence]\n\n[outro-medium]"
-        result_path, _info = client.predict(
-            lyric=inst_lyric,
-            description=inst_desc,
-            prompt_audio=prompt_audio_param,
-            genre=active_genre,
-            cfg_coef=cfg_coef,
-            temperature=min(float(temperature), 0.40),
-            api_name="/generate_song",
+        inst_lyric = "[start]\n[intro]\n[instrumental]\n[outro]"
+        spaces_priority = ["ASLP-lab/DiffRhythm2", "multimodalart/khala"]  # tencent/SongGeneration removed — repo deleted from HF
+        
+        result_path, _info = generate_song_via_prioritized_spaces(
+            lrc=inst_lyric,
+            text_prompt=f"{genre}, pure instrumental backing track, {inst_desc}",
+            audio_prompt=prompt_audio_param,
+            genre=genre,
+            duration_seconds=duration_seconds,
+            spaces_priority=spaces_priority
         )
-        if result_path and str(result_path).strip().lower() != "none" and Path(result_path).exists():
-            beat_path = Path(result_path)
+        if result_path:
+            beat_path = result_path
     except Exception as err:
         print(f"Instrumental SongGeneration failed, using local fallback: {err}")
 
@@ -2883,7 +2879,17 @@ def generate_edge_tts_song_fallback(
         processed_text = re.sub(r"\[pause\]", "... ", devanagari_lyrics, flags=re.IGNORECASE)
         clean_lyrics = cleanse_text_for_vocal_engine(processed_text, singer_key)
     else:
-        if not is_devanagari and not singer_key.startswith("en_"):
+        lang_detected = "English"
+        try:
+            import streamlit as st
+            if st.session_state.get("music_studio_language"):
+                lang_detected = st.session_state.get("music_studio_language")
+            elif st.session_state.get("kids_studio_language"):
+                lang_detected = st.session_state.get("kids_studio_language")
+        except Exception:
+            pass
+
+        if lang_detected != "English" and not is_devanagari and not singer_key.startswith("en_"):
             devanagari_lyrics = transliterate_to_devanagari(lyrics, settings)
         
         if mode == "Storytelling":
@@ -2923,9 +2929,24 @@ def generate_edge_tts_song_fallback(
         elif singer_key == "hi_kids_madhur":
             voice = "hi-IN-MadhurNeural"
         else:
-            voice = "hi-IN-MadhurNeural"
-            if singer_gender.strip().lower() == "female":
-                voice = "hi-IN-SwaraNeural"
+            lang_detected = "English"
+            try:
+                import streamlit as st
+                if st.session_state.get("music_studio_language"):
+                    lang_detected = st.session_state.get("music_studio_language")
+                elif st.session_state.get("kids_studio_language"):
+                    lang_detected = st.session_state.get("kids_studio_language")
+            except Exception:
+                pass
+            
+            if lang_detected == "English":
+                voice = "en-IN-PrabhatNeural"
+                if singer_gender.strip().lower() == "female":
+                    voice = "en-IN-NeerjaNeural"
+            else:
+                voice = "hi-IN-MadhurNeural"
+                if singer_gender.strip().lower() == "female":
+                    voice = "hi-IN-SwaraNeural"
         
     temp_dir = settings.output_dir / ".runtime"
     temp_dir.mkdir(parents=True, exist_ok=True)
@@ -3467,8 +3488,6 @@ def generate_hindi_song_via_native_audio(
             else:
                 print("Generating dynamic instrumental backing track using Hugging Face Lyria...")
 
-            client = Client("tencent/SongGeneration", token=hf_token, httpx_kwargs={"timeout": 600.0})
-            
             # Enforce positive instrumental description, avoiding negation words that trigger vocals
             raw_desc = style_description or "traditional north indian music, pure instrumental, solo sitar and bansuri flute melody, acoustic tabla rhythm, studio recording"
             
@@ -3495,31 +3514,28 @@ def generate_hindi_song_via_native_audio(
             # Ensure we have "Pure instrumental" at the start
             if "instrumental" not in inst_desc.lower():
                 inst_desc = "Pure instrumental. " + inst_desc
-                
+
             # Call prediction with instrumental lyric placeholder
-            inst_lyric = "[intro-medium]\n\n[verse]\n[silence]\n\n[outro-medium]"
-            
-            # Force a valid genre and lower temperature for traditional Indian feel
-            valid_genres = ['Auto', 'Pop', 'Latin', 'Rock', 'Electronic', 'Metal', 'Country', 'R&B/Soul', 'Ballad', 'Jazz', 'World', 'Hip-Hop', 'Funk', 'Soundtrack']
-            active_genre = genre if genre in valid_genres else "World"
+            inst_lyric = "[start]\n[intro]\n[instrumental]\n[outro]"
             active_temp = min(temperature, 0.40) # Lower temp to prevent Western deviations
             
-            result_path, info = client.predict(
-                lyric=inst_lyric,
-                description=inst_desc,
-                prompt_audio=prompt_audio_param,
-                genre=active_genre,
-                cfg_coef=cfg_coef,
+            spaces_priority = ["ASLP-lab/DiffRhythm2", "multimodalart/khala"]  # tencent/SongGeneration removed — repo deleted from HF
+            result_path, info = generate_song_via_prioritized_spaces(
+                lrc=inst_lyric,
+                text_prompt=f"{genre}, pure instrumental backing track, {inst_desc}",
+                audio_prompt=prompt_audio_param,
+                genre=genre,
                 temperature=active_temp,
-                api_name="/generate_song"
+                spaces_priority=spaces_priority,
+                st_write_func=st_write_func
             )
             
-            if result_path and str(result_path).strip().lower() != "none" and Path(result_path).exists():
-                beat_path = Path(result_path)
+            if result_path:
+                beat_path = result_path
                 if st_write_func:
                     st_write_func("✅ Dynamic instrumental backing track generated successfully.")
             else:
-                raise ValueError("Lyria did not return a valid audio path for the backing track.")
+                raise ValueError(f"Hugging Face spaces did not return a valid audio path. Details: {info}")
                 
         except Exception as lyria_err:
             if st_write_func:
@@ -3610,3 +3626,137 @@ def generate_storytelling_ambient_pad(output_path: Path, duration_seconds: int =
             frames.extend(struct.pack("<h", int(sample * 32767)))
         wav_file.writeframes(bytes(frames))
     return output_path
+
+
+def call_song_generator_space(
+    space_name: str,
+    token: str | None,
+    lrc: str,
+    text_prompt: str,
+    audio_prompt: any,
+    genre: str,
+    temperature: float = 0.40,
+    cfg_coef: float = 1.8,
+    duration_seconds: float = 90.0,
+    language: str = "English",
+) -> Path | None:
+    """Helper to predict from a specific Gradio Space with correct arguments mapping."""
+    from gradio_client import Client
+    
+    client = Client(space_name, token=token, httpx_kwargs={"timeout": 600.0})
+    
+    if space_name == "tencent/SongGeneration":
+        active_genre = genre if genre and genre != "Auto" else "Folk"
+        active_temp = min(temperature, 0.40)
+        result_path, info = client.predict(
+            lyric=lrc,
+            description=text_prompt,
+            prompt_audio=audio_prompt,
+            genre=active_genre,
+            cfg_coef=cfg_coef,
+            temperature=active_temp,
+            api_name="/generate_song"
+        )
+        if result_path and str(result_path).strip().lower() != "none" and Path(result_path).exists():
+            return Path(result_path)
+            
+    elif space_name == "multimodalart/khala":
+        duration_min = max(0.5, duration_seconds / 60.0)
+        tags = "kids, nursery, upbeat, happy" if "kids" in text_prompt.lower() else "pop, song"
+        result_path = client.predict(
+            description=text_prompt,
+            lyrics=lrc,
+            language=language,
+            genre=genre,
+            duration_min=duration_min,
+            tags=tags,
+            top_k_bb=50.0,
+            top_k_sr=10.0,
+            temperature=temperature,
+            seed=42,
+            api_name="/generate"
+        )
+        if result_path and str(result_path).strip().lower() != "none" and Path(result_path).exists():
+            return Path(result_path)
+            
+    elif space_name == "ASLP-lab/DiffRhythm2":
+        result_path = client.predict(
+            lrc=lrc,
+            audio_prompt=audio_prompt,
+            text_prompt=text_prompt,
+            seed=42,
+            randomize_seed=True,
+            steps=16,
+            cfg_strength=1.3,
+            file_type="mp3",
+            odeint_method="euler",
+            api_name="/infer_music"
+        )
+        if result_path and str(result_path).strip().lower() != "none" and Path(result_path).exists():
+            return Path(result_path)
+            
+    return None
+
+
+def generate_song_via_prioritized_spaces(
+    lrc: str,
+    text_prompt: str,
+    audio_prompt: any,
+    genre: str,
+    temperature: float = 0.40,
+    cfg_coef: float = 1.8,
+    duration_seconds: float = 90.0,
+    language: str = "English",
+    spaces_priority: list[str] = None,
+    st_write_func = None,
+) -> tuple[Path | None, str | None]:
+    """
+    Attempts to generate a song using HF Spaces in a prioritized fallback loop.
+    Iterates through each space in spaces_priority, trying available HF tokens (and anonymous fallback).
+    """
+    from content_pipeline.config import Settings
+    settings = Settings.from_environment()
+    
+    tokens_to_try = list(settings.hf_tokens) if settings.hf_tokens else []
+    if not tokens_to_try and settings.hf_token:
+        tokens_to_try = [settings.hf_token]
+    tokens_to_try.append(None)
+    
+    if not spaces_priority:
+        # Default priority: tencent -> DiffRhythm2 -> khala
+        spaces_priority = ["ASLP-lab/DiffRhythm2", "multimodalart/khala"]  # tencent/SongGeneration removed — repo deleted from HF
+        
+    for space_name in spaces_priority:
+        msg = f"🎵 Attempting song generation via {space_name}..."
+        if st_write_func:
+            st_write_func(msg)
+        else:
+            print(msg)
+            
+        for token in tokens_to_try:
+            token_display = f"{token[:8]}..." if token else "Anonymous"
+            try:
+                result_path = call_song_generator_space(
+                    space_name=space_name,
+                    token=token,
+                    lrc=lrc,
+                    text_prompt=text_prompt,
+                    audio_prompt=audio_prompt,
+                    genre=genre,
+                    temperature=temperature,
+                    cfg_coef=cfg_coef,
+                    duration_seconds=duration_seconds,
+                    language=language
+                )
+                if result_path:
+                    success_info = f"Successfully generated via {space_name} ({token_display})"
+                    return result_path, success_info
+            except Exception as e:
+                warn_msg = f"⚠️ Space {space_name} failed with token {token_display}: {e}"
+                if st_write_func:
+                    st_write_func(warn_msg)
+                else:
+                    print(warn_msg)
+                    
+    return None, None
+
