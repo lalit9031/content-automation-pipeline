@@ -3183,11 +3183,15 @@ def generate_hindi_song_via_native_audio(
 
     # English audio: always use free Edge-TTS (block Gemini keys for English)
     # Hindi audio: use Gemini first, fallback to Edge-TTS
+    # Storytelling: always bypass Gemini to use Microsoft's Azure Cognitive neural voices (Edge-TTS)
     is_english_voice = singer_key.upper().startswith("EN_")
+    is_storytelling = (mode == "Storytelling")
     if is_english_voice:
         print("🔒 [Audio] English voice detected — Gemini blocked. Using free Edge-TTS.")
+    elif is_storytelling:
+        print("🔒 [Audio] Storytelling mode active — Gemini bypassed to use free Edge-TTS neural voices directly.")
 
-    if not is_english_voice and not status["limit_reached"]:
+    if not is_english_voice and not is_storytelling and not status["limit_reached"]:
 
         try:
             # Increment and generate

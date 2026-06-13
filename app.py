@@ -5403,7 +5403,34 @@ def render_frontdoor(settings: Settings) -> None:
                             sanitized_lyrics = "[verse]\n" + sanitized_lyrics
 
                     lang = st.session_state.get("kids_studio_language", "English")
-                    if lang == "Hindi" or kids_mode == "Storytelling":
+                    if lang == "Hindi" and kids_mode == "Poem/Rhyme":
+                        st.write("🎵 Generating Kids Hindi Rhyme via Google Lyria 3 Pro...")
+                        from content_pipeline.bots.audio import generate_song_via_lyria3
+                        
+                        out_path = PROJECT_ROOT / "output" / "LittleBubbles_Generated_Song.mp3"
+                        if not out_path.parent.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio").exists():
+                            out_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio/LittleBubbles_Generated_Song.mp3")
+                        out_path.parent.mkdir(parents=True, exist_ok=True)
+                        
+                        singer_gender = st.session_state.get("kids_song_singer_gender", "Female")
+                        generate_song_via_lyria3(
+                            lyrics=sanitized_lyrics,
+                            style_description=desc,
+                            output_path=out_path,
+                            gemini_api_keys=settings.gemini_api_keys,
+                            gemini_api_key=settings.gemini_api_key,
+                            singer_gender=singer_gender,
+                            language="Hindi",
+                            st_write_func=st.write,
+                        )
+                        out_path = normalize_music_studio_audio_length(
+                            out_path,
+                            int(st.session_state.get("kids_effective_target_duration_seconds", 90)),
+                        )
+                        st.session_state["kids_song_generated_mp3"] = str(out_path)
+                        st.success("🎉 Kids Hindi Rhyme generated successfully using Google Lyria 3 Pro!")
+                        st.rerun()
+                    elif kids_mode == "Storytelling":
                         if lang == "Hindi" and not any("\u0900" <= char <= "\u097f" for char in sanitized_lyrics):
                             st.write("🔮 Converting Romanized lyrics to native Devanagari script for perfect Indian accent...")
                             from content_pipeline.bots.gemini_tts import transliterate_to_devanagari
@@ -5576,7 +5603,7 @@ def render_frontdoor(settings: Settings) -> None:
                             
                         from content_pipeline.bots.audio import generate_song_via_prioritized_spaces
                         
-                        spaces_priority = ["tencent/SongGeneration", "ASLP-lab/DiffRhythm2", "multimodalart/khala"]
+                        spaces_priority = ["ASLP-lab/DiffRhythm2", "tencent/SongGeneration", "multimodalart/khala"]
                         result_path, info = generate_song_via_prioritized_spaces(
                             lrc=formatted_lyrics,
                             text_prompt=f"{genre}, {desc}",
