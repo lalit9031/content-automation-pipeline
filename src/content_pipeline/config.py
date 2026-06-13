@@ -50,6 +50,8 @@ class Settings:
     reference_audio_dir: Path | None = None
     hf_token: str = ""
     hf_tokens: tuple[str, ...] = ()
+    hf_token_keys: tuple[str, ...] = ()
+    hf_song_generation_space: str = ""
     gemini_api_key: str = ""
     gemini_api_keys: tuple[str, ...] = ()
     gemini_video_model: str = "veo-3.0-fast-generate-001"
@@ -69,9 +71,13 @@ class Settings:
     nvidia_image_model: str = "qwen/qwen-image"
     nvidia_nim_model: str = "microsoft/phi-4-mini-instruct"
     together_api_key: str = ""
+    together_api_keys: tuple[str, ...] = ()
     pollinations_api_key: str = ""
     local_llm_url: str = "http://localhost:11434/v1"
-    local_llm_model: str = "llama3"
+    local_llm_model: str = "Qwen/Qwen2.5-7B-Instruct"
+    comic_voice_model_repo: str = "ai4bharat/indic-parler-tts"
+    comic_kokoro_model_repo: str = "hexgrad/Kokoro-82M"
+    comic_chatterbox_model_repo: str = "ResembleAI/chatterbox"
     dotenv_path: Path | None = None
 
     @classmethod
@@ -136,10 +142,12 @@ class Settings:
                 else None
             ),
             hf_tokens=(_hf_tokens := _read_key_pool("HF_TOKEN", 10, fallback_env="HF_API_KEY")),
+            hf_token_keys=_hf_tokens,
             hf_token=_first_key(
                 _hf_tokens,
                 os.getenv("HF_TOKEN", "") or os.getenv("HF_API_KEY", ""),
             ),
+            hf_song_generation_space=os.getenv("HF_SONG_GENERATION_SPACE", "").strip(),
             gemini_api_keys=(_gemini_keys := _read_key_pool("GEMINI_API_KEY", 10, fallback_env="GOOGLE_API_KEY")),
             gemini_api_key=_first_key(
                 _gemini_keys,
@@ -170,10 +178,14 @@ class Settings:
             ),
             nvidia_image_model=os.getenv("NVIDIA_IMAGE_MODEL", "qwen/qwen-image"),
             nvidia_nim_model=os.getenv("NVIDIA_NIM_MODEL", "microsoft/phi-4-mini-instruct"),
-            together_api_key=os.getenv("TOGETHER_API_KEY", ""),
+            together_api_keys=(_together_keys := _read_key_pool("TOGETHER_API_KEY", 5)),
+            together_api_key=_first_key(_together_keys, os.getenv("TOGETHER_API_KEY", "")),
             pollinations_api_key=os.getenv("POLLINATIONS_API_KEY", ""),
             local_llm_url=os.getenv("LOCAL_LLM_URL", "http://localhost:11434/v1"),
-            local_llm_model=os.getenv("LOCAL_LLM_MODEL", "llama3"),
+            local_llm_model=os.getenv("LOCAL_LLM_MODEL", "Qwen/Qwen2.5-7B-Instruct"),
+            comic_voice_model_repo=os.getenv("COMIC_VOICE_MODEL_REPO", "ai4bharat/indic-parler-tts"),
+            comic_kokoro_model_repo=os.getenv("COMIC_KOKORO_MODEL_REPO", "hexgrad/Kokoro-82M"),
+            comic_chatterbox_model_repo=os.getenv("COMIC_CHATTERBOX_MODEL_REPO", "ResembleAI/chatterbox"),
             dotenv_path=project_dir / ".env",
         )
 
@@ -190,7 +202,23 @@ def _load_dotenv(path: Path) -> None:
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, value = line.split("=", 1)
-        os.environ.setdefault(key.strip(), value.strip().strip("'\""))
+        cleaned = _clean_env_value(value)
+        os.environ.setdefault(key.strip(), cleaned)
+
+
+def _clean_env_value(raw_value: str) -> str:
+    value = raw_value.strip()
+    if not value:
+        return value
+    if (value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'")):
+        return value[1:-1]
+    # Strip inline comments for unquoted values while preserving URLs or hashes inside quoted secrets.
+    hash_index = value.find(" #")
+    if hash_index != -1:
+        value = value[:hash_index].rstrip()
+    elif value.startswith("#"):
+        value = ""
+    return value
 
 
 def _read_key_pool(prefix: str, total_slots: int, fallback_env: str | None = None) -> tuple[str, ...]:

@@ -74,21 +74,65 @@ from content_pipeline.bots.audio import smart_mix_storytelling_music_agent
 from content_pipeline.bots.audio import generate_voice_preview
 from content_pipeline.bots.audio import filter_voice_preview_presets
 from content_pipeline.bots.audio import normalize_voice_text
+from content_pipeline.bots.audio import resolve_song_generation_space
 from content_pipeline.bots.audio import reference_audio_language_options
 from content_pipeline.bots.audio import scan_reference_audio_library
 from content_pipeline.bots.audio import voice_gender_options
 from content_pipeline.bots.audio import voice_preview_language_options
 from content_pipeline.bots.audio import voice_preview_presets
+from content_pipeline.bots.indic_parler_inference import generate_hf_tts_voiceover, generate_local_parler_voiceover
 from content_pipeline.bots.image import ImageVariant, gemini_image_package_plan, image_provider
 from content_pipeline.bots.prompt import build_cinematic_image_prompt
 from content_pipeline.bots.prompt import build_image_style_pack
 from content_pipeline.bots.prompt import sanitize_image_prompt_text
+from content_pipeline.bots.youtube_audit import (
+    render_youtube_audit_markdown,
+    run_weekly_youtube_review,
+)
+from content_pipeline.bots.project_brain import (
+    build_project_brain_report,
+    load_latest_project_brain_report,
+    render_project_brain_markdown,
+)
 from content_pipeline.config import Settings
 from content_pipeline.pipeline import run_linkedin_mvp
 
 
 def on_music_lyrics_changed():
     st.session_state["lyrics_manually_edited"] = True
+
+
+def _auto_refresh_project_brain(settings, *, reason: str = "generation") -> None:
+    try:
+        output_dir = resolve_output_dir(st.session_state.get("output_dir_pref", str(settings.output_dir)))
+        report = build_project_brain_report(
+            settings,
+            refresh_web=False,
+            trend_region=str(st.session_state.get("project_brain_trend_region", "IN")),
+            output_dir=output_dir,
+        )
+        st.session_state["project_brain_report"] = report
+        st.session_state["project_brain_paths"] = {
+            "json": report.report_path,
+            "markdown": report.markdown_path,
+            "memory": report.memory_path,
+        }
+        st.session_state["project_brain_last_auto_reason"] = reason
+        st.session_state["project_brain_last_auto_error"] = ""
+    except Exception as exc:
+        st.session_state["project_brain_last_auto_error"] = str(exc)
+
+
+def _resolve_hf_song_token(settings: Settings) -> str:
+    pool = list(getattr(settings, "hf_token_keys", ()) or ())
+    if len(pool) >= 6:
+        ordered = pool[3:6] + pool[:3] + pool[6:]
+    else:
+        ordered = pool
+    for token in ordered:
+        if token:
+            return token
+    return settings.hf_token or ""
 
 
 def _apply_streamlit_secrets() -> None:
@@ -1670,7 +1714,7 @@ def render_frontdoor(settings: Settings) -> None:
             initial_cat = "Music"
         elif cur_page in ["Video", "2DVideo"]:
             initial_cat = "Video"
-        elif cur_page == "Image":
+        elif cur_page in ["Image", "ComicVideo"]:
             initial_cat = "Image"
         elif cur_page in ["Run", "Distribution", "Prompts"]:
             initial_cat = "Automation"
@@ -1687,6 +1731,8 @@ def render_frontdoor(settings: Settings) -> None:
                     st.session_state["active_music_page"] = "Music Studio"
                 elif cat == "Video":
                     st.session_state["active_video_page"] = "Current Video Studio"
+                elif cat == "Image":
+                    st.session_state["active_image_page"] = "Image Studio"
                 elif cat == "Automation":
                     st.session_state["active_automation_page"] = "Run Pipeline"
                 st.rerun()
@@ -1719,24 +1765,42 @@ def render_frontdoor(settings: Settings) -> None:
                     st.session_state["active_video_page"] = page
                     st.rerun()
         st.markdown("<br>", unsafe_allow_html=True)
-        
+
+    elif active_cat == "Image":
+        st.session_state.setdefault("active_image_page", "Image Studio")
+        sub_cols = st.columns(2)
+        sub_pages = ["Image Studio", "Comic Book Video"]
+        sub_icons = ["🖼️ Image Studio", "💬 Comic Book Video"]
+        for i, (page, icon) in enumerate(zip(sub_pages, sub_icons)):
+            with sub_cols[i]:
+                is_active = st.session_state["active_image_page"] == page
+                if st.button(icon, key=f"sub_image_{page}", use_container_width=True, type="primary" if is_active else "secondary"):
+                    st.session_state["active_image_page"] = page
+                    st.rerun()
+        st.markdown("<br>", unsafe_allow_html=True)
+
     elif active_cat == "Automation":
         st.session_state.setdefault("active_automation_page", "Run Pipeline")
         auto_rows = [
             ["Run Pipeline", "Automation Music Studio", "Automation Kids Music Studio"],
-            ["Automation Image Studio", "Social Publish", "Daily Prompts"],
+            ["Automation Image Studio", "YouTube Audit", "Social Publish"],
+            ["Daily Prompts", "Project Brain", ""],
         ]
         auto_icons = {
             "Run Pipeline": "⚙️ Run Pipeline",
             "Automation Music Studio": "🎵 Automation Music Studio",
             "Automation Kids Music Studio": "👶 Automation Kids Music Studio",
             "Automation Image Studio": "🖼️ Automation Image Studio",
+            "YouTube Audit": "🔎 YouTube Audit",
             "Social Publish": "🚀 Social Publish",
             "Daily Prompts": "💡 Daily Prompts",
+            "Project Brain": "🧠 Project Brain",
         }
         for row in auto_rows:
             sub_cols = st.columns(3)
             for i, page in enumerate(row):
+                if not page:
+                    continue
                 with sub_cols[i]:
                     is_active = st.session_state["active_automation_page"] == page
                     if st.button(
@@ -1768,17 +1832,24 @@ def render_frontdoor(settings: Settings) -> None:
         }
         active_p = subpage_mapping.get(st.session_state["active_video_page"], "Video")
     elif active_cat == "Image":
-        active_p = "Image"
+        image_subpage_mapping = {
+            "Image Studio": "Image",
+            "Comic Book Video": "ComicVideo",
+        }
+        active_p = image_subpage_mapping.get(st.session_state["active_image_page"], "Image")
     elif active_cat == "Automation":
         subpage_mapping = {
             "Run Pipeline": "Run",
             "Automation Music Studio": "Music",
             "Automation Kids Music Studio": "Kids",
             "Automation Image Studio": "AutoImage",
+            "YouTube Audit": "Audit",
             "Social Publish": "Distribution",
-            "Daily Prompts": "Prompts"
+            "Daily Prompts": "Prompts",
+            "Project Brain": "Brain",
         }
         st.session_state["automation_music_combo_mode"] = st.session_state["active_automation_page"] == "Automation Music Studio"
+        st.session_state["automation_kids_combo_mode"] = st.session_state["active_automation_page"] == "Automation Kids Music Studio"
         active_p = subpage_mapping.get(st.session_state["active_automation_page"], "Run")
     elif active_cat == "Files":
         active_p = "Files"
@@ -1797,9 +1868,9 @@ def render_frontdoor(settings: Settings) -> None:
         # 2. Date controls
         settings_cols = st.columns(2)
         with settings_cols[0]:
-            run_day = st.date_input("Run day", value=st.session_state.get("run_day", default_day), key="run_day")
+            run_day = st.date_input("Run day", key="run_day")
         with settings_cols[1]:
-            inspect_day = st.date_input("Inspect day", value=st.session_state.get("inspect_day", default_day), key="inspect_day")
+            inspect_day = st.date_input("Inspect day", key="inspect_day")
             
         # 3. YouTube Channel selector
         st.markdown("---")
@@ -2017,6 +2088,12 @@ def render_frontdoor(settings: Settings) -> None:
     elif active_p == "AutoImage":
         render_automation_image_studio(settings)
 
+    elif active_p == "Audit":
+        render_youtube_audit_studio(settings)
+
+    elif active_p == "Brain":
+        render_project_brain_studio(settings)
+
     elif active_p == "Music":
         st.markdown("### Music studio")
         st.markdown("<p style='font-size: 14.5px; color: #94a3b8; margin-top: -10px; margin-bottom: 24px;'>Compose premium, high-fidelity songs in any genre featuring warm singing voices powered by Tencent Lyria 3 Pro.</p>", unsafe_allow_html=True)
@@ -2051,13 +2128,13 @@ def render_frontdoor(settings: Settings) -> None:
             with m_col1:
                 m_url = st.text_input(
                     "Local LLM API Endpoint:",
-                    value=os.getenv("LOCAL_LLM_URL", "http://localhost:11434/v1"),
+                    value=settings.local_llm_url,
                     key="music_studio_local_llm_url"
                 )
             with m_col2:
                 m_model = st.text_input(
                     "Local LLM Model Name:",
-                    value=os.getenv("LOCAL_LLM_MODEL", "llama3"),
+                    value=settings.local_llm_model,
                     key="music_studio_local_llm_model"
                 )
             settings = replace(settings, local_llm_url=m_url, local_llm_model=m_model)
@@ -2747,7 +2824,7 @@ def render_frontdoor(settings: Settings) -> None:
                             output_path=out_path,
                             singer_gender=singer_gender,
                             selected_ref=selected_ref,
-                            hf_token=settings.hf_token,
+                            hf_token=_resolve_hf_song_token(settings),
                             genre=genre,
                             temperature=temp,
                             cfg_coef=cfg,
@@ -2761,6 +2838,7 @@ def render_frontdoor(settings: Settings) -> None:
                         st.session_state["music_studio_generated_mp3"] = str(out_path)
                         st.session_state["music_studio_mixed_video_path"] = ""
                         maybe_generate_linked_automation_music_image(settings)
+                        _auto_refresh_project_brain(settings, reason="music_native_audio")
                         st.success("🎉 Hindi Song generated successfully using Native Audio Pipeline!")
                         st.rerun()
                     elif lang == "Hinglish" or (lang == "Hindi" and "DiffRhythm2" in selected_model):
@@ -2830,6 +2908,7 @@ def render_frontdoor(settings: Settings) -> None:
                         st.session_state["music_studio_generated_mp3"] = str(out_path)
                         st.session_state["music_studio_mixed_video_path"] = ""
                         maybe_generate_linked_automation_music_image(settings)
+                        _auto_refresh_project_brain(settings, reason="music_hf_audio")
                         st.success("🎉 Song generated successfully!")
                         st.rerun()
                     except Exception as hf_exc:
@@ -2853,6 +2932,7 @@ def render_frontdoor(settings: Settings) -> None:
                         st.session_state["music_studio_generated_mp3"] = str(out_path)
                         st.session_state["music_studio_mixed_video_path"] = ""
                         maybe_generate_linked_automation_music_image(settings)
+                        _auto_refresh_project_brain(settings, reason="music_fallback_audio")
                         st.success("🎉 Backup Song generated successfully using Edge-TTS fallback mixer!")
                         st.rerun()
                 except Exception as exc:
@@ -3208,7 +3288,7 @@ def render_frontdoor(settings: Settings) -> None:
                 generated_path = generate_instrumental_audio_track(
                     output_path,
                     cleaned_style,
-                    hf_token=settings.hf_token,
+                    hf_token=_resolve_hf_song_token(settings),
                     genre=instrumental_genre,
                     temperature=instrumental_temp,
                     cfg_coef=instrumental_cfg,
@@ -4402,6 +4482,9 @@ def render_frontdoor(settings: Settings) -> None:
             </div>
             """, unsafe_allow_html=True)
 
+    elif active_p == "ComicVideo":
+        render_comic_book_video_studio(settings)
+
     elif active_p == "Kids":
         # Creative Mode Dropdown
         st.session_state.setdefault("kids_studio_mode", "Poem/Rhyme")
@@ -4427,7 +4510,7 @@ def render_frontdoor(settings: Settings) -> None:
                 """
                 <div class="hero" style="background: linear-gradient(135deg, rgba(56,189,248,0.15), rgba(168,85,247,0.15)); border: 1px solid rgba(56,189,248,0.3); margin-bottom: 24px;">
                   <h1 style="font-size: 32px;">🎵 Kids Rhymes & Rhythm Studio (Lyria 3 / Native Audio)</h1>
-                  <p style="margin-top: 6px; font-size: 14px;">Generate cheerful, high-quality music and nursery rhymes matching your reference tracks using the Tencent SongGeneration model.</p>
+                  <p style="margin-top: 6px; font-size: 14px;">Generate cheerful, high-quality music and nursery rhymes matching your reference tracks using the configured Hugging Face SongGeneration space.</p>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -4458,13 +4541,13 @@ def render_frontdoor(settings: Settings) -> None:
             with k_col1:
                 k_url = st.text_input(
                     "Local LLM API Endpoint:",
-                    value=os.getenv("LOCAL_LLM_URL", "http://localhost:11434/v1"),
+                    value=settings.local_llm_url,
                     key="kids_studio_local_llm_url"
                 )
             with k_col2:
                 k_model = st.text_input(
                     "Local LLM Model Name:",
-                    value=os.getenv("LOCAL_LLM_MODEL", "llama3"),
+                    value=settings.local_llm_model,
                     key="kids_studio_local_llm_model"
                 )
             settings = replace(settings, local_llm_url=k_url, local_llm_model=k_model)
@@ -4877,17 +4960,23 @@ def render_frontdoor(settings: Settings) -> None:
                     generated_instrumental = generate_instrumental_audio_track(
                         instrumental_output,
                         instrumental_style,
-                        hf_token=settings.hf_token,
+                        hf_token=_resolve_hf_song_token(settings),
                         genre=genre,
                         temperature=temp,
                         cfg_coef=cfg,
                         duration_seconds=int(st.session_state.get("kids_effective_target_duration_seconds", 90)),
                         selected_ref=selected_ref,
                         force_local=True,
-                    )
+                )
                 st.session_state["kids_song_generated_mp3"] = str(generated_instrumental)
                 st.session_state["kids_song_description"] = instrumental_style
+                _auto_refresh_project_brain(settings, reason="kids_instrumental")
+                if active_cat == "Automation":
+                    maybe_generate_linked_kids_poster(settings)
                 st.success("Instrumental-only audio created.")
+
+        if active_cat == "Automation" and kids_mode == "Poem/Rhyme":
+            render_kids_nursery_poster_section(settings)
 
         composer_title = "Story Composer / Script" if kids_mode == "Storytelling" else "Lyrics Composer"
         st.markdown(f"### {composer_title}")
@@ -5096,6 +5185,9 @@ def render_frontdoor(settings: Settings) -> None:
                                     adjusted_path,
                                 )
                                 st.session_state["kids_song_generated_mp3"] = str(adjusted_path)
+                                _auto_refresh_project_brain(settings, reason="kids_audio_adjust")
+                                if active_cat == "Automation":
+                                    maybe_generate_linked_kids_poster(settings)
                                 st.success(
                                     "Adjusted audio from "
                                     f"{_format_duration_hint(int(round(previous_seconds)))} "
@@ -5158,6 +5250,9 @@ def render_frontdoor(settings: Settings) -> None:
                             st.session_state["kids_song_generated_mp3"] = str(mixed_path)
                             st.session_state["kids_story_score_plan"] = score_plan
                             st.session_state["kids_story_mix_agent_report"] = agent_report
+                            _auto_refresh_project_brain(settings, reason="kids_story_mix")
+                            if active_cat == "Automation":
+                                maybe_generate_linked_kids_poster(settings)
                             if agent_report.get("passed"):
                                 st.success("Music added under the clear narration. Voice, language, and pace were preserved.")
                             else:
@@ -5520,7 +5615,7 @@ def render_frontdoor(settings: Settings) -> None:
                                         output_path=path,
                                         singer_gender=singer_gender,
                                         selected_ref=selected_ref,
-                                        hf_token=settings.hf_token,
+                                        hf_token=_resolve_hf_song_token(settings),
                                         genre=genre,
                                         temperature=temp,
                                         cfg_coef=cfg,
@@ -5559,6 +5654,9 @@ def render_frontdoor(settings: Settings) -> None:
                             st.session_state["kids_song_generated_mp3"] = str(adjusted_path)
                             st.session_state["kids_song_story_part_paths"] = [str(path) for path in part_paths]
                             st.session_state.pop("kids_song_preview_part_mp3", None)
+                            _auto_refresh_project_brain(settings, reason="kids_story_native_long")
+                            if active_cat == "Automation":
+                                maybe_generate_linked_kids_poster(settings)
                             progress_bar.progress(100, text="100% - Story audio parts merged and ready.")
                             if used_natural_duration:
                                 st.success(
@@ -5578,7 +5676,7 @@ def render_frontdoor(settings: Settings) -> None:
                                 output_path=out_path,
                                 singer_gender=singer_gender,
                                 selected_ref=selected_ref,
-                                hf_token=settings.hf_token,
+                                hf_token=_resolve_hf_song_token(settings),
                                 genre=genre,
                                 temperature=temp,
                                 cfg_coef=cfg,
@@ -5587,6 +5685,9 @@ def render_frontdoor(settings: Settings) -> None:
                                 mode=kids_mode
                             )
                             st.session_state["kids_song_generated_mp3"] = str(out_path)
+                            _auto_refresh_project_brain(settings, reason="kids_story_native_short")
+                            if active_cat == "Automation":
+                                maybe_generate_linked_kids_poster(settings)
                             st.success(f"🎉 Kids {kids_mode} generated successfully using Native Audio Pipeline!")
                         st.rerun()
                     elif lang == "Hinglish":
@@ -5650,6 +5751,9 @@ def render_frontdoor(settings: Settings) -> None:
                         subprocess.run(transcode_cmd, check=True)
                         
                         st.session_state["kids_song_generated_mp3"] = str(out_path)
+                        _auto_refresh_project_brain(settings, reason="kids_song_hf")
+                        if active_cat == "Automation":
+                            maybe_generate_linked_kids_poster(settings)
                         st.success("🎉 Kids rhyme generated successfully!")
                         st.rerun()
                     except Exception as hf_exc:
@@ -5669,6 +5773,9 @@ def render_frontdoor(settings: Settings) -> None:
                             mode=kids_mode
                         )
                         st.session_state["kids_song_generated_mp3"] = str(out_path)
+                        _auto_refresh_project_brain(settings, reason="kids_song_fallback")
+                        if active_cat == "Automation":
+                            maybe_generate_linked_kids_poster(settings)
                         st.success("🎉 Backup Kids rhyme generated successfully using Edge-TTS fallback mixer!")
                         st.rerun()
                 except Exception as exc:
@@ -6278,13 +6385,13 @@ def render_frontdoor(settings: Settings) -> None:
                     with col_lurl:
                         local_llm_url_val = st.text_input(
                             "Local LLM API Endpoint:",
-                            value=os.getenv("LOCAL_LLM_URL", "http://localhost:11434/v1"),
+                            value=ui_settings.local_llm_url,
                             key="run_pipeline_local_llm_url"
                         )
                     with col_lmodel:
                         local_llm_model_val = st.text_input(
                             "Local LLM Model Name:",
-                            value=os.getenv("LOCAL_LLM_MODEL", "llama3"),
+                            value=ui_settings.local_llm_model,
                             key="run_pipeline_local_llm_model"
                         )
                     ui_settings = replace(ui_settings, local_llm_url=local_llm_url_val, local_llm_model=local_llm_model_val)
@@ -6857,13 +6964,13 @@ def render_frontdoor(settings: Settings) -> None:
             with col_lurl:
                 auto_local_llm_url_val = st.text_input(
                     "Local LLM API Endpoint:",
-                    value=os.getenv("LOCAL_LLM_URL", "http://localhost:11434/v1"),
+                    value=settings.local_llm_url,
                     key="auto_local_llm_url"
                 )
             with col_lmodel:
                 auto_local_llm_model_val = st.text_input(
                     "Local LLM Model Name:",
-                    value=os.getenv("LOCAL_LLM_MODEL", "llama3"),
+                    value=settings.local_llm_model,
                     key="auto_local_llm_model"
                 )
             settings = replace(settings, local_llm_url=auto_local_llm_url_val, local_llm_model=auto_local_llm_model_val)
@@ -7508,6 +7615,134 @@ def mix_music_and_images_to_mp4(
         encoding="utf-8",
     )
     video_only_path = mix_root / "music_video_only.mp4"
+    subprocess.run(
+        [
+            ffmpeg,
+            "-y",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            str(concat_path),
+            "-c",
+            "copy",
+            "-movflags",
+            "+faststart",
+            str(video_only_path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    final_path = output_dir / output_name
+    subprocess.run(
+        [
+            ffmpeg,
+            "-y",
+            "-i",
+            str(video_only_path),
+            "-i",
+            str(audio_path),
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            "-shortest",
+            "-movflags",
+            "+faststart",
+            str(final_path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return final_path
+
+
+def mix_comic_pages_and_voiceover_to_mp4(
+    audio_path: Path,
+    image_paths: list[Path],
+    output_dir: Path,
+    output_name: str = "Comic_Book_Video.mp4",
+) -> Path:
+    import shutil
+    import subprocess
+
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise RuntimeError("FFmpeg is required to mix comic pages and voiceover. Install it with: brew install ffmpeg")
+    if not audio_path.exists():
+        raise FileNotFoundError(f"Audio file not found: {audio_path}")
+    existing_images = [Path(p) for p in image_paths if Path(p).exists()]
+    if not existing_images:
+        raise FileNotFoundError("No comic panel images were available to mix into the video.")
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    mix_root = output_dir / ".runtime" / "comic_video_mix"
+    mix_root.mkdir(parents=True, exist_ok=True)
+
+    total_seconds = get_audio_duration_seconds(audio_path)
+    if total_seconds <= 0:
+        raise ValueError("Could not detect a valid audio duration.")
+
+    per_image_seconds = max(1.0, total_seconds / len(existing_images))
+    clip_paths: list[Path] = []
+    concat_path = mix_root / "comic_video_concat.txt"
+
+    for idx, image_path in enumerate(existing_images, start=1):
+        clip_path = mix_root / f"panel_{idx:02d}.mp4"
+        frames = max(30, int(math.ceil(per_image_seconds * 30)))
+        zoom_direction = "in" if idx % 2 else "out"
+        zoom_step = 0.00028
+        max_zoom = 1.10
+        if zoom_direction == "out":
+            zoom_expr = f"if(eq(on,0),{max_zoom},max(1.0,zoom-{zoom_step}))"
+        else:
+            zoom_expr = f"min(zoom+{zoom_step},{max_zoom})"
+        subprocess.run(
+            [
+                ffmpeg,
+                "-y",
+                "-loop",
+                "1",
+                "-i",
+                str(image_path),
+                "-vf",
+                (
+                    "scale=1080:1920:force_original_aspect_ratio=increase,"
+                    "crop=1080:1920,"
+                    f"zoompan=z='{zoom_expr}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
+                    f"d={frames}:s=1080x1920:fps=30,"
+                    "format=yuv420p"
+                ),
+                "-frames:v",
+                str(frames),
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                "-movflags",
+                "+faststart",
+                "-an",
+                str(clip_path),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        clip_paths.append(clip_path)
+
+    concat_path.write_text(
+        "\n".join(f"file '{path}'" for path in clip_paths) + "\n",
+        encoding="utf-8",
+    )
+    video_only_path = mix_root / "comic_video_only.mp4"
     subprocess.run(
         [
             ffmpeg,
@@ -9426,6 +9661,271 @@ def render_automation_image_studio(settings) -> None:
         )
 
 
+def render_comic_book_video_studio(settings) -> None:
+    prefix = "comic_book_video"
+
+    def k(name: str) -> str:
+        return f"{prefix}_{name}"
+
+    ui_output_dir = resolve_output_dir(st.session_state.get("output_dir_pref", str(settings.output_dir)))
+    st.session_state.setdefault(k("provider_choice"), "free-ai")
+    st.session_state.setdefault(k("topic"), st.session_state.get("image_topic", "A brave little comic adventure"))
+    st.session_state.setdefault(k("characters"), "kids, bunny, teddy bear")
+    st.session_state.setdefault(k("panel_count"), 4)
+    st.session_state.setdefault(k("style_name"), "Classic Comic Book")
+    st.session_state.setdefault(k("story_seed"), "A cheerful comic book adventure in a bright park with a simple heartwarming lesson.")
+    st.session_state.setdefault(k("voice_engine"), "local-m1-parler")
+    st.session_state.setdefault(k("prompt_input"), "")
+    st.session_state.setdefault(k("narration_input"), "")
+    st.session_state.setdefault(k("preview_path"), "")
+    st.session_state.setdefault(k("preview_paths"), [])
+    st.session_state.setdefault(k("video_path"), "")
+    st.session_state.setdefault(k("error"), "")
+    st.session_state.setdefault(k("story_signature"), "")
+    st.session_state.setdefault(k("story_plan"), {})
+
+    current_topic = st.session_state.get(k("topic"), "")
+    current_characters = st.session_state.get(k("characters"), "")
+    current_style = st.session_state.get(k("style_name"), "Classic Comic Book")
+    current_story_seed = st.session_state.get(k("story_seed"), "")
+    story_signature = "|".join(
+        [
+            current_topic.strip(),
+            current_characters.strip(),
+            current_style.strip(),
+            current_story_seed.strip(),
+        ]
+    )
+    story_plan = st.session_state.get(k("story_plan"), {})
+    if st.session_state.get(k("story_signature"), "") != story_signature or not story_plan:
+        story_plan = _comic_story_plan(
+            current_topic,
+            current_characters,
+            current_style,
+            None,
+            story_seed=current_story_seed,
+        )
+        st.session_state[k("story_signature")] = story_signature
+        st.session_state[k("story_plan")] = story_plan
+    current_panels = int(story_plan["panel_count"])
+    st.session_state[k("panel_count")] = current_panels
+    prompts = [str(page["prompt"]) for page in story_plan["pages"]]
+    compressed_prompts = [_compress_comic_prompt(prompt) for prompt in prompts]
+    st.session_state[k("prompt_series")] = prompts
+    st.session_state[k("prompt_input")] = compressed_prompts[0] if compressed_prompts else ""
+    st.session_state[k("narration_input")] = _comic_narration_script(
+        current_topic,
+        current_characters,
+        current_panels,
+        story_seed=current_story_seed,
+    )
+
+    st.markdown("### 🗯️ Comic Book Video Studio")
+    st.caption(
+        "Creates portrait comic-style panels with the free image ladder first, then Hugging Face, then stitches the pages and local voiceover into one MP4."
+    )
+
+    left_col, right_col = st.columns([6, 4])
+
+    with left_col:
+        video_path = st.session_state.get(k("video_path"), "")
+        if video_path and os.path.exists(video_path):
+            st.success(f"Comic video ready: `{Path(video_path).name}`")
+            try:
+                video_file = Path(video_path)
+                st.download_button(
+                    "📥 Download Comic Book Video",
+                    data=video_file.read_bytes(),
+                    file_name=video_file.name,
+                    mime="video/mp4",
+                    use_container_width=True,
+                    key=f"{prefix}_download_video",
+                )
+                with st.expander("Preview video", expanded=False):
+                    st.video(video_path)
+            except Exception as exc:
+                st.error(f"Could not prepare video download: {exc}")
+        else:
+            st.info("No comic video generated yet. Build the prompts and render the comic pages below.")
+
+        preview_paths = st.session_state.get(k("preview_paths"), [])
+        if preview_paths:
+            st.markdown("#### Comic Pages")
+            cols = st.columns(min(3, len(preview_paths)))
+            for idx, path_str in enumerate(preview_paths):
+                col = cols[idx % len(cols)]
+                with col:
+                    path = Path(path_str)
+                    if path.exists():
+                        render_image_preview(path)
+                        st.caption(f"Page {idx + 1}")
+
+        st.caption(f"Auto pages selected from story depth: {current_panels}")
+        st.selectbox(
+            "Comic Art Provider",
+            options=("free-ai", "nvidia", "gemini", "openai"),
+            key=k("provider_choice"),
+        )
+        st.text_input("Comic Topic", key=k("topic"))
+        st.text_input("Main Characters", key=k("characters"))
+        st.text_area("Story Seed", key=k("story_seed"), height=100)
+        st.selectbox(
+            "Comic Style",
+            options=(
+                "Classic Comic Book",
+                "Children's Comic",
+                "Bold Ink Cartoon",
+                "Halftone Graphic Novel",
+            ),
+            key=k("style_name"),
+        )
+        st.selectbox(
+            "Voice Engine",
+            options=("local-m1-parler", "hf-kokoro", "hf-chatterbox", "edge"),
+            key=k("voice_engine"),
+            help="Local M1 Parler is the default offline path. Kokoro and Chatterbox use Hugging Face inference. Edge is the safe fallback.",
+        )
+
+        button_cols = st.columns(2)
+        with button_cols[0]:
+            if st.button("🧙‍♂️ Build Comic Prompt", use_container_width=True, key=f"{prefix}_btn_build"):
+                st.session_state[k("prompt_input")] = compressed_prompts[0] if compressed_prompts else ""
+                st.session_state[k("narration_input")] = _comic_narration_script(
+                    st.session_state.get(k("topic"), ""),
+                    st.session_state.get(k("characters"), ""),
+                    max(1, min(8, int(st.session_state.get(k("panel_count"), 4)))),
+                    story_seed=st.session_state.get(k("story_seed"), ""),
+                )
+                st.rerun()
+        with button_cols[1]:
+            if st.button("✨ Generate Comic Video", type="primary", use_container_width=True, key=f"{prefix}_btn_generate"):
+                try:
+                    output_dir = ui_output_dir
+                    panel_paths = []
+                    provider_name = st.session_state.get(k("provider_choice"), "free-ai")
+                    provider_candidates = _comic_provider_candidates(provider_name)
+                    progress_bar = st.progress(0, text="Starting comic generation...")
+                    status_box = st.empty()
+                    total_steps = max(1, len(compressed_prompts))
+                    for idx, prompt_text in enumerate(compressed_prompts, start=1):
+                        page_label = f"Page {idx}/{total_steps}"
+                        status_box.info(f"Rendering {page_label}...")
+                        progress_bar.progress(int(((idx - 1) / total_steps) * 100), text=f"Rendering {page_label}")
+                        last_error: Exception | None = None
+                        preview_path = None
+                        for candidate in provider_candidates:
+                            try:
+                                status_box.info(f"Rendering {page_label} with {candidate}...")
+                                preview_path = _generate_comic_page_preview(
+                                    settings=settings,
+                                    output_dir=output_dir,
+                                    provider_name=candidate,
+                                    prompt=prompt_text,
+                                    topic=st.session_state.get(k("topic"), "Comic"),
+                                    page_label=f"page {idx}",
+                                )
+                                st.session_state.setdefault(k("generation_log"), [])
+                                st.session_state[k("generation_log")].append(f"{page_label} rendered with {candidate}")
+                                break
+                            except Exception as exc:
+                                last_error = exc
+                                st.session_state.setdefault(k("generation_log"), [])
+                                st.session_state[k("generation_log")].append(f"{page_label} failed on {candidate}: {exc}")
+                        if preview_path is None:
+                            raise RuntimeError(
+                                f"{page_label} failed across comic providers. Last error: {last_error}"
+                            )
+                        panel_paths.append(str(preview_path))
+                        progress_bar.progress(int((idx / total_steps) * 70), text=f"Rendered {page_label}")
+                    st.session_state[k("preview_paths")] = panel_paths
+                    st.session_state[k("preview_path")] = panel_paths[0] if panel_paths else ""
+
+                    voice_text = st.session_state.get(k("narration_input"), "").strip()
+                    if not voice_text:
+                        voice_text = _comic_narration_script(
+                            st.session_state.get(k("topic"), ""),
+                            st.session_state.get(k("characters"), ""),
+                            max(1, min(8, int(st.session_state.get(k("panel_count"), 4)))),
+                            story_seed=st.session_state.get(k("story_seed"), ""),
+                        )
+                    voice_path = output_dir / ".runtime" / "comic_book_video" / "comic_voiceover.wav"
+                    voice_path.parent.mkdir(parents=True, exist_ok=True)
+                    voice_path = _generate_comic_voiceover(
+                        settings,
+                        voice_path,
+                        voice_text,
+                        st.session_state.get(k("voice_engine"), "local-m1-parler"),
+                    )
+                    progress_bar.progress(80, text="Voiceover ready, stitching pages...")
+
+                    final_video = mix_comic_pages_and_voiceover_to_mp4(
+                        audio_path=voice_path,
+                        image_paths=[Path(p) for p in panel_paths],
+                        output_dir=output_dir,
+                        output_name="Comic_Book_Video.mp4",
+                    )
+                    progress_bar.progress(100, text="Comic video complete.")
+                    status_box.success("Comic book video generated successfully.")
+                    st.session_state[k("video_path")] = str(final_video)
+                    st.session_state[k("error")] = ""
+                    _auto_refresh_project_brain(settings, reason="comic_book_video")
+                    st.rerun()
+                except Exception as exc:
+                    st.session_state[k("error")] = str(exc)
+                    st.error(f"Comic book video generation failed: {exc}")
+
+    with right_col:
+        st.markdown("#### Prompt Preview")
+        for idx, page in enumerate(story_plan["pages"], start=1):
+            st.markdown(f"**Panel {idx}**")
+            st.code(_compress_comic_prompt(str(page["prompt"]), max_chars=1200), language="text")
+
+        if st.session_state.get(k("generation_log")):
+            st.markdown("#### Generation Log")
+            for line in st.session_state.get(k("generation_log"), []):
+                st.caption(line)
+
+        st.markdown("#### Story Bible")
+        if story_plan.get("cast_lines"):
+            st.markdown("**Cast**")
+            for line in story_plan["cast_lines"]:
+                st.caption(line)
+        st.markdown("**Page Beats**")
+        for page in story_plan["pages"]:
+            st.caption(f"Page {page['page']}: {page['title']} - {page['narration']}")
+
+        st.markdown("#### Narration")
+        st.text_area(
+            "Voiceover Script",
+            key=k("narration_input"),
+            height=220,
+            help="This is the local voiceover text that will be rendered on your M1 before the pages are stitched into video.",
+        )
+
+        st.markdown("#### Image Provider notes")
+        st.markdown(
+            """
+            - `free-ai` tries NVIDIA first, then Hugging Face, then Pollinations.
+            - Great for comic pages when you want to stay on free tiers.
+            - The comic pages are generated in portrait so the stitched MP4 stays clean on mobile and Shorts-style layouts.
+            - If you want to force a provider, switch it above before generating.
+            """.strip()
+        )
+
+        st.markdown("#### Voice notes")
+        st.markdown(
+            """
+            - `local-m1-parler` uses the local Apple Silicon path when the Parler dependencies are installed.
+            - `hf-kokoro` uses `hexgrad/Kokoro-82M` on Hugging Face and is a good lightweight narration option.
+            - `hf-chatterbox` uses `ResembleAI/chatterbox` on Hugging Face for a more expressive character voice.
+            - `edge` is the fallback if local M1 synthesis is unavailable.
+            """.strip()
+        )
+
+        if st.session_state.get(k("error")):
+            st.error(st.session_state[k("error")])
+
+
 def _automation_image_preview_path(
     output_dir: Path,
     topic: str,
@@ -9517,6 +10017,52 @@ def _automation_music_image_seed(topic: str, subject: str, singer_gender: str) -
     )
 
 
+def _kids_poster_lyrics_excerpt(lyrics: str, *, max_lines: int = 12, max_chars: int = 900) -> str:
+    cleaned_lines: list[str] = []
+    for raw_line in (lyrics or "").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            continue
+        cleaned_lines.append(line.replace(";", ","))
+        if len(cleaned_lines) >= max_lines:
+            break
+    excerpt = "\n".join(cleaned_lines).strip()
+    if not excerpt:
+        excerpt = "Little bubbles, floating high,\nShining softly in the sky."
+    if len(excerpt) > max_chars:
+        excerpt = excerpt[:max_chars].rsplit(" ", 1)[0].rstrip()
+    return excerpt
+
+
+def _kids_nursery_poster_seed(topic: str, lyrics: str, kids_mode: str) -> tuple[str, str]:
+    title = sanitize_image_prompt_text((topic or "").strip()) or "Little Bubbles TV"
+    title = title[:48].strip() or "Little Bubbles TV"
+    lyrics_excerpt = _kids_poster_lyrics_excerpt(lyrics)
+    if kids_mode == "Storytelling":
+        return (
+            title,
+            (
+                f"Make a 4:5 vertical 3D children's story poster titled \"{title}\" in big colorful bubble letters with a white outline. "
+                "Show a sunny park with blue sky, smiling sun, rainbow, clouds, flowers, and bubbles. Put cute kids and animals around the edges. "
+                "In the center, add a white cloud panel with large, clear, colorful story text. Use a warm, magical, friendly kids-show look. "
+                f"Story text:\n{lyrics_excerpt}\n"
+                "No extra text, no logos, no watermarks."
+            ),
+        )
+    return (
+        title,
+        (
+            f'Make a 4:5 vertical 3D nursery rhyme poster titled "{title}" in big colorful bubble letters with a white outline. '
+            "Show a sunny park with blue sky, smiling sun, rainbow, clouds, flowers, and bubbles. Put cute kids and animals around the edges. "
+            "In the center, add a white cloud panel with large, clear, colorful lyrics. Make the text easy to read, playful, and balanced. "
+            f"Lyrics:\n{lyrics_excerpt}\n"
+            "Keep the poster bright, cute, polished, and child-friendly. No extra text, no logos, no watermarks."
+        ),
+    )
+
+
 def _automation_image_prompt_variants(topic: str, subject: str, style_name: str, image_count: int, singer_gender: str = "") -> list[str]:
     image_count = max(1, min(8, int(image_count)))
     creative_topic, creative_subject = _automation_music_image_seed(topic, subject, singer_gender)
@@ -9532,6 +10078,393 @@ def _automation_image_prompt_variants(topic: str, subject: str, style_name: str,
             "Change the camera angle or framing slightly so each image feels unique while staying consistent with the story."
         )
     return prompts
+
+
+def _comic_panel_story_beats(topic: str, characters: str, panel_count: int, story_seed: str = "") -> list[str]:
+    plan = _comic_story_plan(topic, characters, "Classic Comic Book", panel_count, story_seed=story_seed)
+    return [str(page["narration"]) for page in plan["pages"]]
+
+
+def _comic_book_prompt_variants(
+    topic: str,
+    characters: str,
+    style_name: str,
+    panel_count: int,
+    story_seed: str = "",
+) -> list[str]:
+    plan = _comic_story_plan(topic, characters, style_name, panel_count, story_seed=story_seed)
+    return [str(page["prompt"]) for page in plan["pages"]]
+
+
+def _compress_comic_prompt(prompt: str, *, max_chars: int = 820) -> str:
+    clean = " ".join((prompt or "").split())
+    if len(clean) <= max_chars:
+        return clean
+    return clean[: max_chars - 3].rstrip() + "..."
+
+
+def _comic_provider_candidates(preferred: str) -> list[str]:
+    preferred = (preferred or "free-ai").strip().lower()
+    order = []
+    for name in (preferred, "free-ai", "nvidia", "gemini", "openai"):
+        if name not in order:
+            order.append(name)
+    return order
+
+
+def _comic_split_character_blocks(characters: str) -> list[str]:
+    raw = (characters or "").strip()
+    if not raw:
+        return []
+    numbered_blocks = [block.strip() for block in re.split(r"\n(?=\s*\d+\.\s)", raw) if block.strip()]
+    if len(numbered_blocks) > 1:
+        return numbered_blocks
+    paragraph_blocks = [block.strip() for block in re.split(r"\n{2,}", raw) if block.strip()]
+    if len(paragraph_blocks) > 1:
+        return paragraph_blocks
+    if any(label in raw.lower() for label in ("role:", "archetype:", "background", "visual", "hook")):
+        return [raw]
+    comma_blocks = [part.strip() for part in re.split(r"\s*[,;]\s*", raw) if part.strip()]
+    return comma_blocks or [raw]
+
+
+def _comic_auto_panel_count(topic: str, characters: str, story_seed: str) -> int:
+    story_text = " ".join(part for part in [topic, characters, story_seed] if part).strip()
+    word_count = len(story_text.split())
+    character_count = max(1, len(_comic_split_character_blocks(characters)))
+    score = 3
+    score += word_count // 40
+    score += max(0, character_count - 1) // 2
+    if word_count >= 120:
+        score += 1
+    return max(3, min(8, score))
+
+
+def _comic_sentence_snippet(text: str, *, max_words: int = 24) -> str:
+    clean = " ".join((text or "").split()).strip()
+    if not clean:
+        return ""
+    words = clean.split()
+    snippet = " ".join(words[:max_words]).strip()
+    return snippet.rstrip(" ,;:.-")
+
+
+def _comic_story_sentences(story_seed: str) -> list[str]:
+    clean = " ".join((story_seed or "").split()).strip()
+    if not clean:
+        return []
+    pieces = re.split(r"(?<=[.!?])\s+", clean)
+    return [piece.strip() for piece in pieces if piece.strip()]
+
+
+def _comic_extract_following_paragraph(block: str, marker: str) -> str:
+    paragraphs = [part.strip() for part in re.split(r"\n{2,}", block) if part.strip()]
+    marker_lower = marker.lower()
+    for idx, paragraph in enumerate(paragraphs):
+        if marker_lower in paragraph.lower():
+            if idx + 1 < len(paragraphs):
+                return paragraphs[idx + 1].strip()
+    return ""
+
+
+def _comic_infer_role(topic: str, story_seed: str, index: int, name: str) -> str:
+    combined = f"{topic} {story_seed} {name}".lower()
+    if any(word in combined for word in ("detective", "memory", "mystery", "echo", "noir")):
+        return "The Memory Detective" if index == 0 else "The Silent Clue-Holder"
+    if any(word in combined for word in ("rebel", "ink", "empire", "resistance", "revolution")):
+        return "The Rebel Leader" if index == 0 else "The Loyal Rebel"
+    if any(word in combined for word in ("hero", "superhero", "power", "legacy", "villain")):
+        return "The Accidental Hero" if index == 0 else "The Trusted Ally"
+    if any(word in combined for word in ("wizard", "magic", "spell", "dragon", "myth")):
+        return "The Story Keeper" if index == 0 else "The Trail Guide"
+    return "The Protagonist" if index == 0 else "The Supporting Lead"
+
+
+def _comic_infer_archetype(topic: str, story_seed: str, index: int, name: str) -> str:
+    combined = f"{topic} {story_seed} {name}".lower()
+    if any(word in combined for word in ("detective", "mystery", "noir", "memory")):
+        return "Cynical Noir Investigator / Truth Seeker" if index == 0 else "Quiet Witness / Hidden Ally"
+    if any(word in combined for word in ("rebel", "ink", "empire", "resistance")):
+        return "Robin Hood Artist / Reluctant Revolutionary" if index == 0 else "Grounded Protector / Street-Smart Ally"
+    if any(word in combined for word in ("hero", "superhero", "legacy")):
+        return "Anxious Legacy / Reluctant Hero" if index == 0 else "Protective Best Friend / Steadying Force"
+    if any(word in combined for word in ("wizard", "magic", "myth", "legend")):
+        return "Keeper of Secrets / Gentle Guide" if index == 0 else "Clever Companion / Brave Spark"
+    return "Driven Hero / Emotional Anchor" if index == 0 else "Supporting Character / Story Catalyst"
+
+
+def _comic_infer_background(topic: str, story_seed: str, index: int, name: str) -> str:
+    seed_snippet = _comic_sentence_snippet(story_seed, max_words=28) or f"a world shaped by {topic}"
+    if index == 0:
+        return f"{name} was shaped by {seed_snippet}. They carry the emotional center of the story and keep moving when everything gets harder."
+    return f"{name} reacts to {seed_snippet} from a different angle, creating tension, relief, or momentum when the story needs it."
+
+
+def _comic_infer_visual(name: str, topic: str, story_seed: str, index: int) -> str:
+    combined = f"{topic} {story_seed} {name}".lower()
+    if any(word in combined for word in ("detective", "noir", "memory", "echo")):
+        return "Sharp silhouette, thoughtful eyes, layered coat, small glowing detail that suggests hidden memory tech."
+    if any(word in combined for word in ("rebel", "ink", "empire", "resistance")):
+        return "Athletic build, practical outfit, ink-stained hands, a signature object that feels handmade and dangerous."
+    if any(word in combined for word in ("hero", "superhero", "legacy")):
+        return "Distinctive everyday clothing, visible stress when the power surges, and one iconic item that grounds the character."
+    if index == 0:
+        return "Cinematic hero framing, expressive face, a clear signature color, and a small visual motif tied to the story."
+    return "Clean readable silhouette, strong costume shape, and one memorable color accent that helps the page read instantly."
+
+
+def _comic_infer_hook(name: str, topic: str, story_seed: str, index: int) -> str:
+    if index == 0:
+        return f"When the story opens, {name} is already standing at the edge of change."
+    if "memory" in f"{topic} {story_seed}".lower():
+        return f"{name} can sense what others have forgotten, which makes every scene feel personal."
+    if "rebel" in f"{topic} {story_seed}".lower():
+        return f"{name} turns ordinary tools into resistance, and every move changes the pressure on the world."
+    return f"{name} becomes the page's emotional anchor and the reason the next beat matters."
+
+
+def _comic_character_cards(characters: str, topic: str, story_seed: str) -> list[dict[str, str]]:
+    blocks = _comic_split_character_blocks(characters)
+    cards: list[dict[str, str]] = []
+    for index, block in enumerate(blocks):
+        lines = [line.strip() for line in block.splitlines() if line.strip()]
+        if not lines:
+            continue
+        first_line = re.sub(r"^\s*\d+\.\s*", "", lines[0]).strip()
+        name_match = re.match(r"^(.*?)(?:\s*\((.*?)\))?$", first_line)
+        name = (name_match.group(1) if name_match else first_line).strip() or f"Character {index + 1}"
+        role = ""
+        archetype = ""
+        for line in lines:
+            lower = line.lower()
+            if lower.startswith("role:"):
+                role = line.split(":", 1)[1].strip()
+            elif lower.startswith("archetype:"):
+                archetype = line.split(":", 1)[1].strip()
+        background = _comic_extract_following_paragraph(block, "background") or _comic_infer_background(topic, story_seed, index, name)
+        visual = _comic_extract_following_paragraph(block, "visual") or _comic_infer_visual(name, topic, story_seed, index)
+        hook = _comic_extract_following_paragraph(block, "hook") or _comic_infer_hook(name, topic, story_seed, index)
+        cards.append(
+            {
+                "name": name,
+                "role": role or _comic_infer_role(topic, story_seed, index, name),
+                "archetype": archetype or _comic_infer_archetype(topic, story_seed, index, name),
+                "background": background,
+                "visual": visual,
+                "hook": hook,
+            }
+        )
+    if not cards:
+        fallback_name = sanitize_image_prompt_text((topic or "").strip()) or "The Hero"
+        cards.append(
+            {
+                "name": fallback_name,
+                "role": "The Protagonist",
+                "archetype": "Driven Everyperson / Emotional Center",
+                "background": _comic_infer_background(topic, story_seed, 0, fallback_name),
+                "visual": _comic_infer_visual(fallback_name, topic, story_seed, 0),
+                "hook": _comic_infer_hook(fallback_name, topic, story_seed, 0),
+            }
+        )
+    return cards
+
+
+def _comic_character_compact(card: dict[str, str]) -> str:
+    return f"{card['name']} — {card['role']}. {card['archetype']}. {card['hook']}"
+
+
+def _comic_page_beat(page_index: int, page_count: int, topic: str, story_seed: str, cards: list[dict[str, str]]) -> tuple[str, str, str]:
+    arc_labels = [
+        ("Opening", "introduce the world and the emotional center"),
+        ("Inciting Incident", "show the moment that disrupts the normal world"),
+        ("Rising Action", "raise the stakes and deepen the conflict"),
+        ("Midpoint", "reveal a turn in the story or a stronger emotional truth"),
+        ("Setback", "force the hero to adapt after a difficult hit"),
+        ("Preparation", "show the plan forming or the team pulling together"),
+        ("Climax", "deliver the decisive confrontation"),
+        ("Resolution", "land the ending with hope and consequence"),
+    ]
+    stage_title, stage_goal = arc_labels[min(page_index - 1, len(arc_labels) - 1)]
+    seed_sentences = _comic_story_sentences(story_seed)
+    opening = " ".join(seed_sentences[:2]).strip() if seed_sentences else _comic_sentence_snippet(topic, max_words=22)
+    protagonist = cards[0]
+    focus = cards[(page_index - 1) % len(cards)]
+    supporting = cards[page_index % len(cards)] if len(cards) > 1 else focus
+    if page_index == 1:
+        narration = (
+            f"Opening panel: {opening or topic}. "
+            f"{protagonist['name']} enters as {protagonist['role']} and the story locks onto their emotional struggle. "
+            f"{protagonist['background']}"
+        )
+    elif page_index == page_count:
+        narration = (
+            f"Final panel: {focus['name']} brings the story home, the conflict resolves, and the world settles into a hopeful new shape. "
+            f"The ending reflects what the characters have learned."
+        )
+    else:
+        story_bit = seed_sentences[page_index - 1] if page_index - 1 < len(seed_sentences) else ""
+        if not story_bit:
+            story_bit = f"{focus['name']} advances the story with a clear new beat, strong emotion, and one vivid action."
+        narration = (
+            f"Page {page_index}: {stage_title}. {story_bit} "
+            f"{focus['name']} and {supporting['name']} push the story toward {stage_goal}."
+        )
+    image_focus = (
+        f"Focus on {focus['name']} as {focus['role']} with visual detail: {focus['visual']} "
+        f"Use {stage_title.lower()} energy, clear character staging, expressive body language, and a cinematic child-friendly comic composition."
+    )
+    prompt = (
+        f"Create a vertical 9:16 comic page {page_index}/{page_count} for the story '{topic}'. "
+        f"Scene goal: {stage_goal}. "
+        f"Main focus character: {_comic_character_compact(focus)} "
+        f"Supporting character: {_comic_character_compact(supporting)} "
+        f"Story beat: {narration} "
+        f"Image focus: {image_focus} "
+        "Art style: bold ink outlines, halftone dots, vibrant colors, dynamic speech bubbles, dramatic framing, clean child-friendly finish, full-page layout, no watermark, no logo. "
+        "Keep the main characters visually consistent across all panels."
+    )
+    return narration, prompt, stage_title
+
+
+def _comic_story_plan(topic: str, characters: str, style_name: str, requested_panel_count: int | None, story_seed: str = "") -> dict[str, object]:
+    cards = _comic_character_cards(characters, topic, story_seed)
+    auto_count = _comic_auto_panel_count(topic, characters, story_seed)
+    panel_count = auto_count if requested_panel_count is None else max(3, min(8, int(requested_panel_count)))
+    page_cards = cards[:]
+    pages: list[dict[str, str]] = []
+    for page_index in range(1, panel_count + 1):
+        narration, prompt, stage_title = _comic_page_beat(page_index, panel_count, topic, story_seed, page_cards)
+        pages.append(
+            {
+                "page": str(page_index),
+                "title": stage_title,
+                "narration": narration,
+                "prompt": prompt,
+            }
+        )
+    cast_lines = [f"{idx + 1}. {_comic_character_compact(card)}" for idx, card in enumerate(cards)]
+    return {
+        "topic": topic,
+        "style_name": style_name or "Classic Comic Book",
+        "panel_count": panel_count,
+        "characters": cards,
+        "cast_lines": cast_lines,
+        "pages": pages,
+    }
+
+
+def _comic_narration_script(topic: str, characters: str, panel_count: int, story_seed: str = "") -> str:
+    plan = _comic_story_plan(topic, characters, "Classic Comic Book", panel_count, story_seed=story_seed)
+    narration_lines = []
+    if plan.get("cast_lines"):
+        narration_lines.append("Cast: " + " ".join(plan["cast_lines"]))
+    for page in plan["pages"]:
+        narration_lines.append(f"Page {page['page']}: {page['narration']}")
+    return " ".join(narration_lines)
+
+
+def _comic_video_preview_path(output_dir: Path, topic: str, provider_name: str) -> Path:
+    preview_dir = output_dir / ".runtime" / "comic_video_previews"
+    preview_dir.mkdir(parents=True, exist_ok=True)
+    import hashlib
+    topic_slug = _slugify(topic)[:28]
+    provider_slug = _slugify(provider_name)[:12]
+    fingerprint = hashlib.sha1(f"{topic}|{provider_name}".encode("utf-8")).hexdigest()[:10]
+    return preview_dir / f"comic_video_{topic_slug}_{provider_slug}_{fingerprint}.mp4"
+
+
+def _comic_page_preview_path(
+    output_dir: Path,
+    topic: str,
+    page_label: str,
+    provider_name: str,
+    extension: str,
+) -> Path:
+    preview_dir = output_dir / ".runtime" / "comic_page_previews"
+    preview_dir.mkdir(parents=True, exist_ok=True)
+    import hashlib
+
+    topic_slug = _slugify(topic)[:24]
+    page_slug = _slugify(page_label)[:18]
+    provider_slug = _slugify(provider_name)[:12]
+    fingerprint = hashlib.sha1(f"{topic}|{page_label}|{provider_name}".encode("utf-8")).hexdigest()[:10]
+    return preview_dir / f"comic_{topic_slug}_{page_slug}_{provider_slug}_{fingerprint}{extension}"
+
+
+def _generate_comic_page_preview(
+    settings,
+    output_dir: Path,
+    provider_name: str,
+    prompt: str,
+    topic: str,
+    page_label: str,
+) -> Path:
+    image_settings = replace(settings, output_dir=output_dir)
+    provider = image_provider(replace(image_settings, image_provider=provider_name))
+    variant = ImageVariant("9:16", 1080, 1920, "image_portrait")
+    preview_path = _comic_page_preview_path(
+        output_dir=output_dir,
+        topic=topic,
+        page_label=page_label,
+        provider_name=provider_name,
+        extension=provider.extension,
+    )
+    preview_path.write_bytes(provider.create(prompt, variant))
+    return preview_path
+
+
+def _generate_comic_voiceover(
+    settings,
+    output_path: Path,
+    narration_text: str,
+    voice_engine: str,
+) -> Path:
+    voice_engine = (voice_engine or "local-m1-parler").strip().lower()
+    if voice_engine in {"local-m1-parler", "local", "parler", "parler-local"}:
+        try:
+            repo_id = getattr(settings, "comic_voice_model_repo", "ai4bharat/indic-parler-tts")
+            return generate_local_parler_voiceover(
+                narration_text,
+                output_path,
+                description="A clear, warm, expressive English comic narration voice with child-friendly pacing and friendly studio tone.",
+                repo_id=repo_id,
+                token=settings.hf_token or None,
+            )
+        except Exception as exc:
+            st.warning(f"Local M1 voiceover failed, falling back to Edge TTS: {exc}")
+    elif voice_engine in {"hf-kokoro", "kokoro", "huggingface-kokoro"}:
+        try:
+            repo_id = getattr(settings, "comic_kokoro_model_repo", "hexgrad/Kokoro-82M")
+            return generate_hf_tts_voiceover(
+                narration_text,
+                output_path,
+                model_id=repo_id,
+                token=settings.hf_token or None,
+                provider="fal-ai",
+            )
+        except Exception as exc:
+            st.warning(f"Hugging Face Kokoro voiceover failed, falling back to Edge TTS: {exc}")
+    elif voice_engine in {"hf-chatterbox", "chatterbox", "huggingface-chatterbox"}:
+        try:
+            repo_id = getattr(settings, "comic_chatterbox_model_repo", "ResembleAI/chatterbox")
+            return generate_hf_tts_voiceover(
+                narration_text,
+                output_path,
+                model_id=repo_id,
+                token=settings.hf_token or None,
+                provider="fal-ai",
+            )
+        except Exception as exc:
+            st.warning(f"Hugging Face Chatterbox voiceover failed, falling back to Edge TTS: {exc}")
+
+    from content_pipeline.bots.audio import generate_indian_voiceover
+    return generate_indian_voiceover(
+        narration_text,
+        output_path,
+        voice="en-IN-PrabhatNeural",
+        rate="-4%",
+        pitch="+0Hz",
+    )
 
 
 def render_automation_music_image_section(settings) -> None:
@@ -9684,10 +10617,11 @@ def render_automation_music_image_section(settings) -> None:
                             prefix="automation_music",
                         )
                         preview_paths.append(str(preview_path))
-                    st.session_state[k("preview_paths")] = preview_paths
-                    st.session_state[k("preview_path")] = preview_paths[0] if preview_paths else ""
-                    st.success("Automation image generated.")
-                    st.rerun()
+                        st.session_state[k("preview_paths")] = preview_paths
+                        st.session_state[k("preview_path")] = preview_paths[0] if preview_paths else ""
+                        _auto_refresh_project_brain(settings, reason="automation_image")
+                        st.success("Automation image generated.")
+                        st.rerun()
                 except Exception as exc:
                     st.error(f"Image generation error: {exc}")
 
@@ -9768,6 +10702,531 @@ def maybe_generate_linked_automation_music_image(settings) -> Path | None:
     except Exception as exc:
         st.warning(f"⚠️ Automation linked image generation skipped: {exc}")
         return None
+
+
+def _kids_poster_preview_path(
+    output_dir: Path,
+    topic: str,
+    provider_name: str,
+    extension: str,
+) -> Path:
+    preview_dir = output_dir / ".runtime" / "image_previews"
+    preview_dir.mkdir(parents=True, exist_ok=True)
+    import hashlib
+
+    topic_slug = _slugify(topic)[:28]
+    provider_slug = _slugify(provider_name)[:12]
+    fingerprint = hashlib.sha1(f"{topic}|{provider_name}".encode("utf-8")).hexdigest()[:10]
+    filename = f"kids_poster_{topic_slug}_{provider_slug}_{fingerprint}{extension}"
+    return preview_dir / filename
+
+
+def _generate_kids_poster_preview(
+    settings,
+    output_dir: Path,
+    provider_name: str,
+    prompt: str,
+    topic: str,
+) -> Path:
+    image_settings = replace(settings, output_dir=output_dir)
+    provider = image_provider(replace(image_settings, image_provider=provider_name))
+    variant = ImageVariant("4:5", 1600, 2000, "image_portrait")
+    preview_path = _kids_poster_preview_path(
+        output_dir=output_dir,
+        topic=topic,
+        provider_name=provider_name,
+        extension=provider.extension,
+    )
+    preview_path.write_bytes(provider.create(prompt, variant))
+    return preview_path
+
+
+def maybe_generate_linked_kids_poster(settings) -> Path | None:
+    if not st.session_state.get("automation_kids_combo_mode"):
+        return None
+
+    topic = (
+        st.session_state.get("one_click_song_idea")
+        or st.session_state.get("kids_song_title")
+        or st.session_state.get("kids_song_topic")
+        or "Little Bubbles TV"
+    )
+    lyrics = st.session_state.get("kids_song_lyrics", "")
+    kids_mode = st.session_state.get("kids_studio_mode", "Poem/Rhyme")
+    should_auto = bool(
+        st.session_state.get("automation_kids_combo_mode")
+        or st.session_state.get("kids_poster_autogenerate")
+    )
+    if not should_auto:
+        return None
+    try:
+        output_dir = resolve_output_dir(st.session_state.get("output_dir_pref", str(settings.output_dir)))
+        provider_name = st.session_state.get("kids_poster_provider_choice") or st.session_state.get("image_provider_choice") or settings.image_provider or "nvidia"
+        prompt_topic, prompt_text = _kids_nursery_poster_seed(topic, lyrics, kids_mode)
+        st.session_state["kids_poster_prompt"] = prompt_text
+        st.session_state["kids_poster_lyrics_excerpt"] = _kids_poster_lyrics_excerpt(lyrics)
+        preview_path = _generate_kids_poster_preview(
+            settings=settings,
+            output_dir=output_dir,
+            provider_name=provider_name,
+            prompt=prompt_text,
+            topic=prompt_topic,
+        )
+        st.session_state["kids_poster_preview_path"] = str(preview_path)
+        st.session_state["kids_poster_provider_choice"] = provider_name
+        st.session_state["kids_poster_generated_title"] = prompt_topic
+        st.session_state["kids_poster_generated_prompt"] = prompt_text
+        return preview_path
+    except Exception as exc:
+        st.session_state["kids_poster_error"] = str(exc)
+        return None
+
+
+def render_kids_nursery_poster_section(settings) -> None:
+    st.markdown("#### 🖼️ Nursery Rhyme Poster")
+    st.caption(
+        "Creates a 4:5 vertical poster with a colorful title, sunny park scene, cute characters, and a cloud panel for the lyrics."
+    )
+
+    prefix = "kids_poster"
+
+    def k(name: str) -> str:
+        return f"{prefix}_{name}"
+
+    st.session_state.setdefault(k("provider_choice"), "nvidia")
+    st.session_state.setdefault(k("title_input"), st.session_state.get("one_click_song_idea", "Little Bubbles TV"))
+    st.session_state.setdefault(k("lyrics_source"), st.session_state.get("kids_song_lyrics", ""))
+    st.session_state.setdefault(k("autogenerate"), bool(st.session_state.get("automation_kids_combo_mode")))
+    st.session_state.setdefault(k("prompt_input"), "")
+    st.session_state.setdefault(k("preview_path"), "")
+    st.session_state.setdefault(k("error"), "")
+
+    current_title = st.session_state.get(k("title_input"), "Little Bubbles TV")
+    generated_title = st.session_state.get("kids_poster_generated_title", "")
+    if generated_title and not current_title.strip():
+        current_title = generated_title
+        st.session_state[k("title_input")] = generated_title
+    current_lyrics = st.session_state.get(k("lyrics_source"), "")
+    poster_title, poster_prompt = _kids_nursery_poster_seed(
+        current_title,
+        current_lyrics,
+        st.session_state.get("kids_studio_mode", "Poem/Rhyme"),
+    )
+    if not st.session_state.get(k("prompt_input"), "").strip():
+        st.session_state[k("prompt_input")] = poster_prompt
+        st.session_state[k("prompt_view")] = poster_prompt
+
+    left_col, right_col = st.columns([6, 4])
+    with left_col:
+        preview_path = st.session_state.get(k("preview_path"), "")
+        if preview_path and os.path.exists(preview_path):
+            render_image_preview(Path(preview_path))
+            st.caption(f"Loaded poster: `{Path(preview_path).name}`")
+            try:
+                poster_file = Path(preview_path)
+                st.download_button(
+                    "📥 Download Poster",
+                    data=poster_file.read_bytes(),
+                    file_name=poster_file.name,
+                    mime="image/png" if poster_file.suffix.lower() == ".png" else "image/svg+xml",
+                    use_container_width=True,
+                    key=f"{prefix}_btn_download",
+                )
+            except Exception as exc:
+                st.error(f"Could not prepare the poster download: {exc}")
+        else:
+            st.info("No nursery poster generated yet. Build the prompt and render it from the lyrics below.")
+
+        st.text_input("Poster Title", key=k("title_input"))
+        st.text_area(
+            "Lyrics for Poster",
+            key=k("lyrics_source"),
+            height=180,
+            help="These lyrics are placed in the center cloud panel of the poster.",
+        )
+        st.selectbox(
+            "Image Provider",
+            options=("nvidia", "gemini", "openai", "free-ai"),
+            key=k("provider_choice"),
+        )
+        st.checkbox(
+            "Auto-generate poster after song draft",
+            key=k("autogenerate"),
+            help="When enabled, the poster is rendered right after the song draft finishes.",
+        )
+
+        button_cols = st.columns(2)
+        with button_cols[0]:
+            if st.button("🧙‍♂️ Build Poster Prompt", use_container_width=True, key=f"{prefix}_btn_build"):
+                _, prompt_text = _kids_nursery_poster_seed(
+                    st.session_state.get(k("title_input"), "Little Bubbles TV"),
+                    st.session_state.get(k("lyrics_source"), ""),
+                    st.session_state.get("kids_studio_mode", "Poem/Rhyme"),
+                )
+                st.session_state[k("prompt_input")] = prompt_text
+                st.session_state[k("prompt_view")] = prompt_text
+                st.rerun()
+        with button_cols[1]:
+            if st.button("✨ Generate Poster", type="primary", use_container_width=True, key=f"{prefix}_btn_generate"):
+                try:
+                    output_dir = resolve_output_dir(st.session_state.get("output_dir_pref", str(settings.output_dir)))
+                    prompt_title, prompt_text = _kids_nursery_poster_seed(
+                        st.session_state.get(k("title_input"), "Little Bubbles TV"),
+                        st.session_state.get(k("lyrics_source"), ""),
+                        st.session_state.get("kids_studio_mode", "Poem/Rhyme"),
+                    )
+                    prompt_text = st.session_state.get(k("prompt_view"), prompt_text).strip() or prompt_text
+                    st.session_state[k("prompt_input")] = prompt_text
+                    st.session_state[k("prompt_view")] = prompt_text
+                    st.session_state[k("generated_title")] = prompt_title
+                    provider_name = st.session_state.get(k("provider_choice"), "nvidia")
+                    preview_path = _generate_kids_poster_preview(
+                        settings=settings,
+                        output_dir=output_dir,
+                        provider_name=provider_name,
+                        prompt=prompt_text,
+                        topic=prompt_title,
+                    )
+                    st.session_state[k("preview_path")] = str(preview_path)
+                    st.session_state[k("error")] = ""
+                    _auto_refresh_project_brain(settings, reason="kids_poster")
+                    st.success("Nursery poster generated.")
+                    st.rerun()
+                except Exception as exc:
+                    st.session_state[k("error")] = str(exc)
+                    st.error(f"Poster generation failed: {exc}")
+
+    with right_col:
+        st.markdown("#### Poster Prompt")
+        st.text_area(
+            "Prompt",
+            height=420,
+            key=k("prompt_view"),
+        )
+        st.markdown("#### Layout Notes")
+        st.markdown(
+            """
+            - 4:5 vertical composition
+            - big bubble-letter title with white outline
+            - sunny park, rainbow, bubbles, flowers, smiling sun
+            - cute kids and animals around the edges
+            - white cloud panel in the center for clear lyrics
+            """.strip()
+        )
+
+    if st.session_state.get(k("error")):
+        st.error(st.session_state[k("error")])
+
+
+def render_youtube_audit_studio(settings) -> None:
+    st.markdown("### 🔎 YouTube Channel Audit")
+    st.caption(
+        "Scans the configured YouTube channels, checks recent uploads, and compares the channel language against public trend signals."
+    )
+
+    control_cols = st.columns([1, 1, 1])
+    with control_cols[0]:
+        region_code = st.selectbox("Trend region", options=["IN", "US", "GB", "CA", "AU"], index=0, key="yt_audit_region")
+    with control_cols[1]:
+        max_videos = st.slider("Recent uploads to inspect", min_value=5, max_value=30, value=15, step=1, key="yt_audit_max_videos")
+    with control_cols[2]:
+        related_topic_limit = st.slider("Related topic queries", min_value=1, max_value=5, value=3, step=1, key="yt_audit_topic_limit")
+
+    run_cols = st.columns([1, 1, 1])
+    with run_cols[0]:
+        update_limit = st.slider("Videos to rewrite per channel", min_value=1, max_value=5, value=2, step=1, key="yt_audit_update_limit")
+    with run_cols[1]:
+        apply_updates = st.checkbox("Apply title/tag updates", value=False, key="yt_audit_apply_updates")
+    with run_cols[2]:
+        notify_telegram = st.checkbox("Notify Telegram", value=True, key="yt_audit_notify_telegram")
+
+    provider_choice = st.selectbox(
+        "Rewrite provider",
+        options=["Auto", "NVIDIA", "Gemini", "OpenAI", "Local LLM"],
+        index=0,
+        key="yt_audit_rewrite_provider",
+    )
+    st.caption("Auto tries NVIDIA, then Gemini, then OpenAI, then the local LLM. Provider-specific modes keep using their own key pools in order.")
+
+    telegram_cols = st.columns(2)
+    with telegram_cols[0]:
+        telegram_bot_token = st.text_input(
+            "Telegram Bot Token",
+            value=os.getenv("TELEGRAM_BOT_TOKEN", ""),
+            type="password",
+            key="yt_audit_telegram_token",
+        )
+    with telegram_cols[1]:
+        telegram_chat_id = st.text_input(
+            "Telegram Chat ID",
+            value=os.getenv("TELEGRAM_CHAT_ID", ""),
+            key="yt_audit_telegram_chat",
+        )
+
+    st.info(
+        "The audit works channel-by-channel. It needs the per-channel YouTube OAuth token files already configured in `.secrets/`."
+    )
+
+    if st.button("🔍 Run Channel Audit", type="primary", use_container_width=True, key="btn_run_youtube_audit"):
+        with st.spinner("Running YouTube channel diagnostics and trend scan..."):
+            try:
+                report = run_weekly_youtube_review(
+                    settings,
+                    PROJECT_ROOT,
+                    region_code=region_code,
+                    max_videos=max_videos,
+                    related_topic_limit=related_topic_limit,
+                    update_limit=update_limit,
+                    rewrite_provider={
+                        "Auto": "auto",
+                        "NVIDIA": "nvidia",
+                        "Gemini": "gemini",
+                        "OpenAI": "openai",
+                        "Local LLM": "local",
+                    }.get(provider_choice, "auto"),
+                    apply_updates=apply_updates,
+                    notify_telegram=notify_telegram,
+                    telegram_bot_token=telegram_bot_token,
+                    telegram_chat_id=telegram_chat_id,
+                )
+                st.session_state["youtube_audit_report"] = report
+                st.session_state["youtube_audit_paths"] = report.get("report_paths", {})
+                st.success("Channel audit complete.")
+            except Exception as exc:
+                st.session_state["youtube_audit_error"] = str(exc)
+                st.error(f"Audit failed: {exc}")
+
+    if "youtube_audit_error" in st.session_state:
+        st.error(st.session_state["youtube_audit_error"])
+
+    report = st.session_state.get("youtube_audit_report")
+    if not isinstance(report, dict):
+        st.caption("Run the audit to see a per-channel breakdown, trend matches, and fix suggestions.")
+        return
+
+    st.markdown(render_youtube_audit_markdown(report))
+
+    paths = st.session_state.get("youtube_audit_paths", {})
+    if isinstance(paths, dict):
+        col_left, col_right = st.columns(2)
+        with col_left:
+            md_path = paths.get("markdown", "")
+            if md_path and os.path.exists(md_path):
+                st.markdown(f"[Open markdown report]({Path(md_path).as_uri()})")
+        with col_right:
+            json_path = paths.get("json", "")
+            if json_path and os.path.exists(json_path):
+                st.markdown(f"[Open JSON report]({Path(json_path).as_uri()})")
+
+    st.download_button(
+        "Download audit markdown",
+        data=render_youtube_audit_markdown(report),
+        file_name="youtube_audit_report.md",
+        mime="text/markdown",
+        use_container_width=True,
+        key="btn_download_youtube_audit_md",
+    )
+
+
+def render_project_brain_studio(settings) -> None:
+    st.markdown("### 🧠 Project Brain")
+    st.caption(
+        "Scores the latest audio, image, metadata, novelty, blockers, and trend signals. It also stores learning rules so the next run can diversify."
+    )
+
+    prefix = "project_brain"
+
+    def k(name: str) -> str:
+        return f"{prefix}_{name}"
+
+    brain_output_dir = resolve_output_dir(st.session_state.get("output_dir_pref", str(settings.output_dir)))
+    brain_runtime_dir = brain_output_dir / ".runtime" / "project_brain"
+    st.session_state.setdefault(k("refresh_web"), True)
+    st.session_state.setdefault(k("trend_region"), "IN")
+    st.session_state.setdefault(k("last_output_dir"), str(brain_output_dir))
+    st.session_state.setdefault(k("report"), None)
+    st.session_state.setdefault(k("paths"), {})
+    st.session_state.setdefault(k("error"), "")
+
+    if st.session_state.get(k("last_output_dir")) != str(brain_output_dir):
+        st.session_state[k("report")] = None
+        st.session_state[k("paths")] = {}
+        st.session_state[k("last_output_dir")] = str(brain_output_dir)
+
+    try:
+        latest_report = load_latest_project_brain_report(brain_output_dir)
+        if latest_report is not None and st.session_state.get(k("report")) is None:
+            st.session_state[k("report")] = latest_report
+            st.session_state[k("paths")] = {
+                "json": latest_report.report_path,
+                "markdown": latest_report.markdown_path,
+                "memory": latest_report.memory_path,
+            }
+    except Exception:
+        pass
+
+    control_cols = st.columns([1, 1, 2])
+    with control_cols[0]:
+        st.checkbox("Refresh web signals", value=st.session_state[k("refresh_web")], key=k("refresh_web"))
+    with control_cols[1]:
+        st.selectbox(
+            "Trend region",
+            options=["IN", "US", "GB", "CA", "AU"],
+            index=["IN", "US", "GB", "CA", "AU"].index(st.session_state[k("trend_region")]) if st.session_state[k("trend_region")] in ["IN", "US", "GB", "CA", "AU"] else 0,
+            key=k("trend_region"),
+        )
+    with control_cols[2]:
+        st.markdown(
+            f"""
+            <div class="metric-box">
+                <div class="metric-label">Brain Memory</div>
+                <div class="metric-value" style="font-size:16px;">{brain_runtime_dir}</div>
+                <div style="font-size:13px; color:#cbd5e1; margin-top:4px;">Fresh reports are written here and can be picked up again later.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    run_cols = st.columns([1, 1, 1])
+    with run_cols[0]:
+        if st.button("🧠 Run Project Brain", type="primary", use_container_width=True, key=f"{prefix}_btn_run"):
+            with st.spinner("Reading the latest artifacts and scoring the project..."):
+                try:
+                    report = build_project_brain_report(
+                        settings,
+                        refresh_web=bool(st.session_state.get(k("refresh_web"), True)),
+                        trend_region=str(st.session_state.get(k("trend_region"), "IN")),
+                        output_dir=brain_output_dir,
+                    )
+                    st.session_state[k("report")] = report
+                    st.session_state[k("paths")] = {
+                        "json": report.report_path,
+                        "markdown": report.markdown_path,
+                        "memory": report.memory_path,
+                    }
+                    st.session_state[k("error")] = ""
+                    st.success("Project brain updated.")
+                except Exception as exc:
+                    st.session_state[k("error")] = str(exc)
+                    st.error(f"Brain run failed: {exc}")
+    with run_cols[1]:
+        if st.button("📄 Refresh latest report", use_container_width=True, key=f"{prefix}_btn_refresh"):
+            try:
+                latest_report = load_latest_project_brain_report(brain_output_dir)
+                if latest_report is None:
+                    st.warning("No saved brain report was found yet. Run the brain once to create it.")
+                else:
+                    st.session_state[k("report")] = latest_report
+                    st.session_state[k("paths")] = {
+                        "json": latest_report.report_path,
+                        "markdown": latest_report.markdown_path,
+                        "memory": latest_report.memory_path,
+                    }
+                    st.success("Loaded the latest saved brain report.")
+            except Exception as exc:
+                st.error(f"Could not refresh latest report: {exc}")
+    with run_cols[2]:
+        st.info("The brain combines local quality signals with optional web trend refreshes so each run can suggest a new angle.")
+
+    if st.session_state.get(k("error")):
+        st.error(st.session_state[k("error")])
+
+    report = st.session_state.get(k("report"))
+    if not report:
+        st.caption("Run the brain to see audio, image, metadata, novelty, and learning-rule scores.")
+        return
+
+    st.markdown(
+        f"""
+        <div class="metric-box">
+            <div class="metric-label">Overall Brain Score</div>
+            <div class="metric-value" style="font-size:26px;">{report.overall_score:.1f} / 100</div>
+            <div style="font-size:13px; color:#cbd5e1; margin-top:4px;">Verdict: {report.verdict}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    score_cols = st.columns(min(4, len(report.scores)) or 1)
+    for idx, score in enumerate(report.scores):
+        col = score_cols[idx % len(score_cols)]
+        with col:
+            st.markdown(
+                f"""
+                <div class="metric-box">
+                    <div class="metric-label">{escape(score.kind.replace('_', ' ').title())}</div>
+                    <div class="metric-value" style="font-size:18px;">{score.score:.1f}</div>
+                    <div style="font-size:13px; color:#cbd5e1; margin-top:4px;">{escape(score.verdict)}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            if score.issues:
+                st.caption("Issues: " + "; ".join(score.issues[:3]))
+            if score.recommendations:
+                st.caption("Fixes: " + "; ".join(score.recommendations[:3]))
+
+    st.markdown("#### Summary")
+    st.write(report.summary)
+
+    if report.root_causes:
+        st.markdown("#### Root Causes")
+        for item in report.root_causes:
+            st.markdown(f"- {item}")
+
+    if report.next_actions:
+        st.markdown("#### Next Actions")
+        for item in report.next_actions:
+            st.markdown(f"- {item}")
+
+    if report.content_ideas:
+        st.markdown("#### Idea Backlog")
+        for item in report.content_ideas:
+            topic = item.get("topic", "").strip()
+            angle = item.get("angle", "").strip()
+            reason = item.get("reason", "").strip()
+            st.markdown(f"- **{topic}** — {angle}. {reason}")
+
+    if report.learning_rules:
+        st.markdown("#### Learning Rules")
+        for item in report.learning_rules:
+            st.markdown(f"- {item}")
+
+    if report.blockers.get("open_count") or report.blockers.get("resolved_count"):
+        st.markdown("#### Blockers")
+        st.markdown(f"- Open: `{report.blockers.get('open_count', 0)}`")
+        st.markdown(f"- Resolved: `{report.blockers.get('resolved_count', 0)}`")
+
+    if report.web_signals.get("latest_audit"):
+        audit = report.web_signals["latest_audit"]
+        st.markdown("#### Web Signals")
+        st.markdown(f"- Audited channels: `{audit.get('audited_channels', 0)}`")
+        st.markdown(f"- Average channel score: `{audit.get('average_score', 0)}`")
+        st.markdown(f"- Trend region: `{report.web_signals.get('trend_region', 'IN')}`")
+
+    paths = st.session_state.get(k("paths"), {})
+    path_cols = st.columns(3)
+    with path_cols[0]:
+        json_path = paths.get("json", "")
+        if json_path and os.path.exists(json_path):
+            st.markdown(f"[Open JSON report]({Path(json_path).as_uri()})")
+    with path_cols[1]:
+        md_path = paths.get("markdown", "")
+        if md_path and os.path.exists(md_path):
+            st.markdown(f"[Open Markdown report]({Path(md_path).as_uri()})")
+    with path_cols[2]:
+        memory_path = paths.get("memory", "")
+        if memory_path and os.path.exists(memory_path):
+            st.markdown(f"[Open Memory file]({Path(memory_path).as_uri()})")
+
+    st.download_button(
+        "Download brain markdown",
+        data=render_project_brain_markdown(report),
+        file_name="project_brain_report.md",
+        mime="text/markdown",
+        use_container_width=True,
+        key=f"{prefix}_btn_download_md",
+    )
 
 
 def get_git_info() -> str:
