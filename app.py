@@ -4553,15 +4553,15 @@ def render_frontdoor(settings: Settings) -> None:
         if kids_mode == "Storytelling":
             default_desc = "warm theatrical spoken-word audiobook narrator, gentle bedtime story, calm pacing, soft glockenspiel and warm strings, 0 BPM"
         elif _rhyme_dur_secs <= 150:
-            default_desc = "cheerful nursery rhyme, magical kids show music, happy bouncy melody, 120 BPM, ukulele, soft piano, glockenspiel, bells."
+            default_desc = "playful child-like vocals, sweet high-pitched toy-like vocal delivery, cheerful toddler nursery rhyme chant, highly energetic bouncy children's dancing track, 128 BPM, happy handclaps, ukulele, toy piano, glockenspiel, bells."
         elif _rhyme_dur_secs <= 240:
-            default_desc = "cheerful nursery rhyme, magical kids show music, medium paced sing-along, 110 BPM, ukulele, piano, glockenspiel."
+            default_desc = "playful child-like vocals, sweet high-pitched toy-like vocal delivery, cheerful toddler nursery rhyme chant, highly energetic bouncy children's dancing track, 122 BPM, happy handclaps, ukulele, toy piano, glockenspiel."
         else:
-            default_desc = "cheerful nursery rhyme, magical kids show music, gentle slow melody, 95 BPM, ukulele, soft piano, glockenspiel, bells."
+            default_desc = "playful child-like vocals, sweet high-pitched toy-like vocal delivery, cheerful toddler nursery rhyme chant, magical kids show music, gentle slow melody, 95 BPM, ukulele, soft piano, glockenspiel, bells."
 
         if kids_mode != "Storytelling":
             KIDS_STYLE_PRESETS = {
-                "Cheerful Pop / Nursery Rhyme": "cheerful nursery rhyme, magical kids show music, happy bouncy melody, 120 BPM, ukulele, soft piano, glockenspiel, bells.",
+                "Cheerful Pop / Nursery Rhyme": "playful child-like vocals, sweet high-pitched toy-like vocal delivery, cheerful toddler nursery rhyme chant, highly energetic bouncy children's dancing track, 128 BPM, happy handclaps, ukulele, toy piano, glockenspiel, bells.",
                 "Indian Kids Folk / Festival": "happy traditional Indian kids folk, bansuri flute melody, lively dholak and tabla groove, acoustic guitar strumming, bright and festive, 115 BPM.",
                 "Gentle Bedtime Lullaby": "gentle sleep lullaby, sweet magical music box, warm ambient strings, slow harp melody, extremely calm and soothing, 70 BPM.",
                 "Playful Ukulele Sing-Along": "happy acoustic ukulele sing-along, sunny slide guitar accents, bright shaker, whistling melody, warm and simple kids tune, 110 BPM.",
@@ -5215,23 +5215,46 @@ def render_frontdoor(settings: Settings) -> None:
 
                     prompt_audio_param = None
                     active_ref = selected_ref
+                    
+                    lang = st.session_state.get("kids_studio_language", "English")
                     kids_gender_local = st.session_state.get("kids_song_singer_gender", "Male").lower()
-                    if kids_gender_local == "male":
-                        is_female_ref = active_ref != "None (Text-only)" and any(x in active_ref.lower() for x in ["barnaby", "titli", "squirrel", "alphabet", "bubbles", "female"])
-                        if active_ref == "None (Text-only)" or is_female_ref:
-                            arijit_file = "Sajni (Lyrical Video)_ Arijit Singh, Ram Sampath  Laapataa Ladies   Aamir Khan Productions.mp3"
-                            if (PROJECT_ROOT / "output" / "reference_audio" / arijit_file).exists():
-                                active_ref = arijit_file
-                                st.info("ℹ️ Using default male reference audio (Arijit Singh) to force male vocals for DiffRhythm2.")
-                    else:
-                        is_male_ref = active_ref != "None (Text-only)" and any(x in active_ref.lower() for x in ["arijit", "sajni", "male"])
-                        if active_ref == "None (Text-only)" or is_male_ref:
-                            lang = st.session_state.get("kids_studio_language", "English")
-                            if lang in ["Hindi", "Hinglish"]:
-                                female_file = "Barnaby_Squirrel_Song.mp3"
-                                if (PROJECT_ROOT / "output" / "reference_audio" / female_file).exists():
-                                    active_ref = female_file
-                                    st.info("ℹ️ Using default female reference audio (Barnaby) to force female vocals for DiffRhythm2.")
+                    
+                    if active_ref == "None (Text-only)":
+                        if lang in ["Hindi", "Hinglish"]:
+                            if kids_gender_local == "male":
+                                default_file = "Barnaby_Squirrel_Song_Titli_Udi_Ref.mp3"
+                            else:
+                                default_file = "Barnaby_Squirrel_Song.mp3"
+                        else: # English
+                            if kids_gender_local == "male":
+                                default_file = "CoComelon_Baby_Shark_Submarine_Ref.mp3"
+                            else:
+                                default_file = "Baby_Lala_Wakey_Wakey_Ref.mp3"
+                                
+                        # Try to resolve path
+                        ref_paths_to_try = [
+                            PROJECT_ROOT / "output" / "reference_audio" / default_file,
+                            Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio") / default_file
+                        ]
+                        found_default = False
+                        for p in ref_paths_to_try:
+                            if p.exists():
+                                active_ref = p.name
+                                found_default = True
+                                st.info(f"ℹ️ Using default kids reference audio ({default_file}) to shape toddler/nursery-rhyme style.")
+                                break
+                        if not found_default:
+                            # Final fallback to standard alphabet song
+                            alphabet_file = "Educational Kids' Alphabet Song.mp3"
+                            ref_paths_to_try = [
+                                PROJECT_ROOT / "output" / "reference_audio" / alphabet_file,
+                                Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio") / alphabet_file
+                            ]
+                            for p in ref_paths_to_try:
+                                if p.exists():
+                                    active_ref = p.name
+                                    st.info(f"ℹ️ Using default kids reference audio ({alphabet_file}) to shape toddler/nursery-rhyme style.")
+                                    break
                     
                     
                     if active_ref != "None (Text-only)":
@@ -8676,12 +8699,13 @@ def generate_lyrics_and_style_unified(
                - The lyrics MUST be extremely simple, highly repetitive, and rhythmic (suitable for toddlers aged 1-5).
                - Use short, symmetrical lines (maximum 4-6 words per line) with a strict rhyming scheme (AABB or ABAB).
                - Incorporate playful preschool sound words and simple repetitive chants (e.g. 'ला ला ला', 'चुनमुन चुनमुन', 'छुक छुक छुक', 'टिम टिम', 'bouncy bouncy', 'clap clap').
+               - You MUST insert baby giggles and child laughter tags like `[giggle]`, `[giggles]`, or `[giggle sound]` in between verses, chorus transitions, and lines. These tags tell the audio generator to render natural, happy child giggling sounds, which makes the rhyme much more attractive and engaging for kids.
             2. If the Target Song Language is 'Hindi', write the lyrics in standard Devanagari script (Hindi characters) like 'मछली जल की रानी है'. This forces the network to use native accent filters. 
-               - For Hindi, explicitly require: 'playful children's nursery rhyme singing voice, cheerful kids-show playback vocals, sweet high-pitched toy-like vocal delivery, friendly kids animator singer, natural Indian {singer_gender.lower()} accent, clear simplified native pronunciation'.
-               - Specify toy and traditional kids instruments: 'playful xylophone, glockenspiel, toy piano, acoustic ukulele, cartoon bells, dholak, bansuri flute, happy handclaps, bouncy children's backing track, 110-125 BPM'.
+               - For Hindi, explicitly require: 'playful children's nursery rhyme singing voice, cheerful kids-show playback vocals, sweet high-pitched toy-like vocal delivery, friendly kids animator singer, happy children giggling, playful baby laugh sounds, natural Indian {singer_gender.lower()} accent, clear simplified native pronunciation'.
+               - Specify toy and traditional kids instruments: 'playful xylophone, glockenspiel, toy piano, acoustic ukulele, cartoon bells, dholak, bansuri flute, happy handclaps, highly energetic bouncy children's backing track, 120-135 BPM'.
             3. If the Target Song Language is 'English', write the lyrics in English.
-               - For English, explicitly require: 'playful children's nursery rhyme singing voice, cheerful kids-show playback vocals, sweet high-pitched toy-like vocal delivery, friendly kids animator {singer_gender.lower()} singer, clear simplified pronunciation'.
-               - Specify toy and kids instruments: 'playful xylophone, glockenspiel, toy piano, acoustic ukulele, cartoon bells, happy handclaps, bouncy children's backing track, 110-125 BPM'.
+               - For English, explicitly require: 'playful children's nursery rhyme singing voice, cheerful kids-show playback vocals, sweet high-pitched toy-like vocal delivery, friendly kids animator {singer_gender.lower()} singer, happy children giggling, playful baby laugh sounds, clear simplified pronunciation'.
+               - Specify toy and kids instruments: 'playful xylophone, glockenspiel, toy piano, acoustic ukulele, cartoon bells, happy handclaps, highly energetic bouncy children's backing track, 120-135 BPM'.
             4. SPECIAL DEVOTIONAL EXCEPTION: If the User Kids Song Idea or prompt contains references to Hindu deities, devotional topics, or prayers (such as 'Hanuman', 'Chalisa', 'bhajan', 'aarti', 'spiritual', 'ram', 'krishna', 'shiva', 'ganesha', 'temple', 'prayer', 'devotional'), then override standard kids pop. Instead, explicitly require:
                - 'traditional Indian devotional bhajan style adapted for kids'
                - 'sweet spiritual native Indian {singer_gender.lower()} singer voice'
