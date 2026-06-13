@@ -2328,6 +2328,7 @@ def render_frontdoor(settings: Settings) -> None:
             lang_choice = st.session_state.get("music_studio_language", "English")
             if lang_choice == "Hindi":
                 model_options = [
+                    "Lyria 3 Pro — Hindi Song Generation (Google)",
                     "DiffRhythm2 High-Fidelity Song Generation (ASLP-lab/DiffRhythm2)",
                     "Gemini 2.5 Flash + Edge-TTS (Native Accent)"
                 ]
@@ -2686,7 +2687,35 @@ def render_frontdoor(settings: Settings) -> None:
                     lang = st.session_state.get("music_studio_language", "English")
                     selected_model = st.session_state.get("music_studio_model_select", "DiffRhythm2 High-Fidelity Song Generation (ASLP-lab/DiffRhythm2)")
                     
-                    if lang == "Hindi" and "Native Accent" in selected_model:
+                    if lang == "Hindi" and "Lyria 3 Pro" in selected_model:
+                        st.write("🎵 Generating Hindi song via Google Lyria 3 Pro...")
+                        from content_pipeline.bots.audio import generate_song_via_lyria3
+                        
+                        out_path = PROJECT_ROOT / "output" / "Music_Studio_Generated_Song.mp3"
+                        if not out_path.parent.exists() and Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio").exists():
+                            out_path = Path("/Users/lalitprasadsingh/Desktop/antigravity/New Audio/Music_Studio_Generated_Song.mp3")
+                        out_path.parent.mkdir(parents=True, exist_ok=True)
+                        
+                        generate_song_via_lyria3(
+                            lyrics=sanitized_lyrics,
+                            style_description=desc,
+                            output_path=out_path,
+                            gemini_api_keys=settings.gemini_api_keys,
+                            gemini_api_key=settings.gemini_api_key,
+                            singer_gender=singer_gender,
+                            language="Hindi",
+                            st_write_func=st.write,
+                        )
+                        out_path = normalize_music_studio_audio_length(
+                            out_path,
+                            int(st.session_state.get("music_duration_seconds", 90)),
+                        )
+                        st.session_state["music_studio_generated_mp3"] = str(out_path)
+                        st.session_state["music_studio_mixed_video_path"] = ""
+                        maybe_generate_linked_automation_music_image(settings)
+                        st.success("🎉 Hindi Song generated successfully using Google Lyria 3 Pro!")
+                        st.rerun()
+                    elif lang == "Hindi" and "Native Accent" in selected_model:
                         if not any("\u0900" <= char <= "\u097f" for char in sanitized_lyrics):
                             st.write("🔮 Converting Romanized lyrics to native Devanagari script for perfect Indian accent...")
                             from content_pipeline.bots.gemini_tts import transliterate_to_devanagari

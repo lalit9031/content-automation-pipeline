@@ -3760,3 +3760,91 @@ def generate_song_via_prioritized_spaces(
                     
     return None, None
 
+
+def generate_song_via_lyria3(
+    lyrics: str,
+    style_description: str,
+    output_path: Path,
+    gemini_api_keys: list[str] | tuple[str, ...] | None = None,
+    gemini_api_key: str = "",
+    singer_gender: str = "Male",
+    language: str = "Hindi",
+    st_write_func=None,
+) -> Path:
+    """
+    Generate a full song with singing vocals using Google Lyria 3 Pro.
+    Supports Hindi, English, and other languages natively.
+    Uses the Gemini API (google-genai) with model 'lyria-3-pro-preview'.
+    """
+    from google import genai
+
+    def _log(msg: str):
+        if st_write_func:
+            st_write_func(msg)
+        else:
+            print(msg)
+
+    # Build the list of API keys to try
+    keys_to_try: list[str] = []
+    if gemini_api_keys:
+        keys_to_try.extend(k for k in gemini_api_keys if k)
+    if gemini_api_key and gemini_api_key not in keys_to_try:
+        keys_to_try.append(gemini_api_key)
+    if not keys_to_try:
+        raise ValueError("No Gemini API keys configured. Cannot call Lyria 3 Pro.")
+
+    # Build the prompt
+    gender_voice = "male" if singer_gender.lower() == "male" else "female"
+    lang_label = language if language else "Hindi"
+
+    prompt = (
+        f"Generate a full-length song with {gender_voice} singing vocals in {lang_label}. "
+        f"Style: {style_description}. "
+        f"The song must have clear verse-chorus structure with an intro and outro. "
+        f"Sing the following lyrics with expressive, emotional delivery and professional studio quality:\n\n"
+        f"{lyrics}"
+    )
+
+    _log(f"🎵 Generating song via Google Lyria 3 Pro (language={lang_label}, voice={gender_voice})...")
+
+    last_error = None
+    for key_idx, api_key in enumerate(keys_to_try):
+        key_display = f"{api_key[:8]}..." if len(api_key) > 8 else "***"
+        try:
+            client = genai.Client(api_key=api_key)
+            response = client.models.generate_content(
+                model="lyria-3-pro-preview",
+                contents=prompt,
+            )
+
+            # Extract audio from response parts
+            audio_data = None
+            generated_text = None
+            for part in response.parts:
+                if part.inline_data is not None:
+                    audio_data = part.inline_data.data
+                elif part.text is not None:
+                    generated_text = part.text
+
+            if generated_text:
+                _log(f"📝 Lyria 3 generated structure:\n{generated_text[:500]}...")
+
+            if audio_data:
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(str(output_path), "wb") as f:
+                    f.write(audio_data)
+                _log(f"✅ Song saved via Lyria 3 Pro (key {key_display}): {output_path}")
+                return output_path
+            else:
+                _log(f"⚠️ Lyria 3 Pro returned no audio data with key {key_display}")
+                last_error = ValueError("No audio data in Lyria 3 response")
+
+        except Exception as e:
+            last_error = e
+            _log(f"⚠️ Lyria 3 Pro failed with key {key_display}: {e}")
+            continue
+
+    raise RuntimeError(
+        f"All {len(keys_to_try)} Gemini API key(s) failed for Lyria 3 Pro. Last error: {last_error}"
+    )
+
