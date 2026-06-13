@@ -2631,14 +2631,29 @@ def render_frontdoor(settings: Settings) -> None:
 
                     st.write("🎵 Dispatching song generation request to Hugging Face...")
                     try:
-                        try:
-                            client = Client("tencent/SongGeneration", token=settings.hf_token if settings.hf_token else None, httpx_kwargs={"timeout": 600.0})
-                        except Exception as client_err:
-                            if "401" in str(client_err) or "unauthorized" in str(client_err).lower() or "credentials" in str(client_err).lower() or "token" in str(client_err).lower():
-                                st.warning("⚠️ Hugging Face token is invalid/revoked or the space is gated. Trying anonymous access...")
-                                client = Client("tencent/SongGeneration", httpx_kwargs={"timeout": 600.0})
-                            else:
-                                raise
+                        client = None
+                        tokens_to_try = list(settings.hf_tokens) if settings.hf_tokens else []
+                        if not tokens_to_try and settings.hf_token:
+                            tokens_to_try = [settings.hf_token]
+                        tokens_to_try.append(None)
+                        
+                        last_err = None
+                        for token in tokens_to_try:
+                            try:
+                                if token:
+                                    client = Client("tencent/SongGeneration", token=token, httpx_kwargs={"timeout": 600.0})
+                                else:
+                                    client = Client("tencent/SongGeneration", httpx_kwargs={"timeout": 600.0})
+                                break
+                            except Exception as client_err:
+                                last_err = client_err
+                                if token:
+                                    st.warning(f"⚠️ Hugging Face token {token[:8]}...{token[-4:] if len(token)>8 else ''} failed: {client_err}. Trying next token...")
+                                else:
+                                    st.warning(f"⚠️ Anonymous connection failed: {client_err}")
+                        
+                        if client is None:
+                            raise last_err if last_err else RuntimeError("Failed to connect to Hugging Face client")
                         
                         # Translate UI-only genres (Folk, Traditional) to valid Lyria Space genres
                         valid_genres = ['Auto', 'Pop', 'Latin', 'Rock', 'Electronic', 'Metal', 'Country', 'R&B/Soul', 'Ballad', 'Jazz', 'World', 'Hip-Hop', 'Funk', 'Soundtrack']
@@ -5373,14 +5388,29 @@ def render_frontdoor(settings: Settings) -> None:
 
                     st.write("🎵 Dispatching song generation request to Hugging Face...")
                     try:
-                        try:
-                            client = Client("tencent/SongGeneration", token=settings.hf_token if settings.hf_token else None, httpx_kwargs={"timeout": 600.0})
-                        except Exception as client_err:
-                            if "401" in str(client_err) or "unauthorized" in str(client_err).lower() or "credentials" in str(client_err).lower() or "token" in str(client_err).lower():
-                                st.warning("⚠️ Hugging Face token is invalid/revoked or the space is gated. Trying anonymous access...")
-                                client = Client("tencent/SongGeneration", httpx_kwargs={"timeout": 600.0})
-                            else:
-                                raise
+                        client = None
+                        tokens_to_try = list(settings.hf_tokens) if settings.hf_tokens else []
+                        if not tokens_to_try and settings.hf_token:
+                            tokens_to_try = [settings.hf_token]
+                        tokens_to_try.append(None)
+                        
+                        last_err = None
+                        for token in tokens_to_try:
+                            try:
+                                if token:
+                                    client = Client("tencent/SongGeneration", token=token, httpx_kwargs={"timeout": 600.0})
+                                else:
+                                    client = Client("tencent/SongGeneration", httpx_kwargs={"timeout": 600.0})
+                                break
+                            except Exception as client_err:
+                                last_err = client_err
+                                if token:
+                                    st.warning(f"⚠️ Hugging Face token {token[:8]}...{token[-4:] if len(token)>8 else ''} failed: {client_err}. Trying next token...")
+                                else:
+                                    st.warning(f"⚠️ Anonymous connection failed: {client_err}")
+                        
+                        if client is None:
+                            raise last_err if last_err else RuntimeError("Failed to connect to Hugging Face client")
                         
                         # Translate UI-only genres (Folk, Traditional) to valid Lyria Space genres
                         valid_genres = ['Auto', 'Pop', 'Latin', 'Rock', 'Electronic', 'Metal', 'Country', 'R&B/Soul', 'Ballad', 'Jazz', 'World', 'Hip-Hop', 'Funk', 'Soundtrack']
