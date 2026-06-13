@@ -711,104 +711,124 @@ class NvidiaQwenImageProvider:
     HF_MODEL          = "Qwen/Qwen-Image"
 
     def __init__(self, settings: Settings) -> None:
-        self.together_api_key = getattr(settings, "together_api_key", "")
-        self.nvidia_api_key   = settings.nvidia_api_key
-        self.hf_token         = settings.hf_token
+        self.together_api_keys = self._dedupe_keys(
+            list(getattr(settings, "together_api_keys", ()) or ([getattr(settings, "together_api_key", "")] if getattr(settings, "together_api_key", "") else []))
+        )
+        self.nvidia_api_keys = self._dedupe_keys(list(settings.nvidia_api_keys or ([settings.nvidia_api_key] if settings.nvidia_api_key else [])))
+        self.hf_tokens = self._dedupe_keys(list(getattr(settings, "hf_token_keys", ()) or ([settings.hf_token] if settings.hf_token else [])))
         nim_model = (settings.nvidia_image_model or "").strip().lower()
         self.nim_url = (
             self.NVIDIA_NIM_URL if nim_model in ("", "qwen/qwen-image", "qwen-image")
             else f"https://nim.api.nvidia.com/v1/genai/{nim_model}"
         )
 
+    @staticmethod
+    def _dedupe_keys(keys: list[str]) -> list[str]:
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for key in keys:
+            key = (key or "").strip()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            ordered.append(key)
+        return ordered
+
     # ── Path 1: Together.ai ────────────────────────────────────────────────
     def _try_together(self, prompt: str) -> bytes | None:
         """Generate via Together.ai ($0.0058/image, OpenAI-compatible API)."""
-        if not self.together_api_key:
+        if not self.together_api_keys:
             return None
         try:
             from openai import OpenAI
         except ImportError:
             return None
-        try:
-            client = OpenAI(
-                api_key=self.together_api_key,
-                base_url=self.TOGETHER_BASE_URL,
-            )
-            response = client.images.generate(
-                model=self.TOGETHER_MODEL,
-                prompt=prompt,
-                n=1,
-                response_format="b64_json",
-            )
-            b64 = getattr(response.data[0], "b64_json", None)
-            if b64:
-                return base64.b64decode(b64)
-            url = getattr(response.data[0], "url", None)
-            if url:
-                import urllib.request
-                with urllib.request.urlopen(url, timeout=60) as r:
-                    return r.read()
-        except Exception as exc:
-            print(f"[Qwen/Together] Error: {exc}")
+        for idx, api_key in enumerate(self.together_api_keys, start=1):
+            try:
+                print(f"[Qwen/Together] trying key slot {idx}...")
+                client = OpenAI(
+                    api_key=api_key,
+                    base_url=self.TOGETHER_BASE_URL,
+                )
+                response = client.images.generate(
+                    model=self.TOGETHER_MODEL,
+                    prompt=prompt,
+                    n=1,
+                    response_format="b64_json",
+                )
+                b64 = getattr(response.data[0], "b64_json", None)
+                if b64:
+                    return base64.b64decode(b64)
+                url = getattr(response.data[0], "url", None)
+                if url:
+                    import urllib.request
+                    with urllib.request.urlopen(url, timeout=60) as r:
+                        return r.read()
+            except Exception as exc:
+                print(f"[Qwen/Together] key slot {idx} error: {exc}")
         return None
 
     # ── Path 2: NVIDIA NIM cloud ───────────────────────────────────────────
     def _try_nvidia_nim(self, prompt: str) -> bytes | None:
         """Call NVIDIA NIM cloud endpoint (artifacts[0].base64 format)."""
-        if not self.nvidia_api_key:
+        if not self.nvidia_api_keys:
             return None
         import urllib.request, urllib.error, json as _json
         payload = {"prompt": prompt, "seed": 0}
-        req = urllib.request.Request(
-            self.nim_url,
-            data=_json.dumps(payload).encode(),
-            headers={
-                "Authorization": f"Bearer {self.nvidia_api_key}",
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            },
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=120) as res:
-                data = _json.loads(res.read())
-                artifacts = data.get("artifacts", [])
-                if artifacts and artifacts[0].get("base64"):
-                    return base64.b64decode(artifacts[0]["base64"])
-                img_data = (data.get("data") or [{}])[0]
-                if img_data.get("b64_json"):
-                    return base64.b64decode(img_data["b64_json"])
-                if img_data.get("url"):
-                    import urllib.request as _ur
-                    with _ur.urlopen(img_data["url"], timeout=60) as r:
-                        return r.read()
-        except urllib.error.HTTPError as e:
-            body = ""
-            try: body = e.read().decode()[:200]
-            except: pass
-            print(f"[Qwen/NIM] HTTP {e.code}: {body}")
-        except Exception as exc:
-            print(f"[Qwen/NIM] Error: {exc}")
+        for idx, api_key in enumerate(self.nvidia_api_keys, start=1):
+            req = urllib.request.Request(
+                self.nim_url,
+                data=_json.dumps(payload).encode(),
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                },
+                method="POST",
+            )
+            try:
+                print(f"[Qwen/NIM] trying key slot {idx}...")
+                with urllib.request.urlopen(req, timeout=120) as res:
+                    data = _json.loads(res.read())
+                    artifacts = data.get("artifacts", [])
+                    if artifacts and artifacts[0].get("base64"):
+                        return base64.b64decode(artifacts[0]["base64"])
+                    img_data = (data.get("data") or [{}])[0]
+                    if img_data.get("b64_json"):
+                        return base64.b64decode(img_data["b64_json"])
+                    if img_data.get("url"):
+                        import urllib.request as _ur
+                        with _ur.urlopen(img_data["url"], timeout=60) as r:
+                            return r.read()
+            except urllib.error.HTTPError as e:
+                body = ""
+                try: body = e.read().decode()[:200]
+                except: pass
+                print(f"[Qwen/NIM] key slot {idx} HTTP {e.code}: {body}")
+            except Exception as exc:
+                print(f"[Qwen/NIM] key slot {idx} error: {exc}")
         return None
 
     # ── Path 3: HuggingFace fal-ai ─────────────────────────────────────────
     def _try_hf_fal(self, prompt: str) -> bytes | None:
         """Call Qwen-Image via HuggingFace fal-ai router."""
-        if not self.hf_token:
+        if not self.hf_tokens:
             return None
         try:
             from huggingface_hub import InferenceClient
         except ImportError:
             return None
-        try:
-            client = InferenceClient(provider="fal-ai", api_key=self.hf_token)
-            pil_image = client.text_to_image(prompt, model=self.HF_MODEL)
-            import io
-            buf = io.BytesIO()
-            pil_image.save(buf, format="PNG")
-            return buf.getvalue()
-        except Exception as exc:
-            print(f"[Qwen/HF-fal] Error: {exc}")
+        for idx, token in enumerate(self.hf_tokens, start=1):
+            try:
+                print(f"[Qwen/HF-fal] trying key slot {idx}...")
+                client = InferenceClient(provider="fal-ai", api_key=token)
+                pil_image = client.text_to_image(prompt, model=self.HF_MODEL)
+                import io
+                buf = io.BytesIO()
+                pil_image.save(buf, format="PNG")
+                return buf.getvalue()
+            except Exception as exc:
+                print(f"[Qwen/HF-fal] key slot {idx} error: {exc}")
         return None
 
     # ── Main entry ─────────────────────────────────────────────────────────
@@ -827,11 +847,15 @@ class NvidiaQwenImageProvider:
             image_bytes = self._try_hf_fal(prompt)
 
         if image_bytes is None:
+            prompt_len = len((prompt or "").strip())
+            prompt_head = (prompt or "").strip()[:220]
             raise RuntimeError(
                 "Qwen-Image generation failed on all providers.\n"
                 "  - Together.ai: set TOGETHER_API_KEY in .env (get free key at api.together.ai)\n"
                 "  - NVIDIA NIM: check NVIDIA_API_KEY (nim.api.nvidia.com)\n"
-                "  - HuggingFace fal-ai: check HF_TOKEN / add fal-ai credits"
+                "  - HuggingFace fal-ai: check HF_TOKEN / add fal-ai credits\n"
+                f"  - Prompt length: {prompt_len} chars\n"
+                f"  - Prompt preview: {prompt_head}"
             )
 
         # Bicubic resize to exact requested dimensions

@@ -31,6 +31,13 @@ def is_vocal_track(filename: str) -> bool:
     return True
 
 
+def resolve_song_generation_space(settings: Settings) -> str:
+    env_space = os.getenv("HF_SONG_GENERATION_SPACE", "").strip()
+    if env_space:
+        return env_space
+    return settings.hf_song_generation_space.strip()
+
+
 HINDI_PRONUNCIATION_TEXT = (
     "गोकुल की सुनहरी सुबह में, मैया यशोदा ने पुकारा, कान्हा! "
     "मेरे प्यारे कान्हा, कहाँ छिपे हो? नन्हे कान्हा मुस्कुराते हुए बोले, "
@@ -1321,7 +1328,7 @@ def generate_instrumental_audio_track(
     selected_ref: str = "None (Text-only)",
     force_local: bool = False,
 ) -> Path:
-    """Generate a finished instrumental-only MP3, using SongGeneration when available."""
+    """Generate a finished instrumental-only MP3, using the configured SongGeneration space when available."""
     import subprocess
     from content_pipeline.config import Settings
 
@@ -2952,20 +2959,46 @@ def generate_edge_tts_song_fallback(
     temp_dir.mkdir(parents=True, exist_ok=True)
     raw_vocals_file = temp_dir / "edge_raw_vocals_song.mp3"
     
-    if not clean_lyrics.strip():
-        # Lyrics are empty (e.g. only bracketed directives). Generate 30s silent vocal track.
-        vocals = AudioSegment.silent(duration=30000)
-    else:
-        # Generate raw vocals using Edge-TTS
-        _run_async(_write_edge_voice_sample(
-            raw_vocals_file,
-            voice=voice,
-            text=clean_lyrics,
-            rate=active_profile.get("edge_rate", "+0%"),
-            pitch=active_profile.get("edge_pitch", "+0Hz")
-        ))
-        vocals = AudioSegment.from_file(str(raw_vocals_file))
+    # Generate raw vocals using Edge-TTS
+    _run_async(_write_edge_voice_sample(
+        raw_vocals_file,
+        voice=voice,
+        text=clean_lyrics,
+        rate=active_profile.get("edge_rate", "+0%"),
+        pitch=active_profile.get("edge_pitch", "+0Hz")
+    ))
     
+    # 3. Load vocals and beat
+    try:
+        if not raw_vocals_file.exists() or raw_vocals_file.stat().st_size < 1024:
+            raise RuntimeError("Edge-TTS returned an empty or invalid audio file.")
+        vocals = AudioSegment.from_file(str(raw_vocals_file))
+    except Exception as vocals_err:
+        print(f"⚠️ Edge-TTS fallback produced no usable vocal track: {vocals_err}")
+        fallback_duration = max(45, min(180, int(max(1, len(clean_lyrics.split()) * 1.8))))
+        try:
+            if mode == "Storytelling":
+                story_pad = temp_dir / "edge_story_fallback_pad.wav"
+                generate_storytelling_ambient_pad(story_pad, duration_seconds=fallback_duration)
+                AudioSegment.from_file(str(story_pad)).export(str(output_path), format="mp3", bitrate="192k")
+                try:
+                    story_pad.unlink()
+                except Exception:
+                    pass
+            else:
+                generate_layered_kids_instrumental(
+                    output_path,
+                    duration_seconds=fallback_duration,
+                    bpm=92,
+                    style_description="Pure instrumental. Cheerful nursery rhyme backing track, soft ukulele, glockenspiel, warm bass, hand claps, no vocals.",
+                )
+        finally:
+            try:
+                if raw_vocals_file.exists():
+                    raw_vocals_file.unlink()
+            except Exception:
+                pass
+        return output_path
     # Determine the background beat file
     beat_path = None
     if selected_ref != "None (Text-only)":
@@ -3072,8 +3105,8 @@ def generate_hindi_song_via_native_audio(
 ) -> Path:
     """Unified Hindi Song Generator:
     Bypasses Hugging Face Space for vocals, but dynamically generates
-    an instrumental-only backing track using tencent/SongGeneration.
-    1. Try generating an instrumental-only backing track using tencent/SongGeneration.
+    an instrumental-only backing track using the configured SongGeneration space.
+    1. Try generating an instrumental-only backing track using the configured SongGeneration space.
     2. Try Gemini TTS (under budget) with Puck (male) or Aoede/Kore (female) for vocals.
     3. Fall back to Edge-TTS (hi-IN-MadhurNeural or hi-IN-SwaraNeural) if Gemini TTS fails/over budget.
     4. Mix vocals with background beat (ducked by -6dB, vocal deepened by 0.94x, boosted by +2dB).
@@ -3851,4 +3884,3 @@ def generate_song_via_lyria3(
     raise RuntimeError(
         f"All {len(keys_to_try)} Gemini API key(s) failed for Lyria 3 Pro. Last error: {last_error}"
     )
-

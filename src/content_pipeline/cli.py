@@ -130,6 +130,17 @@ from content_pipeline.bots.youtube import (
     review_youtube_upload_readiness,
     upload_youtube_video,
 )
+from content_pipeline.bots.youtube_audit import (
+    audit_youtube_channels,
+    render_youtube_audit_markdown,
+    run_weekly_youtube_review,
+    write_youtube_audit_report,
+)
+from content_pipeline.bots.project_brain import (
+    build_project_brain_report,
+    render_project_brain_markdown,
+    run_project_brain_daemon,
+)
 from content_pipeline.bots.youtube_sync import sync_public_youtube_uploads
 from content_pipeline.config import Settings
 from content_pipeline.content_history import record_history_entry
@@ -846,6 +857,145 @@ def main() -> int:
         type=Path,
         default=Path("state"),
         help="Directory for processed video state.",
+    )
+    audit_parser = subparsers.add_parser(
+        "youtube-audit",
+        help="Diagnose all configured YouTube channels and generate trend + fix guidance.",
+    )
+    audit_parser.add_argument(
+        "--region-code",
+        default="IN",
+        help="Region code used when fetching public trending videos.",
+    )
+    audit_parser.add_argument(
+        "--max-videos",
+        type=int,
+        default=15,
+        help="How many recent uploads to inspect per channel.",
+    )
+    audit_parser.add_argument(
+        "--related-topic-limit",
+        type=int,
+        default=3,
+        help="How many top recent uploads to turn into related search queries.",
+    )
+    audit_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=None,
+        help="Optional output directory for the audit files.",
+    )
+    audit_parser.add_argument(
+        "--format",
+        choices=("markdown", "json"),
+        default="markdown",
+        help="Terminal output format.",
+    )
+    weekly_parser = subparsers.add_parser(
+        "youtube-weekly-audit",
+        help="Run the weekly YouTube audit, rewrite metadata suggestions, and notify Telegram.",
+    )
+    weekly_parser.add_argument(
+        "--region-code",
+        default="IN",
+        help="Region code used when fetching public trending videos.",
+    )
+    weekly_parser.add_argument("--max-videos", type=int, default=15, help="Recent uploads to inspect per channel.")
+    weekly_parser.add_argument(
+        "--related-topic-limit",
+        type=int,
+        default=3,
+        help="How many recent titles to turn into related searches.",
+    )
+    weekly_parser.add_argument(
+        "--trending-limit",
+        type=int,
+        default=15,
+        help="How many public trending videos to inspect.",
+    )
+    weekly_parser.add_argument(
+        "--update-limit",
+        type=int,
+        default=2,
+        help="How many videos per channel to rewrite/update.",
+    )
+    weekly_parser.add_argument(
+        "--rewrite-provider",
+        choices=("auto", "nvidia", "gemini", "openai", "local"),
+        default="auto",
+        help="Metadata rewrite provider order for the weekly audit.",
+    )
+    weekly_parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="Apply the Gemini-recommended title/tag changes back to YouTube.",
+    )
+    weekly_parser.add_argument(
+        "--no-telegram",
+        action="store_true",
+        help="Skip Telegram notifications even if credentials are configured.",
+    )
+    weekly_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=None,
+        help="Optional output directory for the weekly report.",
+    )
+    weekly_parser.add_argument(
+        "--telegram-bot-token",
+        default="",
+        help="Telegram bot token for notifications.",
+    )
+    weekly_parser.add_argument(
+        "--telegram-chat-id",
+        default="",
+        help="Telegram chat ID for notifications.",
+    )
+    brain_parser = subparsers.add_parser(
+        "project-brain",
+        help="Run the project-wide quality brain and write a scored report.",
+    )
+    brain_parser.add_argument(
+        "--refresh-web",
+        action="store_true",
+        help="Refresh YouTube trend signals before scoring.",
+    )
+    brain_parser.add_argument(
+        "--trend-region",
+        default="IN",
+        help="Region code used when refreshing web trend signals.",
+    )
+    brain_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=None,
+        help="Optional output directory for the brain report.",
+    )
+    brain_parser.add_argument(
+        "--format",
+        choices=("markdown", "json"),
+        default="markdown",
+        help="Terminal output format.",
+    )
+    brain_daemon_parser = subparsers.add_parser(
+        "project-brain-daemon",
+        help="Continuously refresh the project brain on a schedule.",
+    )
+    brain_daemon_parser.add_argument(
+        "--refresh-web",
+        action="store_true",
+        help="Refresh YouTube trend signals before each scoring pass.",
+    )
+    brain_daemon_parser.add_argument(
+        "--trend-region",
+        default="IN",
+        help="Region code used when refreshing web trend signals.",
+    )
+    brain_daemon_parser.add_argument(
+        "--interval-minutes",
+        type=int,
+        default=360,
+        help="How often the daemon should refresh the brain report.",
     )
     parser.add_argument(
         "--project-dir",
@@ -1576,6 +1726,71 @@ def main() -> int:
         state_dir = args.state_dir if args.state_dir.is_absolute() else project_dir / args.state_dir
         results = sync_public_youtube_uploads(settings, state_dir)
         print(json.dumps([result.as_dict() for result in results], indent=2, ensure_ascii=False))
+        return 0
+    if args.command == "youtube-audit":
+        report = audit_youtube_channels(
+            settings,
+            project_dir,
+            region_code=args.region_code,
+            max_videos=args.max_videos,
+            related_topic_limit=args.related_topic_limit,
+        )
+        output_dir = args.output_dir if args.output_dir else settings.output_dir / "youtube_audits"
+        if not output_dir.is_absolute():
+            output_dir = project_dir / output_dir
+        paths = write_youtube_audit_report(report, output_dir)
+        print(f"Audit report written: {paths['markdown']}")
+        print(f"Audit JSON written: {paths['json']}")
+        if args.format == "json":
+            print(json.dumps(report, indent=2, ensure_ascii=False))
+        else:
+            print(render_youtube_audit_markdown(report))
+        return 0
+    if args.command == "youtube-weekly-audit":
+        output_dir = args.output_dir if args.output_dir else settings.output_dir / "youtube_audits"
+        if not output_dir.is_absolute():
+            output_dir = project_dir / output_dir
+        report = run_weekly_youtube_review(
+            settings,
+            project_dir,
+            region_code=args.region_code,
+            max_videos=args.max_videos,
+            related_topic_limit=args.related_topic_limit,
+            trending_limit=args.trending_limit,
+            update_limit=args.update_limit,
+            rewrite_provider=args.rewrite_provider,
+            apply_updates=args.apply,
+            notify_telegram=not args.no_telegram,
+            telegram_bot_token=args.telegram_bot_token,
+            telegram_chat_id=args.telegram_chat_id,
+            output_dir=output_dir,
+        )
+        print(json.dumps(report, indent=2, ensure_ascii=False))
+        return 0
+    if args.command == "project-brain":
+        output_dir = args.output_dir if args.output_dir else settings.output_dir
+        if not output_dir.is_absolute():
+            output_dir = project_dir / output_dir
+        report = build_project_brain_report(
+            settings,
+            refresh_web=args.refresh_web,
+            trend_region=args.trend_region,
+            output_dir=output_dir,
+        )
+        print(f"Brain JSON written: {report.report_path}")
+        print(f"Brain markdown written: {report.markdown_path}")
+        if args.format == "json":
+            print(json.dumps(report.as_dict(), indent=2, ensure_ascii=False))
+        else:
+            print(render_project_brain_markdown(report))
+        return 0
+    if args.command == "project-brain-daemon":
+        run_project_brain_daemon(
+            settings,
+            refresh_web=args.refresh_web,
+            trend_region=args.trend_region,
+            interval_minutes=args.interval_minutes,
+        )
         return 0
     if args.command == "linkedin-auth":
         member_urn = authorize_linkedin(settings, project_dir / ".env")

@@ -15,6 +15,32 @@ YOUTUBE_UPLOAD_SCOPE = [
 ]
 
 
+def _load_token_scopes(token_file: str) -> list[str] | None:
+    try:
+        with open(token_file, "r", encoding="utf-8") as f:
+            token_data = json.load(f)
+            scopes = token_data.get("scopes", None)
+            if isinstance(scopes, list) and scopes:
+                return [str(scope) for scope in scopes]
+    except Exception:
+        return None
+    return None
+
+
+def _build_youtube_service(settings: Settings):
+    if not settings.youtube_token_file:
+        raise ValueError("YOUTUBE_TOKEN_FILE is required for YouTube access.")
+    try:
+        from google.oauth2.credentials import Credentials
+        from googleapiclient.discovery import build
+    except ImportError as exc:
+        raise RuntimeError("Install YouTube dependencies with: pip install -e '.[youtube]'") from exc
+
+    scopes = _load_token_scopes(settings.youtube_token_file) or YOUTUBE_UPLOAD_SCOPE
+    credentials = Credentials.from_authorized_user_file(settings.youtube_token_file, scopes)
+    return build("youtube", "v3", credentials=credentials)
+
+
 def authorize_youtube(settings: Settings) -> Path:
     if not settings.youtube_client_secrets_file or not settings.youtube_token_file:
         raise ValueError(
@@ -108,26 +134,11 @@ def upload_youtube_video(
     if not settings.youtube_token_file:
         raise ValueError("YOUTUBE_TOKEN_FILE is required for YouTube upload.")
     try:
-        from google.oauth2.credentials import Credentials
-        from googleapiclient.discovery import build
         from googleapiclient.http import MediaFileUpload
     except ImportError as exc:
         raise RuntimeError("Install YouTube dependencies with: pip install -e '.[youtube]'") from exc
 
-    # Load token scopes from the file to avoid invalid_scope request mismatch
-    token_scopes = None
-    try:
-        with open(settings.youtube_token_file, "r") as f:
-            token_data = json.load(f)
-            token_scopes = token_data.get("scopes", None)
-    except Exception:
-        pass
-
-    credentials = Credentials.from_authorized_user_file(
-        settings.youtube_token_file,
-        token_scopes or YOUTUBE_UPLOAD_SCOPE,
-    )
-    youtube = build("youtube", "v3", credentials=credentials)
+    youtube = _build_youtube_service(settings)
     request = youtube.videos().insert(
         part="snippet,status",
         body={
@@ -148,29 +159,50 @@ def upload_youtube_video(
     return response["id"]
 
 
+def update_youtube_video_metadata(
+    settings: Settings,
+    video_id: str,
+    *,
+    title: str | None = None,
+    description: str | None = None,
+    tags: list[str] | None = None,
+) -> dict[str, Any]:
+    if not video_id.strip():
+        raise ValueError("video_id is required.")
+    youtube = _build_youtube_service(settings)
+    response = youtube.videos().list(
+        part="snippet",
+        id=video_id,
+    ).execute()
+    items = response.get("items", [])
+    if not items:
+        raise RuntimeError(f"Video not found: {video_id}")
+
+    snippet = dict(items[0].get("snippet", {}))
+    if title is not None:
+        snippet["title"] = title
+    if description is not None:
+        snippet["description"] = description
+    if tags is not None:
+        snippet["tags"] = tags
+
+    if not snippet.get("categoryId"):
+        snippet["categoryId"] = "24"
+
+    update_response = youtube.videos().update(
+        part="snippet",
+        body={
+            "id": video_id,
+            "snippet": snippet,
+        },
+    ).execute()
+    return update_response
+
+
 def list_my_uploaded_videos(settings: Settings, max_results: int = 50) -> list[dict[str, Any]]:
     if not settings.youtube_token_file:
         raise ValueError("YOUTUBE_TOKEN_FILE is required for YouTube listing.")
-    try:
-        from google.oauth2.credentials import Credentials
-        from googleapiclient.discovery import build
-    except ImportError as exc:
-        raise RuntimeError("Install YouTube dependencies with: pip install -e '.[youtube]'") from exc
-
-    # Load token scopes from the file to avoid invalid_scope request mismatch
-    token_scopes = None
-    try:
-        with open(settings.youtube_token_file, "r") as f:
-            token_data = json.load(f)
-            token_scopes = token_data.get("scopes", None)
-    except Exception:
-        pass
-
-    credentials = Credentials.from_authorized_user_file(
-        settings.youtube_token_file,
-        token_scopes or YOUTUBE_UPLOAD_SCOPE,
-    )
-    youtube = build("youtube", "v3", credentials=credentials)
+    youtube = _build_youtube_service(settings)
     channel_response = youtube.channels().list(part="contentDetails", mine=True).execute()
     items = channel_response.get("items", [])
     if not items:
@@ -211,28 +243,9 @@ def get_my_video_details(settings: Settings, video_ids: list[str]) -> list[dict[
         return []
     if not settings.youtube_token_file:
         raise ValueError("YOUTUBE_TOKEN_FILE is required for YouTube listing.")
-    try:
-        from google.oauth2.credentials import Credentials
-        from googleapiclient.discovery import build
-    except ImportError as exc:
-        raise RuntimeError("Install YouTube dependencies with: pip install -e '.[youtube]'") from exc
-
-    # Load token scopes from the file to avoid invalid_scope request mismatch
-    token_scopes = None
-    try:
-        with open(settings.youtube_token_file, "r") as f:
-            token_data = json.load(f)
-            token_scopes = token_data.get("scopes", None)
-    except Exception:
-        pass
-
-    credentials = Credentials.from_authorized_user_file(
-        settings.youtube_token_file,
-        token_scopes or YOUTUBE_UPLOAD_SCOPE,
-    )
-    youtube = build("youtube", "v3", credentials=credentials)
+    youtube = _build_youtube_service(settings)
     response = youtube.videos().list(
-        part="snippet,status",
+        part="snippet,status,statistics,contentDetails",
         id=",".join(video_ids),
         maxResults=len(video_ids),
     ).execute()
@@ -240,6 +253,9 @@ def get_my_video_details(settings: Settings, video_ids: list[str]) -> list[dict[
     for item in response.get("items", []):
         snippet = item.get("snippet", {})
         status = item.get("status", {})
+        statistics = item.get("statistics", {})
+        content_details = item.get("contentDetails", {})
+        duration = str(content_details.get("duration", ""))
         details.append(
             {
                 "video_id": str(item.get("id", "")),
@@ -247,6 +263,12 @@ def get_my_video_details(settings: Settings, video_ids: list[str]) -> list[dict[
                 "description": str(snippet.get("description", "")),
                 "tags": list(snippet.get("tags", []) or []),
                 "privacy_status": str(status.get("privacyStatus", "")),
+                "published_at": str(snippet.get("publishedAt", "")),
+                "publish_at": str(status.get("publishAt", "")),
+                "duration": duration,
+                "view_count": int(statistics.get("viewCount", 0) or 0),
+                "like_count": int(statistics.get("likeCount", 0) or 0),
+                "comment_count": int(statistics.get("commentCount", 0) or 0),
             }
         )
     return details

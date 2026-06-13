@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import asdict, dataclass
 from dataclasses import replace
 from datetime import date
@@ -52,6 +53,591 @@ STORYBOARD_STYLE_BASE = (
     "premium animation, rounded shapes, soft glow, vibrant color contrast, smooth "
     "depth, and a clean scene composition suitable for a polished explainer video."
 )
+
+CONTENT_PACKAGE_JSON_SCHEMA = """
+Return strict JSON only with this schema:
+{
+  "date": "YYYY-MM-DD",
+  "topic": "A fresh teaching topic",
+  "image_prompt": "A supporting illustration prompt with no text, logos, or watermarks",
+  "linkedin_infographic": {
+    "headline": "headline under 58 characters",
+    "subtitle": "subtitle under 70 characters",
+    "left_panel": {
+      "title": "panel title",
+      "points": ["point 1", "point 2", "point 3"]
+    },
+    "right_panel": {
+      "title": "panel title",
+      "points": ["point 1", "point 2", "point 3"]
+    },
+    "takeaway_title": "short takeaway title",
+    "takeaway_points": ["point 1", "point 2"],
+    "workflow": ["Discover", "Refine", "Build", "Review", "Done"],
+    "discussion_prompt": "short discussion prompt"
+  },
+  "video_script": {
+    "hook": "hook line",
+    "points": ["point 1", "point 2", "point 3"],
+    "cta": "call to action"
+  },
+  "linkedin_caption": "detailed caption",
+  "hashtags": ["#tag1", "#tag2", "#tag3"],
+  "seo_title": "SEO title",
+  "seo_description": "SEO description"
+}
+"""
+
+LONG_FORM_JSON_SCHEMA = """
+Return strict JSON only with this schema:
+{
+  "title": "A click-worthy long-form title",
+  "scenes": [
+    {
+      "title": "scene title",
+      "on_screen_text": "short on-screen copy",
+      "narration": "natural narration",
+      "duration_seconds": 8
+    }
+  ]
+}
+The scenes array must contain between 14 and 20 items.
+Each duration_seconds must be between 8 and 20.
+"""
+
+
+def _first_non_empty(values: list[str] | tuple[str, ...], fallback: str = "") -> str:
+    for value in values:
+        if str(value).strip():
+            return str(value).strip()
+    return fallback.strip()
+
+
+def _unique_non_empty(values: list[str] | tuple[str, ...], fallback: str = "") -> list[str]:
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        text = str(value).strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        ordered.append(text)
+    fallback = fallback.strip()
+    if not ordered and fallback:
+        ordered.append(fallback)
+    return ordered
+
+
+def _extract_json_object(text: str) -> dict[str, object]:
+    raw = str(text or "").strip()
+    if raw.startswith("```"):
+        raw = raw.lstrip("`")
+        raw = raw.replace("json\n", "", 1).replace("JSON\n", "", 1)
+        raw = raw.rstrip("`").strip()
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, dict):
+            return parsed
+    except Exception:
+        pass
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start >= 0 and end > start:
+        parsed = json.loads(raw[start : end + 1])
+        if isinstance(parsed, dict):
+            return parsed
+    raise ValueError("Model response did not contain valid JSON.")
+
+
+def _build_openai_client(api_key: str):
+    from openai import OpenAI
+
+    return OpenAI(api_key=api_key)
+
+
+def _build_openai_compatible_client(*, api_key: str, base_url: str):
+    from openai import OpenAI
+
+    return OpenAI(api_key=api_key, base_url=base_url)
+
+
+def _nvidia_text_model(settings: Settings) -> str:
+    return _first_non_empty(
+        [
+            os.getenv("NVIDIA_TEXT_MODEL", ""),
+            settings.nvidia_nim_model,
+            "microsoft/phi-4-mini-instruct",
+        ],
+        "microsoft/phi-4-mini-instruct",
+    )
+
+
+def _openai_key_pool(settings: Settings) -> list[str]:
+    return _unique_non_empty(list(settings.openai_api_keys), settings.openai_api_key)
+
+
+def _gemini_key_pool(settings: Settings) -> list[str]:
+    return _unique_non_empty(list(settings.gemini_api_keys), settings.gemini_api_key)
+
+
+def _nvidia_key_pool(settings: Settings) -> list[str]:
+    return _unique_non_empty(list(settings.nvidia_api_keys), settings.nvidia_api_key)
+
+
+def _daily_package_prompt(day: str, avoid_topics: list[str] | None = None) -> str:
+    avoid_text = _avoid_topics_text(avoid_topics)
+    return (
+        f"{EDITORIAL_STYLE}\n"
+        f"Date: {day}. Produce one fresh teaching topic and complete content package in the "
+        "specified project-management and Agile-delivery style. The image_prompt is only "
+        "for a supporting illustration with no text. The linkedin_infographic field drives "
+        "a deterministic template: keep the headline under 58 characters, subtitle under 70 "
+        "characters, each panel to 3 concise points under 65 characters, takeaway to 2 "
+        "points under 70 characters, workflow to 4 or 5 labels of no more than 2 words each "
+        "(for example: Discover, Refine, Build, Review, Done), and discussion_prompt under 70 "
+        f"characters.{avoid_text}\n\n{CONTENT_PACKAGE_JSON_SCHEMA}"
+    )
+
+
+def _long_form_prompt(package: ContentPackage, target_minutes: int) -> str:
+    minimum_seconds = 180
+    maximum_seconds = 300
+    return (
+        f"{EDITORIAL_STYLE} Write a narrated YouTube explainer. The finished video should "
+        f"target approximately {target_minutes} minutes and must run between {minimum_seconds} "
+        f"and {maximum_seconds} seconds. Use practical, original teaching language and do not "
+        "invent evidence.\n\n"
+        "Expand this existing daily topic into a long-form video script. Each scene must have "
+        "short readable on-screen copy and separate natural narration. Use 14 to 20 scenes. "
+        "Keep on_screen_text under 90 characters and narration roughly appropriate for its "
+        "duration at a calm speaking pace. Include an opening hook, problem explanation, "
+        "step-by-step guidance, concrete example, mistakes to avoid, recap, and closing "
+        f"question.\n\nExisting package:\n{json.dumps(package.as_dict(), indent=2)}\n\n"
+        f"{LONG_FORM_JSON_SCHEMA}"
+    )
+
+
+def _chat_json_completion(
+    *,
+    client,
+    model: str,
+    prompt: str,
+    temperature: float = 0.7,
+    max_tokens: int = 2048,
+    extra_body: dict[str, object] | None = None,
+) -> dict[str, object]:
+    attempts: list[dict[str, object]] = [
+        {"response_format": {"type": "json_object"}},
+        {},
+    ]
+    last_error: Exception | None = None
+    for attempt in attempts:
+        try:
+            kwargs: dict[str, object] = {
+                "model": model,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": temperature,
+                "top_p": 0.95,
+                "max_tokens": max_tokens,
+                "frequency_penalty": 0,
+                "presence_penalty": 0,
+                "stream": False,
+            }
+            if extra_body:
+                kwargs["extra_body"] = extra_body
+            kwargs.update(attempt)
+            completion = client.chat.completions.create(**kwargs)
+            message = completion.choices[0].message
+            content = str(getattr(message, "content", "") or "").strip()
+            return _extract_json_object(content)
+        except Exception as exc:
+            last_error = exc
+            continue
+    if last_error:
+        raise last_error
+    raise RuntimeError("JSON completion failed.")
+
+
+def _generate_package_with_openai(settings: Settings, *, day: str, avoid_topics: list[str] | None = None) -> ContentPackage:
+    keys = _openai_key_pool(settings)
+    if not keys:
+        raise ValueError("OPENAI_API_KEY is required")
+    last_error: Exception | None = None
+    prompt = _daily_package_prompt(day, avoid_topics)
+    for api_key in keys:
+        try:
+            response = _build_openai_client(api_key).responses.create(
+                model=settings.openai_model,
+                instructions=EDITORIAL_STYLE,
+                input=prompt,
+                text={
+                    "format": {
+                        "type": "json_schema",
+                        "name": "daily_content_package",
+                        "strict": True,
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "required": [
+                                "date",
+                                "topic",
+                                "image_prompt",
+                                "linkedin_infographic",
+                                "video_script",
+                                "linkedin_caption",
+                                "hashtags",
+                                "seo_title",
+                                "seo_description",
+                            ],
+                            "properties": {
+                                "date": {"type": "string"},
+                                "topic": {"type": "string"},
+                                "image_prompt": {"type": "string"},
+                                "linkedin_infographic": {
+                                    "type": "object",
+                                    "additionalProperties": False,
+                                    "required": [
+                                        "headline",
+                                        "subtitle",
+                                        "left_panel",
+                                        "right_panel",
+                                        "takeaway_title",
+                                        "takeaway_points",
+                                        "workflow",
+                                        "discussion_prompt",
+                                    ],
+                                    "properties": {
+                                        "headline": {"type": "string"},
+                                        "subtitle": {"type": "string"},
+                                        "left_panel": {
+                                            "type": "object",
+                                            "additionalProperties": False,
+                                            "required": ["title", "points"],
+                                            "properties": {
+                                                "title": {"type": "string"},
+                                                "points": {
+                                                    "type": "array",
+                                                    "items": {"type": "string"},
+                                                    "minItems": 1,
+                                                },
+                                            },
+                                        },
+                                        "right_panel": {
+                                            "type": "object",
+                                            "additionalProperties": False,
+                                            "required": ["title", "points"],
+                                            "properties": {
+                                                "title": {"type": "string"},
+                                                "points": {
+                                                    "type": "array",
+                                                    "items": {"type": "string"},
+                                                    "minItems": 1,
+                                                },
+                                            },
+                                        },
+                                        "takeaway_title": {"type": "string"},
+                                        "takeaway_points": {
+                                            "type": "array",
+                                            "items": {"type": "string"},
+                                            "minItems": 1,
+                                        },
+                                        "workflow": {
+                                            "type": "array",
+                                            "items": {"type": "string"},
+                                            "minItems": 1,
+                                        },
+                                        "discussion_prompt": {"type": "string"},
+                                    },
+                                },
+                                "video_script": {
+                                    "type": "object",
+                                    "additionalProperties": False,
+                                    "required": ["hook", "points", "cta"],
+                                    "properties": {
+                                        "hook": {"type": "string"},
+                                        "points": {
+                                            "type": "array",
+                                            "items": {"type": "string"},
+                                            "minItems": 1,
+                                        },
+                                        "cta": {"type": "string"},
+                                    },
+                                },
+                                "linkedin_caption": {"type": "string"},
+                                "hashtags": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "minItems": 1,
+                                },
+                                "seo_title": {"type": "string"},
+                                "seo_description": {"type": "string"},
+                            },
+                        },
+                    }
+                },
+            )
+            log_openai_usage(
+                response,
+                label="OpenAI daily package usage",
+                context_window_tokens=128000,
+                prompt_rate_per_1m=0.75,
+                completion_rate_per_1m=4.50,
+            )
+            return ContentPackage.from_dict(json.loads(response.output_text))
+        except Exception as exc:
+            last_error = exc
+            continue
+    if last_error:
+        raise last_error
+    raise RuntimeError("OpenAI prompt generation failed.")
+
+
+def _generate_package_with_nvidia(settings: Settings, *, day: str, avoid_topics: list[str] | None = None) -> ContentPackage:
+    keys = _nvidia_key_pool(settings)
+    if not keys:
+        raise ValueError("NVIDIA_API_KEY is required")
+    last_error: Exception | None = None
+    prompt = _daily_package_prompt(day, avoid_topics)
+    for api_key in keys:
+        try:
+            client = _build_openai_compatible_client(
+                api_key=api_key,
+                base_url="https://integrate.api.nvidia.com/v1",
+            )
+            payload = _chat_json_completion(
+                client=client,
+                model=_nvidia_text_model(settings),
+                prompt=prompt,
+                temperature=0.7,
+                max_tokens=2048,
+                extra_body={"thinking_budget": -1},
+            )
+            return ContentPackage.from_dict(payload)  # type: ignore[arg-type]
+        except Exception as exc:
+            last_error = exc
+            continue
+    if last_error:
+        raise last_error
+    raise RuntimeError("NVIDIA prompt generation failed.")
+
+
+def _generate_package_with_gemini(settings: Settings, *, day: str, avoid_topics: list[str] | None = None) -> ContentPackage:
+    keys = _gemini_key_pool(settings)
+    if not keys:
+        raise ValueError("GEMINI_API_KEY is required")
+    try:
+        from google import genai
+        from google.genai import types
+    except ImportError as exc:
+        raise RuntimeError("Install live dependencies with: pip install -e '.[live]'") from exc
+    prompt = _daily_package_prompt(day, avoid_topics)
+    last_error: Exception | None = None
+    for api_key in keys:
+        try:
+            client = genai.Client(api_key=api_key)
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    temperature=0.7,
+                ),
+            )
+            return ContentPackage.from_dict(_extract_json_object(response.text or ""))  # type: ignore[arg-type]
+        except Exception as exc:
+            last_error = exc
+            continue
+    if last_error:
+        raise last_error
+    raise RuntimeError("Gemini prompt generation failed.")
+
+
+def _generate_package_with_local_llm(settings: Settings, *, day: str, avoid_topics: list[str] | None = None) -> ContentPackage:
+    prompt = _daily_package_prompt(day, avoid_topics)
+    client = _build_openai_compatible_client(api_key="local", base_url=settings.local_llm_url)
+    payload = _chat_json_completion(
+        client=client,
+        model=settings.local_llm_model,
+        prompt=prompt,
+        temperature=0.7,
+        max_tokens=2048,
+    )
+    return ContentPackage.from_dict(payload)  # type: ignore[arg-type]
+
+
+def _generate_long_form_with_openai(
+    settings: Settings,
+    package: ContentPackage,
+    target_minutes: int,
+) -> LongFormVideoScript:
+    keys = _openai_key_pool(settings)
+    if not keys:
+        raise ValueError("OPENAI_API_KEY and OPENAI_MODEL are required")
+    prompt = _long_form_prompt(package, target_minutes)
+    last_error: Exception | None = None
+    minimum_seconds = 180
+    maximum_seconds = 300
+    for api_key in keys:
+        try:
+            response = _build_openai_client(api_key).responses.create(
+                model=settings.openai_model,
+                instructions=(
+                    f"{EDITORIAL_STYLE} Write a narrated YouTube explainer. The finished video "
+                    f"should target approximately {target_minutes} minutes and must run between "
+                    f"{minimum_seconds} and {maximum_seconds} seconds. Use practical, original "
+                    "teaching language and do not invent evidence."
+                ),
+                input=prompt,
+                text={
+                    "format": {
+                        "type": "json_schema",
+                        "name": "long_form_video_script",
+                        "strict": True,
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "required": ["title", "scenes"],
+                            "properties": {
+                                "title": {"type": "string"},
+                                "scenes": {
+                                    "type": "array",
+                                    "minItems": 14,
+                                    "maxItems": 20,
+                                    "items": {
+                                        "type": "object",
+                                        "additionalProperties": False,
+                                        "required": [
+                                            "title",
+                                            "on_screen_text",
+                                            "narration",
+                                            "duration_seconds",
+                                        ],
+                                        "properties": {
+                                            "title": {"type": "string"},
+                                            "on_screen_text": {"type": "string"},
+                                            "narration": {"type": "string"},
+                                            "duration_seconds": {
+                                                "type": "integer",
+                                                "minimum": 8,
+                                                "maximum": 20,
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    }
+                },
+            )
+            log_openai_usage(
+                response,
+                label="OpenAI long-form script usage",
+                context_window_tokens=128000,
+                prompt_rate_per_1m=0.75,
+                completion_rate_per_1m=4.50,
+            )
+            script = LongFormVideoScript.from_dict(json.loads(response.output_text))
+            return _fit_long_form_duration(script, minimum_seconds, maximum_seconds)
+        except Exception as exc:
+            last_error = exc
+            continue
+    if last_error:
+        raise last_error
+    raise RuntimeError("OpenAI long-form prompt generation failed.")
+
+
+def _generate_long_form_with_nvidia(
+    settings: Settings,
+    package: ContentPackage,
+    target_minutes: int,
+) -> LongFormVideoScript:
+    keys = _nvidia_key_pool(settings)
+    if not keys:
+        raise ValueError("NVIDIA_API_KEY is required")
+    prompt = _long_form_prompt(package, target_minutes)
+    last_error: Exception | None = None
+    minimum_seconds = 180
+    maximum_seconds = 300
+    for api_key in keys:
+        try:
+            client = _build_openai_compatible_client(
+                api_key=api_key,
+                base_url="https://integrate.api.nvidia.com/v1",
+            )
+            payload = _chat_json_completion(
+                client=client,
+                model=_nvidia_text_model(settings),
+                prompt=prompt,
+                temperature=0.7,
+                max_tokens=4096,
+                extra_body={"thinking_budget": -1},
+            )
+            script = LongFormVideoScript.from_dict(payload)  # type: ignore[arg-type]
+            return _fit_long_form_duration(script, minimum_seconds, maximum_seconds)
+        except Exception as exc:
+            last_error = exc
+            continue
+    if last_error:
+        raise last_error
+    raise RuntimeError("NVIDIA long-form prompt generation failed.")
+
+
+def _generate_long_form_with_gemini(
+    settings: Settings,
+    package: ContentPackage,
+    target_minutes: int,
+) -> LongFormVideoScript:
+    keys = _gemini_key_pool(settings)
+    if not keys:
+        raise ValueError("GEMINI_API_KEY is required")
+    try:
+        from google import genai
+        from google.genai import types
+    except ImportError as exc:
+        raise RuntimeError("Install live dependencies with: pip install -e '.[live]'") from exc
+    prompt = _long_form_prompt(package, target_minutes)
+    minimum_seconds = 180
+    maximum_seconds = 300
+    last_error: Exception | None = None
+    for api_key in keys:
+        try:
+            client = genai.Client(api_key=api_key)
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    temperature=0.7,
+                ),
+            )
+            script = LongFormVideoScript.from_dict(_extract_json_object(response.text or ""))  # type: ignore[arg-type]
+            return _fit_long_form_duration(script, minimum_seconds, maximum_seconds)
+        except Exception as exc:
+            last_error = exc
+            continue
+    if last_error:
+        raise last_error
+    raise RuntimeError("Gemini long-form prompt generation failed.")
+
+
+def _generate_long_form_with_local_llm(
+    settings: Settings,
+    package: ContentPackage,
+    target_minutes: int,
+) -> LongFormVideoScript:
+    prompt = _long_form_prompt(package, target_minutes)
+    client = _build_openai_compatible_client(api_key="local", base_url=settings.local_llm_url)
+    payload = _chat_json_completion(
+        client=client,
+        model=settings.local_llm_model,
+        prompt=prompt,
+        temperature=0.7,
+        max_tokens=4096,
+    )
+    minimum_seconds = 180
+    maximum_seconds = 300
+    script = LongFormVideoScript.from_dict(payload)  # type: ignore[arg-type]
+    return _fit_long_form_duration(script, minimum_seconds, maximum_seconds)
 
 
 @dataclass(frozen=True)
@@ -503,82 +1089,18 @@ def generate_long_form_video_script(
     """Generate a narrated 3-5 minute video outline for an existing package."""
     if not 3 <= target_minutes <= 5:
         raise ValueError("Long-form video target must be between 3 and 5 minutes.")
-    if not settings.openai_api_key or not settings.openai_model:
-        raise ValueError("OPENAI_API_KEY and OPENAI_MODEL are required")
-    try:
-        from openai import OpenAI
-    except ImportError as exc:
-        raise RuntimeError("Install live dependencies with: pip install -e '.[live]'") from exc
-
-    minimum_seconds = 180
-    maximum_seconds = 300
-    response = OpenAI(api_key=settings.openai_api_key).responses.create(
-        model=settings.openai_model,
-        instructions=(
-            f"{EDITORIAL_STYLE} Write a narrated YouTube explainer. The finished video "
-            f"should target approximately {target_minutes} minutes and must run "
-            f"between {minimum_seconds} and {maximum_seconds} seconds. "
-            "Use practical, original teaching language and do not invent evidence."
-        ),
-        input=(
-            "Expand this existing daily topic into a long-form video script. Each scene "
-            "must have short readable on-screen copy and separate natural narration. "
-            "Use 14 to 20 scenes. Keep on_screen_text under 90 characters and narration "
-            "roughly appropriate for its duration at a calm speaking pace. Include an "
-            "opening hook, problem explanation, step-by-step guidance, concrete example, "
-            "mistakes to avoid, recap, and closing question.\n\n"
-            f"Existing package:\n{json.dumps(package.as_dict(), indent=2)}"
-        ),
-        text={
-            "format": {
-                "type": "json_schema",
-                "name": "long_form_video_script",
-                "strict": True,
-                "schema": {
-                    "type": "object",
-                    "additionalProperties": False,
-                    "required": ["title", "scenes"],
-                    "properties": {
-                        "title": {"type": "string"},
-                        "scenes": {
-                            "type": "array",
-                            "minItems": 14,
-                            "maxItems": 20,
-                            "items": {
-                                "type": "object",
-                                "additionalProperties": False,
-                                "required": [
-                                    "title",
-                                    "on_screen_text",
-                                    "narration",
-                                    "duration_seconds",
-                                ],
-                                "properties": {
-                                    "title": {"type": "string"},
-                                    "on_screen_text": {"type": "string"},
-                                    "narration": {"type": "string"},
-                                    "duration_seconds": {
-                                        "type": "integer",
-                                        "minimum": 8,
-                                        "maximum": 20,
-                                    },
-                                },
-                            },
-                        },
-                    },
-                },
-            }
-        },
-    )
-    log_openai_usage(
-        response,
-        label="OpenAI long-form script usage",
-        context_window_tokens=128000,
-        prompt_rate_per_1m=0.75,
-        completion_rate_per_1m=4.50,
-    )
-    script = LongFormVideoScript.from_dict(json.loads(response.output_text))
-    return _fit_long_form_duration(script, minimum_seconds, maximum_seconds)
+    for provider in ("openai", "nvidia", "gemini", "local"):
+        try:
+            if provider == "openai":
+                return _generate_long_form_with_openai(settings, package, target_minutes)
+            if provider == "nvidia":
+                return _generate_long_form_with_nvidia(settings, package, target_minutes)
+            if provider == "gemini":
+                return _generate_long_form_with_gemini(settings, package, target_minutes)
+            return _generate_long_form_with_local_llm(settings, package, target_minutes)
+        except Exception:
+            continue
+    raise RuntimeError("Prompt generation failed across OpenAI, NVIDIA, Gemini, and Local LLM.")
 
 
 def _fit_long_form_duration(
@@ -754,146 +1276,21 @@ class MockPromptProvider:
 
 class OpenAIPromptProvider:
     def __init__(self, settings: Settings) -> None:
-        if not settings.openai_api_key or not settings.openai_model:
-            raise ValueError("OPENAI_API_KEY and OPENAI_MODEL are required")
-        try:
-            from openai import OpenAI
-        except ImportError as exc:
-            raise RuntimeError("Install live dependencies with: pip install -e '.[live]'") from exc
-        self.client = OpenAI(api_key=settings.openai_api_key)
-        self.model = settings.openai_model
+        self.settings = settings
 
     def generate(self, day: str, avoid_topics: list[str] | None = None) -> ContentPackage:
-        avoid_text = _avoid_topics_text(avoid_topics)
-        response = self.client.responses.create(
-            model=self.model,
-            instructions=EDITORIAL_STYLE,
-            input=(
-                f"Date: {day}. Produce one fresh teaching topic and complete content "
-                "package in the specified project-management and Agile-delivery style. "
-                "The image_prompt is only for a supporting illustration with no text. "
-                "The linkedin_infographic field drives a deterministic template: keep "
-                "the headline under 58 characters, subtitle under 70 characters, "
-                "each panel to 3 concise points under 65 characters, takeaway to 2 "
-                "points under 70 characters, workflow to 4 or 5 labels of no more "
-                "than 2 words each (for example: Discover, Refine, Build, Review, "
-                "Done), and discussion_prompt under 70 characters."
-                f"{avoid_text}"
-            ),
-            text={
-                "format": {
-                    "type": "json_schema",
-                    "name": "daily_content_package",
-                    "strict": True,
-                    "schema": {
-                        "type": "object",
-                        "additionalProperties": False,
-                        "required": [
-                            "date",
-                            "topic",
-                            "image_prompt",
-                            "linkedin_infographic",
-                            "video_script",
-                            "linkedin_caption",
-                            "hashtags",
-                            "seo_title",
-                            "seo_description",
-                        ],
-                        "properties": {
-                            "date": {"type": "string"},
-                            "topic": {"type": "string"},
-                            "image_prompt": {"type": "string"},
-                            "linkedin_infographic": {
-                                "type": "object",
-                                "additionalProperties": False,
-                                "required": [
-                                    "headline",
-                                    "subtitle",
-                                    "left_panel",
-                                    "right_panel",
-                                    "takeaway_title",
-                                    "takeaway_points",
-                                    "workflow",
-                                    "discussion_prompt",
-                                ],
-                                "properties": {
-                                    "headline": {"type": "string"},
-                                    "subtitle": {"type": "string"},
-                                    "left_panel": {
-                                        "type": "object",
-                                        "additionalProperties": False,
-                                        "required": ["title", "points"],
-                                        "properties": {
-                                            "title": {"type": "string"},
-                                            "points": {
-                                                "type": "array",
-                                                "items": {"type": "string"},
-                                                "minItems": 1,
-                                            },
-                                        },
-                                    },
-                                    "right_panel": {
-                                        "type": "object",
-                                        "additionalProperties": False,
-                                        "required": ["title", "points"],
-                                        "properties": {
-                                            "title": {"type": "string"},
-                                            "points": {
-                                                "type": "array",
-                                                "items": {"type": "string"},
-                                                "minItems": 1,
-                                            },
-                                        },
-                                    },
-                                    "takeaway_title": {"type": "string"},
-                                    "takeaway_points": {
-                                        "type": "array",
-                                        "items": {"type": "string"},
-                                        "minItems": 1,
-                                    },
-                                    "workflow": {
-                                        "type": "array",
-                                        "items": {"type": "string"},
-                                        "minItems": 1,
-                                    },
-                                    "discussion_prompt": {"type": "string"},
-                                },
-                            },
-                            "video_script": {
-                                "type": "object",
-                                "additionalProperties": False,
-                                "required": ["hook", "points", "cta"],
-                                "properties": {
-                                    "hook": {"type": "string"},
-                                    "points": {
-                                        "type": "array",
-                                        "items": {"type": "string"},
-                                        "minItems": 1,
-                                    },
-                                    "cta": {"type": "string"},
-                                },
-                            },
-                            "linkedin_caption": {"type": "string"},
-                            "hashtags": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "minItems": 1,
-                            },
-                            "seo_title": {"type": "string"},
-                            "seo_description": {"type": "string"},
-                        },
-                    },
-                }
-            },
-        )
-        log_openai_usage(
-            response,
-            label="OpenAI daily package usage",
-            context_window_tokens=128000,
-            prompt_rate_per_1m=0.75,
-            completion_rate_per_1m=4.50,
-        )
-        return ContentPackage.from_dict(json.loads(response.output_text))
+        for provider in ("openai", "nvidia", "gemini", "local"):
+            try:
+                if provider == "openai":
+                    return _generate_package_with_openai(self.settings, day=day, avoid_topics=avoid_topics)
+                if provider == "nvidia":
+                    return _generate_package_with_nvidia(self.settings, day=day, avoid_topics=avoid_topics)
+                if provider == "gemini":
+                    return _generate_package_with_gemini(self.settings, day=day, avoid_topics=avoid_topics)
+                return _generate_package_with_local_llm(self.settings, day=day, avoid_topics=avoid_topics)
+            except Exception:
+                continue
+        raise RuntimeError("Prompt generation failed across OpenAI, NVIDIA, Gemini, and Local LLM.")
 
 
 class AnthropicPromptProvider:
