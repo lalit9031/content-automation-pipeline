@@ -5318,26 +5318,26 @@ def render_frontdoor(settings: Settings) -> None:
                                 desc = desc.strip()
                                 if desc and not desc.endswith("."):
                                     desc += "."
-                                desc += " friendly native Indian female singing voice, Bollywood style kids singer, clear Hinglish pronunciation, natural Indian accent."
+                                desc += " playful native Indian female nursery rhyme singing voice, cheerful kids-show playback vocals, sweet high-pitched toy-like vocal delivery, clear Hinglish pronunciation, natural Indian accent."
                             else:
-                                if not any(x in desc.lower() for x in ["indian", "bollywood", "hinglish"]):
+                                if not any(x in desc.lower() for x in ["indian", "nursery", "hinglish"]):
                                     desc = desc.strip()
                                     if desc and not desc.endswith("."):
                                         desc += "."
-                                    desc += " native Indian female singer, clear Hinglish pronunciation."
+                                    desc += " native Indian female nursery rhyme singer, clear Hinglish pronunciation."
                         else:
                             desc = re.sub(r" female ", " male ", desc, flags=re.IGNORECASE)
                             if "male" not in desc.lower():
                                 desc = desc.strip()
                                 if desc and not desc.endswith("."):
                                     desc += "."
-                                desc += " friendly native Indian male singing voice, Bollywood style kids singer, clear Hinglish pronunciation, natural Indian accent."
+                                desc += " playful native Indian male nursery rhyme singing voice, cheerful kids-show playback vocals, sweet high-pitched toy-like vocal delivery, clear Hinglish pronunciation, natural Indian accent."
                             else:
-                                if not any(x in desc.lower() for x in ["indian", "bollywood", "hinglish"]):
+                                if not any(x in desc.lower() for x in ["indian", "nursery", "hinglish"]):
                                     desc = desc.strip()
                                     if desc and not desc.endswith("."):
                                         desc += "."
-                                    desc += " native Indian male singer, clear Hinglish pronunciation."
+                                    desc += " native Indian male nursery rhyme singer, clear Hinglish pronunciation."
                     else:
                         if singer_gender == "female":
                             desc = re.sub(r" male ", " female ", desc, flags=re.IGNORECASE)
@@ -5345,14 +5345,14 @@ def render_frontdoor(settings: Settings) -> None:
                                 desc = desc.strip()
                                 if desc and not desc.endswith("."):
                                     desc += "."
-                                desc += " friendly female singing voice."
+                                desc += " playful female nursery rhyme singing voice, cheerful kids-show playback vocals, sweet high-pitched toy-like vocal delivery."
                         else:
                             desc = re.sub(r" female ", " male ", desc, flags=re.IGNORECASE)
                             if "male" not in desc.lower():
                                 desc = desc.strip()
                                 if desc and not desc.endswith("."):
                                     desc += "."
-                                desc += " friendly male singing voice."
+                                desc += " playful male nursery rhyme singing voice, cheerful kids-show playback vocals, sweet high-pitched toy-like vocal delivery."
 
                     st.session_state["kids_song_description"] = desc
                     st.session_state.pop("kids_song_description_input", None)
@@ -8654,7 +8654,7 @@ def generate_lyrics_and_style_unified(
             """
         else:
             system_instruction = (
-                "You are a children's song and nursery rhyme composer. Expand the kids' song idea into complete lyrics and style description. "
+                "You are a children's nursery rhyme composer and preschool lyricist. Expand the kids' idea into simple, extremely repetitive, rhythmic toddler-rhyme lyrics and a playful kids-show style description. "
                 "The output must be JSON with keys 'lyrics' and 'style'."
             )
             speed_block = ""
@@ -8672,17 +8672,24 @@ def generate_lyrics_and_style_unified(
             {speed_block}
             
             Requirements:
-            1. If the Target Song Language is 'Hindi', write the lyrics in standard Devanagari script (Hindi characters) like 'जय हनुमान ज्ञान गुन सागर' rather than Romanized/Hinglish (e.g. 'Jai Hanuman'). This forces the network to use native accent filters. Explicitly require 'native Indian {singer_gender.lower()} singing voice', 'Bollywood style kids singer', 'natural Indian accent', 'clear native pronunciation', and appropriate kids instruments (glockenspiel, bells, sitar, bansuri flute, dholak, tabla, acoustic guitar).
-            2. SPECIAL DEVOTIONAL EXCEPTION: If the User Kids Song Idea or prompt contains references to Hindu deities, devotional topics, or prayers (such as 'Hanuman', 'Chalisa', 'bhajan', 'aarti', 'spiritual', 'ram', 'krishna', 'shiva', 'ganesha', 'temple', 'prayer', 'devotional'), then override standard kids pop. Instead, explicitly require:
+            1. WRITE PLAYFUL, SIMPLE NURSERY RHYME LYRICS:
+               - The lyrics MUST be extremely simple, highly repetitive, and rhythmic (suitable for toddlers aged 1-5).
+               - Use short, symmetrical lines (maximum 4-6 words per line) with a strict rhyming scheme (AABB or ABAB).
+               - Incorporate playful preschool sound words and simple repetitive chants (e.g. 'ला ला ला', 'चुनमुन चुनमुन', 'छुक छुक छुक', 'टिम टिम', 'bouncy bouncy', 'clap clap').
+            2. If the Target Song Language is 'Hindi', write the lyrics in standard Devanagari script (Hindi characters) like 'मछली जल की रानी है'. This forces the network to use native accent filters. 
+               - For Hindi, explicitly require: 'playful children's nursery rhyme singing voice, cheerful kids-show playback vocals, sweet high-pitched toy-like vocal delivery, friendly kids animator singer, natural Indian {singer_gender.lower()} accent, clear simplified native pronunciation'.
+               - Specify toy and traditional kids instruments: 'playful xylophone, glockenspiel, toy piano, acoustic ukulele, cartoon bells, dholak, bansuri flute, happy handclaps, bouncy children's backing track, 110-125 BPM'.
+            3. If the Target Song Language is 'English', write the lyrics in English.
+               - For English, explicitly require: 'playful children's nursery rhyme singing voice, cheerful kids-show playback vocals, sweet high-pitched toy-like vocal delivery, friendly kids animator {singer_gender.lower()} singer, clear simplified pronunciation'.
+               - Specify toy and kids instruments: 'playful xylophone, glockenspiel, toy piano, acoustic ukulele, cartoon bells, happy handclaps, bouncy children's backing track, 110-125 BPM'.
+            4. SPECIAL DEVOTIONAL EXCEPTION: If the User Kids Song Idea or prompt contains references to Hindu deities, devotional topics, or prayers (such as 'Hanuman', 'Chalisa', 'bhajan', 'aarti', 'spiritual', 'ram', 'krishna', 'shiva', 'ganesha', 'temple', 'prayer', 'devotional'), then override standard kids pop. Instead, explicitly require:
                - 'traditional Indian devotional bhajan style adapted for kids'
                - 'sweet spiritual native Indian {singer_gender.lower()} singer voice'
                - 'devotional acoustic instrumentation: bansuri flute, harmonium, sitar, dholak, tabla, soft manjira hand cymbals'
                - 'peaceful and gentle tempo (70-80 BPM)'
                - 'strictly no heavy synthesizers, no electronic beat drops'
                - 'warm sacred ambient reverb'
-            3. If the Target Song Language is 'English', write the lyrics in English.
-            4. Honor every explicit instruction inside the User Kids Song Idea, especially song speed, rhythm, mood, topic, language, verse count, chorus repetition, and any latest user advice.
-            5. If the prompt includes a Song speed line, follow it exactly and shape the rhyme around that speed instead of exact duration.
+            5. Honor every explicit instruction inside the User Kids Song Idea, especially song speed, rhythm, mood, topic, language, verse count, chorus repetition, and any latest user advice.
             6. Structure the lyrics with standard tags like [verse] and [chorus]. Avoid [intro] or [outro] tags. Use the selected speed to decide line density, hook repetition, and pacing.
             7. The 'style' string must be a comma-separated description of instruments, tempo (BPM), vocal qualities, and musical genre suitable for kids/toddlers.
             
