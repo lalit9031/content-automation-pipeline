@@ -2931,17 +2931,19 @@ def generate_edge_tts_song_fallback(
     temp_dir.mkdir(parents=True, exist_ok=True)
     raw_vocals_file = temp_dir / "edge_raw_vocals_song.mp3"
     
-    # Generate raw vocals using Edge-TTS
-    _run_async(_write_edge_voice_sample(
-        raw_vocals_file,
-        voice=voice,
-        text=clean_lyrics,
-        rate=active_profile.get("edge_rate", "+0%"),
-        pitch=active_profile.get("edge_pitch", "+0Hz")
-    ))
-    
-    # 3. Load vocals and beat
-    vocals = AudioSegment.from_file(str(raw_vocals_file))
+    if not clean_lyrics.strip():
+        # Lyrics are empty (e.g. only bracketed directives). Generate 30s silent vocal track.
+        vocals = AudioSegment.silent(duration=30000)
+    else:
+        # Generate raw vocals using Edge-TTS
+        _run_async(_write_edge_voice_sample(
+            raw_vocals_file,
+            voice=voice,
+            text=clean_lyrics,
+            rate=active_profile.get("edge_rate", "+0%"),
+            pitch=active_profile.get("edge_pitch", "+0Hz")
+        ))
+        vocals = AudioSegment.from_file(str(raw_vocals_file))
     
     # Determine the background beat file
     beat_path = None
@@ -3137,6 +3139,12 @@ def generate_hindi_song_via_native_audio(
     raw_vocals_file = temp_dir / "hindi_raw_vocals_song.wav"
 
     generated_ok = False
+    
+    if not clean_lyrics_gemini.strip():
+        # Lyrics are empty (e.g. only contains bracketed directives). Generate 30s silence directly.
+        from pydub import AudioSegment
+        AudioSegment.silent(duration=30000).export(str(raw_vocals_file), format="wav")
+        generated_ok = True
     gender_lower = singer_gender.strip().lower()
     active_profile = KIDS_STUDIO_MASTER_REGISTRY.get(singer_key, {})
     voice_to_use = active_profile.get("gemini_tts_voice", "Puck" if gender_lower == "male" else "Aoede")

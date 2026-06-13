@@ -2631,7 +2631,14 @@ def render_frontdoor(settings: Settings) -> None:
 
                     st.write("🎵 Dispatching song generation request to Hugging Face...")
                     try:
-                        client = Client("tencent/SongGeneration", token=settings.hf_token if settings.hf_token else None, httpx_kwargs={"timeout": 600.0})
+                        try:
+                            client = Client("tencent/SongGeneration", token=settings.hf_token if settings.hf_token else None, httpx_kwargs={"timeout": 600.0})
+                        except Exception as client_err:
+                            if "401" in str(client_err) or "unauthorized" in str(client_err).lower() or "credentials" in str(client_err).lower() or "token" in str(client_err).lower():
+                                st.warning("⚠️ Hugging Face token is invalid/revoked or the space is gated. Trying anonymous access...")
+                                client = Client("tencent/SongGeneration", httpx_kwargs={"timeout": 600.0})
+                            else:
+                                raise
                         
                         # Translate UI-only genres (Folk, Traditional) to valid Lyria Space genres
                         valid_genres = ['Auto', 'Pop', 'Latin', 'Rock', 'Electronic', 'Metal', 'Country', 'R&B/Soul', 'Ballad', 'Jazz', 'World', 'Hip-Hop', 'Funk', 'Soundtrack']
@@ -2698,7 +2705,9 @@ def render_frontdoor(settings: Settings) -> None:
                             lyrics=sanitized_lyrics,
                             output_path=out_path,
                             singer_gender=singer_gender,
-                            selected_ref=selected_ref
+                            selected_ref=selected_ref,
+                            singer_key=st.session_state.get("music_studio_playback_singer_key", "arijit_singh"),
+                            mode="Poem/Rhyme"
                         )
                         out_path = normalize_music_studio_audio_length(
                             out_path,
@@ -5364,7 +5373,14 @@ def render_frontdoor(settings: Settings) -> None:
 
                     st.write("🎵 Dispatching song generation request to Hugging Face...")
                     try:
-                        client = Client("tencent/SongGeneration", token=settings.hf_token if settings.hf_token else None, httpx_kwargs={"timeout": 600.0})
+                        try:
+                            client = Client("tencent/SongGeneration", token=settings.hf_token if settings.hf_token else None, httpx_kwargs={"timeout": 600.0})
+                        except Exception as client_err:
+                            if "401" in str(client_err) or "unauthorized" in str(client_err).lower() or "credentials" in str(client_err).lower() or "token" in str(client_err).lower():
+                                st.warning("⚠️ Hugging Face token is invalid/revoked or the space is gated. Trying anonymous access...")
+                                client = Client("tencent/SongGeneration", httpx_kwargs={"timeout": 600.0})
+                            else:
+                                raise
                         
                         # Translate UI-only genres (Folk, Traditional) to valid Lyria Space genres
                         valid_genres = ['Auto', 'Pop', 'Latin', 'Rock', 'Electronic', 'Metal', 'Country', 'R&B/Soul', 'Ballad', 'Jazz', 'World', 'Hip-Hop', 'Funk', 'Soundtrack']
@@ -5427,7 +5443,9 @@ def render_frontdoor(settings: Settings) -> None:
                             lyrics=sanitized_lyrics,
                             output_path=out_path,
                             singer_gender=singer_gender,
-                            selected_ref=selected_ref
+                            selected_ref=selected_ref,
+                            singer_key=st.session_state.get("kids_studio_playback_singer_key", "en_kids_ana"),
+                            mode=kids_mode
                         )
                         st.session_state["kids_song_generated_mp3"] = str(out_path)
                         st.success("🎉 Backup Kids rhyme generated successfully using Edge-TTS fallback mixer!")
