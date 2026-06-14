@@ -262,7 +262,8 @@ def generate_hf_image_to_video_clips(
         raise RuntimeError(
             "FFmpeg is required to normalize Hugging Face video clips. Install with: brew install ffmpeg"
         )
-    if not settings.hf_token:
+    has_token = settings.hf_token or (settings.hf_tokens and any(settings.hf_tokens))
+    if not has_token:
         raise ValueError("HF_TOKEN is required for Hugging Face video generation.")
 
     root = _episode_root(output_dir, episode)
@@ -449,7 +450,14 @@ def _render_episode_via_zero_gpu_space(package_zip: Path, settings: Settings) ->
     client_kwargs: dict[str, Any] = {"src": space_id, **timeout}
     result = None
     last_error: Exception | None = None
-    for token in (settings.hf_token or None, None):
+    
+    tokens_to_try = list(settings.hf_tokens) if settings.hf_tokens else []
+    if not tokens_to_try and settings.hf_token:
+        tokens_to_try = [settings.hf_token]
+    tokens_to_try = [t for t in tokens_to_try if t]
+    tokens_to_try.append(None)
+    
+    for token in tokens_to_try:
         try:
             if token:
                 client_kwargs["token"] = token
@@ -471,22 +479,38 @@ def _render_episode_via_zero_gpu_space(package_zip: Path, settings: Settings) ->
                 )
             last_error = None
             break
-        except HfHubHTTPError as exc:
-            status_code = getattr(getattr(exc, "response", None), "status_code", None)
-            if status_code == 401 and token:
+        except Exception as exc:
+            exc_str = str(exc).lower()
+            is_auth_error = False
+            if isinstance(exc, HfHubHTTPError):
+                status_code = getattr(getattr(exc, "response", None), "status_code", None)
+                if status_code == 401:
+                    is_auth_error = True
+                if status_code == 404:
+                    raise FileNotFoundError(
+                        f"ZeroGPU Space '{space_id}' was not found or is not accessible. "
+                        "Check the Space repo ID (owner/space-name), make sure the Space exists, "
+                        "and confirm your HF token can access it if the Space is private."
+                    ) from exc
+            
+            is_gated_error = "gated" in exc_str or "restricted" in exc_str or "authorized" in exc_str or "forbidden" in exc_str
+            
+            if token and (is_auth_error or is_gated_error or "quota" in exc_str or "exceeded" in exc_str or "limit" in exc_str or "429" in exc_str or "401" in exc_str):
+                token_display = f"{token[:8]}..."
+                print(f"⚠️ ZeroGPU Space call failed with token {token_display}: {exc}. Trying next token...")
                 last_error = exc
                 continue
-            if status_code == 404:
-                raise FileNotFoundError(
-                    f"ZeroGPU Space '{space_id}' was not found or is not accessible. "
-                    "Check the Space repo ID (owner/space-name), make sure the Space exists, "
-                    "and confirm your HF token can access it if the Space is private."
-                ) from exc
             raise
     if last_error is not None:
+        error_msg = str(last_error)
+        if "gated" in error_msg.lower() or "restricted" in error_msg.lower():
+            raise RuntimeError(
+                f"ZeroGPU Space rendering failed due to Gated Repo access restriction: {last_error}.\n"
+                "👉 To fix this, visit https://huggingface.co/stabilityai/stable-video-diffusion-img2vid-xt-1-1 "
+                "on your Hugging Face account(s), accept the license agreement, and try again."
+            ) from last_error
         raise FileNotFoundError(
-            f"ZeroGPU Space '{space_id}' rejected the provided token with 401 and also failed without a token. "
-            "Double-check the Space ID and whether the Space is public."
+            f"ZeroGPU Space '{space_id}' rejected the provided tokens or failed with: {last_error}."
         ) from last_error
     if isinstance(result, (list, tuple)):
         result = result[0]

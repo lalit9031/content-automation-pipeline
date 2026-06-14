@@ -1778,51 +1778,59 @@ def render_current_video_flow_agent(settings) -> None:
                     )
 
                 workspace_path = st.session_state.get(k("workspace_path"), "")
-                if workspace_path:
+                workspace = Path(workspace_path) if workspace_path else None
+                if workspace and (workspace / "episode.json").exists():
                     st.caption(f"Workspace: `{workspace_path}`")
-                workspace = Path(workspace_path)
-                episode = VideoEpisode.from_dict(json.loads((workspace / "episode.json").read_text(encoding="utf-8")))
-                final_video = workspace / "video" / "episode_review.mp4"
-                if st.button(
-                    "🎬 Assemble Final Video",
-                    type="primary",
-                    use_container_width=True,
-                    key=f"{prefix}_btn_assemble",
-                    disabled=render_blocked,
-                ):
-                    if not st.session_state.get(f"{prefix}_approved", False):
-                        st.error("Please approve the storyboard grid before assembling the final video.")
-                    elif render_blocked:
-                        st.error("ZeroGPU mode requires `HF_ZERO_GPU_SPACE_ID` in `.env`. Set it before assembling the video.")
-                    else:
-                        try:
-                            provider_name = "nvidia"
-                            st.session_state[k("image_provider_choice")] = provider_name
-                            provider = image_provider(replace(settings, image_provider=provider_name))
-                            motion_engine, render_settings = _render_mode_settings()
-                            if motion_engine == "Legacy 2.5D Fallback":
-                                video_engine.generate_auto_2_5d_clips(episode, provider, output_dir)
-                            else:
-                                video_engine.generate_hf_image_to_video_clips(episode, provider, output_dir, render_settings)
-                            assembled_path = video_engine.assemble_episode(workspace)
-                            st.session_state[k("final_video_path")] = str(assembled_path)
-                            st.success("Final video assembled.")
-                            st.rerun()
-                        except Exception as exc:
-                            st.error(f"Failed to assemble video: {exc}")
-
-                if final_video.exists():
-                    st.markdown("#### Final Preview")
-                    st.video(str(final_video))
-                    with open(final_video, "rb") as final_file:
-                        st.download_button(
-                            "Download Final Video",
-                            data=final_file.read(),
-                            file_name=final_video.name,
-                            mime="video/mp4",
+                    try:
+                        episode = VideoEpisode.from_dict(json.loads((workspace / "episode.json").read_text(encoding="utf-8")))
+                        final_video = workspace / "video" / "episode_review.mp4"
+                        if st.button(
+                            "🎬 Assemble Final Video",
+                            type="primary",
                             use_container_width=True,
-                            key=f"{prefix}_download_final",
-                        )
+                            key=f"{prefix}_btn_assemble",
+                            disabled=render_blocked,
+                        ):
+                            if not st.session_state.get(f"{prefix}_approved", False):
+                                st.error("Please approve the storyboard grid before assembling the final video.")
+                            elif render_blocked:
+                                st.error("ZeroGPU mode requires `HF_ZERO_GPU_SPACE_ID` in `.env`. Set it before assembling the video.")
+                            else:
+                                try:
+                                    provider_name = "nvidia"
+                                    st.session_state[k("image_provider_choice")] = provider_name
+                                    provider = image_provider(replace(settings, image_provider=provider_name))
+                                    motion_engine, render_settings = _render_mode_settings()
+                                    if motion_engine == "Legacy 2.5D Fallback":
+                                        video_engine.generate_auto_2_5d_clips(episode, provider, output_dir)
+                                    else:
+                                        video_engine.generate_hf_image_to_video_clips(episode, provider, output_dir, render_settings)
+                                    assembled_path = video_engine.assemble_episode(workspace)
+                                    st.session_state[k("final_video_path")] = str(assembled_path)
+                                    st.success("Final video assembled.")
+                                    st.rerun()
+                                except Exception as exc:
+                                    st.error(f"Failed to assemble video: {exc}")
+
+                        if final_video.exists():
+                            st.markdown("#### Final Preview")
+                            st.video(str(final_video))
+                            with open(final_video, "rb") as final_file:
+                                st.download_button(
+                                    "Download Final Video",
+                                    data=final_file.read(),
+                                    file_name=final_video.name,
+                                    mime="video/mp4",
+                                    use_container_width=True,
+                                    key=f"{prefix}_download_final",
+                                )
+                    except Exception as e:
+                        st.error(f"Failed to load episode configuration: {e}")
+                else:
+                    if workspace_path:
+                        st.warning(f"Workspace path set (`{workspace_path}`), but `episode.json` was not found.")
+                    else:
+                        st.info("No active workspace yet. Generate scene assets to initialize a workspace.")
 
         if st.session_state.get(k("generation_log")):
             st.markdown("#### Flow Log")
@@ -2673,7 +2681,7 @@ def render_frontdoor(settings: Settings) -> None:
         auto_rows = [
             ["Run Pipeline", "Automation Music Studio", "Automation Kids Music Studio"],
             ["Automation Image Studio", "YouTube Audit", "Social Publish"],
-            ["Daily Prompts", "Project Brain", ""],
+            ["Daily Prompts", "Project Brain", "System Diagnostics"],
         ]
         auto_icons = {
             "Run Pipeline": "⚙️ Run Pipeline",
@@ -2684,6 +2692,7 @@ def render_frontdoor(settings: Settings) -> None:
             "Social Publish": "🚀 Social Publish",
             "Daily Prompts": "💡 Daily Prompts",
             "Project Brain": "🧠 Project Brain",
+            "System Diagnostics": "🛠️ System Diagnostics",
         }
         for row in auto_rows:
             sub_cols = st.columns(3)
@@ -2736,6 +2745,7 @@ def render_frontdoor(settings: Settings) -> None:
             "Social Publish": "Distribution",
             "Daily Prompts": "Prompts",
             "Project Brain": "Brain",
+            "System Diagnostics": "Diagnostics",
         }
         st.session_state["automation_music_combo_mode"] = st.session_state["active_automation_page"] == "Automation Music Studio"
         st.session_state["automation_kids_combo_mode"] = st.session_state["active_automation_page"] == "Automation Kids Music Studio"
@@ -2982,6 +2992,9 @@ def render_frontdoor(settings: Settings) -> None:
 
     elif active_p == "Brain":
         render_project_brain_studio(settings)
+
+    elif active_p == "Diagnostics":
+        render_system_diagnostics_page(settings)
 
     elif active_p == "Music":
         st.markdown("### Music studio")
@@ -12130,6 +12143,619 @@ def render_youtube_audit_studio(settings) -> None:
         use_container_width=True,
         key="btn_download_youtube_audit_md",
     )
+
+
+def render_system_diagnostics_page(settings) -> None:
+    st.markdown("### 🛠️ System Diagnostics & Auto-Fix Agent")
+    st.caption(
+        "Checks status for all API credentials (Hugging Face, NVIDIA, Gemini, Pollinations) and allows 1-click token rotation to bypass ZeroGPU limits."
+    )
+
+    import urllib.request
+    import urllib.error
+    import json
+    from pathlib import Path
+    import os
+    from content_pipeline.bots.blocker_agent import (
+        blocker_status,
+        blocker_status_html,
+        record_blocker,
+        resolve_blocker,
+        load_blocker_journal,
+        absorb_blocker_solution,
+        blocker_journal_path
+    )
+
+    env_path = PROJECT_ROOT / ".env"
+    diag_output_dir = resolve_output_dir(st.session_state.get("output_dir_pref", str(settings.output_dir)))
+
+    def initialize_blocker_journal_if_empty(output_dir: Path):
+        path = blocker_journal_path(output_dir)
+        if not path.exists():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            # Pre-populate with resolved historical issues
+            try:
+                absorb_blocker_solution(
+                    output_dir,
+                    issue="🤗 Hugging Face ZeroGPU quota limits exceeded or 401/403 authorization failures during video rendering.",
+                    solution="Auto-fix: Rotate active HF_TOKEN with a valid Pro token from backup pool HF_TOKEN_2 through HF_TOKEN_10.",
+                    component="Hugging Face API",
+                    notes="Gradio client falls back to anonymous usage on failure, which hits IP-based rate limits instantly. Swapping with a valid Pro token resolves this.",
+                    severity="high",
+                    tags=["huggingface", "zerogpu", "quota", "token_rotation"]
+                )
+                absorb_blocker_solution(
+                    output_dir,
+                    issue="🟢 NVIDIA NIM Qwen-Image API key returns 403 Access Denied / Forbidden on trial keys.",
+                    solution="Auto-fix/Suggest: Fall back to Pollinations or Hugging Face Space black-forest-labs/FLUX.1-dev or Gemini flash image generation.",
+                    component="NVIDIA NIM API",
+                    notes="Trial keys from NGC do not have permission for genai image endpoints (only LLMs). The fallback pipeline handles this automatically in image.py.",
+                    severity="medium",
+                    tags=["nvidia", "qwen_image", "fallback"]
+                )
+                absorb_blocker_solution(
+                    output_dir,
+                    issue="❄️ Pollinations image generation returns HTTP 402 Queue Full / IP limit inside proxy/VPN.",
+                    solution="Auto-fix/Suggest: Run generation on a residential/local IP or fall back to Hugging Face Black Forest Labs FLUX space using Pro token quota.",
+                    component="Pollinations API",
+                    notes="Pollinations rate limits IP addresses that make excessive concurrent requests. Switching network connection or using the HF Space/Gemini fallback solves it.",
+                    severity="medium",
+                    tags=["pollinations", "ip_limit", "fallback"]
+                )
+            except Exception as e:
+                # Silently catch and log if initialization fails
+                print(f"Failed to pre-populate blocker journal: {e}")
+
+    initialize_blocker_journal_if_empty(diag_output_dir)
+
+    def load_env_raw(p: Path) -> dict[str, str]:
+        if not p.exists():
+            return {}
+        content = p.read_text(encoding="utf-8")
+        env = {}
+        for line in content.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" in line:
+                k_raw, v_raw = line.split("=", 1)
+                env[k_raw.strip()] = v_raw.strip()
+        return env
+
+    env_vars = load_env_raw(env_path)
+
+    if "diag_running" not in st.session_state:
+        st.session_state["diag_running"] = False
+    if "diag_results" not in st.session_state:
+        st.session_state["diag_results"] = None
+
+    if st.button("🔍 Run Full API Diagnostics", key="btn_run_diagnostics", type="primary", use_container_width=True):
+        st.session_state["diag_running"] = True
+        st.session_state["diag_results"] = None
+        
+        with st.status("Verifying API credentials...", expanded=True) as status:
+            results = {
+                "hf": [],
+                "nvidia": [],
+                "pollinations": {},
+                "gemini": []
+            }
+            
+            # --- Test HF tokens ---
+            status.update(label="Testing Hugging Face tokens...")
+            hf_tokens = []
+            primary_hf = env_vars.get("HF_TOKEN", "")
+            if primary_hf:
+                hf_tokens.append(("HF_TOKEN", primary_hf))
+            for i in range(2, 11):
+                val = env_vars.get(f"HF_TOKEN_{i}", "")
+                if val:
+                    hf_tokens.append((f"HF_TOKEN_{i}", val))
+                    
+            for name, token in hf_tokens:
+                headers = {"Authorization": f"Bearer {token}"}
+                req = urllib.request.Request("https://huggingface.co/api/whoami-v2", headers=headers)
+                try:
+                    with urllib.request.urlopen(req, timeout=10) as res:
+                        info = json.loads(res.read())
+                        user = info.get("name")
+                        is_pro = info.get("isPro", False)
+                        
+                        # Check gated model access (Stable Video Diffusion XT 1.1)
+                        gated_accepted = True
+                        gated_err = ""
+                        try:
+                            g_req = urllib.request.Request(
+                                "https://huggingface.co/api/models/stabilityai/stable-video-diffusion-img2vid-xt-1-1",
+                                headers=headers
+                            )
+                            with urllib.request.urlopen(g_req, timeout=10) as g_res:
+                                g_data = json.loads(g_res.read())
+                                if "extra_gated_fields" in g_data:
+                                    gated_accepted = False
+                                    gated_err = "License agreement pending"
+                        except urllib.error.HTTPError as ge:
+                            gated_accepted = False
+                            gated_err = f"HTTP {ge.code} (Gated)"
+                        except Exception as gexc:
+                            gated_accepted = False
+                            gated_err = str(gexc)
+                            
+                        results["hf"].append({
+                            "name": name,
+                            "token": token,
+                            "valid": True,
+                            "is_pro": is_pro,
+                            "user": user,
+                            "gated_accepted": gated_accepted,
+                            "gated_error": gated_err,
+                            "error": ""
+                        })
+                except urllib.error.HTTPError as e:
+                    results["hf"].append({
+                        "name": name,
+                        "token": token,
+                        "valid": False,
+                        "is_pro": False,
+                        "user": "",
+                        "gated_accepted": False,
+                        "gated_error": "Token invalid",
+                        "error": f"HTTP {e.code}"
+                    })
+                except Exception as exc:
+                    results["hf"].append({
+                        "name": name,
+                        "token": token,
+                        "valid": False,
+                        "is_pro": False,
+                        "user": "",
+                        "gated_accepted": False,
+                        "gated_error": "Token error",
+                        "error": str(exc)
+                    })
+
+            # --- Test NVIDIA NIM Keys ---
+            status.update(label="Testing NVIDIA NIM keys...")
+            nv_keys = []
+            primary_nv = env_vars.get("NVIDIA_API_KEY", "")
+            if primary_nv:
+                nv_keys.append(("NVIDIA_API_KEY", primary_nv))
+            for i in range(2, 11):
+                val = env_vars.get(f"NVIDIA_API_KEY_{i}", "")
+                if val:
+                    nv_keys.append((f"NVIDIA_API_KEY_{i}", val))
+                    
+            llama_url = "https://integrate.api.nvidia.com/v1/chat/completions"
+            llama_payload = {
+                "model": "meta/llama-3.3-70b-instruct",
+                "messages": [{"role": "user", "content": "Hello"}],
+                "max_tokens": 10
+            }
+            qwen_url = "https://nim.api.nvidia.com/v1/genai/qwen/qwen-image"
+            qwen_payload = {"prompt": "A friendly black sheep.", "seed": 0}
+
+            for name, key in nv_keys:
+                headers = {
+                    "Authorization": f"Bearer {key}",
+                    "Content-Type": "application/json",
+                    "Accept": "application/json"
+                }
+                
+                # Test LLM
+                llm_status = "Unknown"
+                req_llm = urllib.request.Request(
+                    llama_url,
+                    data=json.dumps(llama_payload).encode(),
+                    headers=headers,
+                    method="POST"
+                )
+                try:
+                    with urllib.request.urlopen(req_llm, timeout=10) as res:
+                        llm_status = "VALID"
+                except urllib.error.HTTPError as e:
+                    llm_status = f"FAILED (HTTP {e.code})"
+                except Exception as e:
+                    llm_status = f"FAILED ({str(e)})"
+                    
+                # Test Qwen-Image
+                image_status = "Unknown"
+                req_img = urllib.request.Request(
+                    qwen_url,
+                    data=json.dumps(qwen_payload).encode(),
+                    headers=headers,
+                    method="POST"
+                )
+                try:
+                    with urllib.request.urlopen(req_img, timeout=10) as res:
+                        image_status = "VALID"
+                except urllib.error.HTTPError as e:
+                    if e.code == 403:
+                        image_status = "RESTRICTED (403 Forbidden - No Public API Endpoints permission)"
+                    else:
+                        image_status = f"FAILED (HTTP {e.code})"
+                except Exception as e:
+                    image_status = f"FAILED ({str(e)})"
+                    
+                results["nvidia"].append({
+                    "name": name,
+                    "key": key,
+                    "llm": llm_status,
+                    "image": image_status
+                })
+
+            # --- Test Pollinations ---
+            status.update(label="Checking Pollinations API connectivity...")
+            url = "https://image.pollinations.ai/prompt/A%20friendly%20black%20sheep.?width=512&height=512&model=flux&nologo=true&seed=42"
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            try:
+                with urllib.request.urlopen(req, timeout=10) as res:
+                    data = res.read()
+                    if res.status == 200 and len(data) > 5000:
+                        results["pollinations"] = {"status": "VALID", "error": ""}
+                    else:
+                        results["pollinations"] = {"status": "INVALID", "error": f"Status: {res.status}, Length: {len(data)}"}
+            except urllib.error.HTTPError as e:
+                if e.code == 402:
+                    results["pollinations"] = {"status": "BLOCKED (402 Queue Full / IP limit)", "error": "Shared IP congestion"}
+                else:
+                    results["pollinations"] = {"status": "FAILED", "error": f"HTTP {e.code}"}
+            except Exception as e:
+                results["pollinations"] = {"status": "FAILED", "error": str(e)}
+
+            # --- Test Gemini keys ---
+            status.update(label="Testing Gemini API keys...")
+            gemini_keys = []
+            primary_gem = env_vars.get("GEMINI_API_KEY", "") or env_vars.get("GOOGLE_API_KEY", "")
+            if primary_gem:
+                gemini_keys.append(("GEMINI_API_KEY", primary_gem))
+            for i in range(2, 11):
+                val = env_vars.get(f"GEMINI_API_KEY_{i}", "")
+                if val:
+                    gemini_keys.append((f"GEMINI_API_KEY_{i}", val))
+                    
+            gemini_model = "gemini-2.5-flash-image"
+            gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent"
+
+            for name, key in gemini_keys:
+                try:
+                    req = urllib.request.Request(
+                        f"{gemini_url}?key={key}",
+                        data=json.dumps({
+                            "contents": [{"parts": [{"text": "A friendly black sheep."}]}],
+                            "generationConfig": {"responseModalities": ["IMAGE", "TEXT"]},
+                        }).encode(),
+                        headers={"Content-Type": "application/json"},
+                        method="POST"
+                    )
+                    with urllib.request.urlopen(req, timeout=15) as res:
+                        data = json.loads(res.read())
+                        cands = data.get("candidates", [{}])
+                        parts = cands[0].get("content", {}).get("parts", []) if cands else []
+                        img_found = any(part.get("inlineData", {}).get("data", "") for part in parts)
+                        if img_found:
+                            results["gemini"].append({"name": name, "key": key, "valid": True, "image": "Image-ready", "error": ""})
+                        else:
+                            results["gemini"].append({"name": name, "key": key, "valid": True, "image": "Text-only", "error": "No image payload"})
+                except urllib.error.HTTPError as e:
+                    results["gemini"].append({"name": name, "key": key, "valid": False, "image": "FAILED", "error": f"HTTP {e.code}"})
+                except Exception as e:
+                    results["gemini"].append({"name": name, "key": key, "valid": False, "image": "FAILED", "error": str(e)})
+
+            # Auto-log diagnostics failures to blocker journal
+            try:
+                # 1. Primary HF Token check
+                prim_hf = next((r for r in results["hf"] if r["name"] == "HF_TOKEN"), None)
+                if prim_hf:
+                    journal = load_blocker_journal(diag_output_dir)
+                    if not prim_hf["valid"]:
+                        if not any(e.get("status") == "open" and "HF_TOKEN invalid" in e.get("issue", "") for e in journal.get("entries", [])):
+                            record_blocker(
+                                diag_output_dir,
+                                command="System Diagnostics Check",
+                                issue=f"Primary HF_TOKEN invalid/expired: {prim_hf.get('error', 'Auth failed')}",
+                                component="Hugging Face API",
+                                severity="high",
+                                tags=["hf_token", "quota", "auto-diagnosed"],
+                                source="auto",
+                                source_title="System Diagnostics Page",
+                            )
+                    elif not prim_hf.get("gated_accepted", True):
+                        if not any(e.get("status") == "open" and "Stable Video Diffusion" in e.get("issue", "") for e in journal.get("entries", [])):
+                            record_blocker(
+                                diag_output_dir,
+                                command="System Diagnostics Check",
+                                issue=f"Primary HF_TOKEN lacks access to gated Stable Video Diffusion model (Agreement pending). "
+                                      f"To fix this, visit https://huggingface.co/stabilityai/stable-video-diffusion-img2vid-xt-1-1 "
+                                      f"and accept the terms of the license agreement.",
+                                component="Hugging Face API",
+                                severity="high",
+                                tags=["hf_token", "gated_repo", "stability_ai", "auto-diagnosed"],
+                                source="auto",
+                                source_title="System Diagnostics Page",
+                            )
+
+                # 2. NVIDIA NIM keys check
+                for r in results["nvidia"]:
+                    if "FAILED" in r["image"] or "RESTRICTED" in r["image"]:
+                        journal = load_blocker_journal(diag_output_dir)
+                        if not any(e.get("status") == "open" and r["name"] in e.get("issue", "") for e in journal.get("entries", [])):
+                            record_blocker(
+                                diag_output_dir,
+                                command="System Diagnostics Check",
+                                issue=f"{r['name']} image check failed/restricted: {r['image']}",
+                                component="NVIDIA NIM API",
+                                severity="medium",
+                                tags=["nvidia", "qwen_image", "auto-diagnosed"],
+                                source="auto",
+                                source_title="System Diagnostics Page",
+                            )
+
+                # 3. Pollinations check
+                p_status = results["pollinations"]
+                if p_status.get("status") != "VALID":
+                    journal = load_blocker_journal(diag_output_dir)
+                    if not any(e.get("status") == "open" and "Pollinations" in e.get("issue", "") for e in journal.get("entries", [])):
+                        record_blocker(
+                            diag_output_dir,
+                            command="System Diagnostics Check",
+                            issue=f"Pollinations connectivity blocked or IP limit: {p_status.get('status')}",
+                            component="Pollinations API",
+                            severity="medium",
+                            tags=["pollinations", "ip_limit", "auto-diagnosed"],
+                            source="auto",
+                            source_title="System Diagnostics Page",
+                        )
+
+                # 4. Gemini keys check
+                for r in results["gemini"]:
+                    if not r["valid"]:
+                        journal = load_blocker_journal(diag_output_dir)
+                        if not any(e.get("status") == "open" and r["name"] in e.get("issue", "") for e in journal.get("entries", [])):
+                            record_blocker(
+                                diag_output_dir,
+                                command="System Diagnostics Check",
+                                issue=f"Gemini key {r['name']} invalid: {r['error']}",
+                                component="Gemini API",
+                                severity="high",
+                                tags=["gemini", "auto-diagnosed"],
+                                source="auto",
+                                source_title="System Diagnostics Page",
+                            )
+            except Exception as e:
+                print(f"Error logging blockers during diagnostics: {e}")
+
+            status.update(label="Diagnostics checks complete!", state="complete")
+            st.session_state["diag_results"] = results
+            st.session_state["diag_running"] = False
+            st.rerun()
+
+    # 2. Display Results
+    if st.session_state["diag_results"]:
+        results = st.session_state["diag_results"]
+        
+        # --- Section 1: Auto-Fix Suggestions ---
+        hf_res = results["hf"]
+        primary_hf = next((r for r in hf_res if r["name"] == "HF_TOKEN"), None)
+        valid_pro_backups = [r for r in hf_res if r["name"] != "HF_TOKEN" and r["valid"] and r["is_pro"]]
+        
+        if primary_hf and not primary_hf["valid"]:
+            st.warning("⚠️ **Alert: Your active HF_TOKEN is INVALID or Expired (Returns 401/403).**")
+            if valid_pro_backups:
+                best_backup = valid_pro_backups[0]
+                st.info(f"👉 **Auto-Fix Available:** Swapping expired `HF_TOKEN` with valid Pro token `{best_backup['name']}` ({best_backup['user']}) will restore storyboarding services instantly.")
+                
+                if st.button("🔧 Apply Auto-Fix (Rotate HF Tokens)", key="btn_apply_autofix", type="primary"):
+                    # Perform token swap in .env
+                    update_dotenv_file(env_path, "HF_TOKEN", best_backup["token"])
+                    update_dotenv_file(env_path, best_backup["name"], primary_hf["token"])
+                    
+                    # Resolve any open blocker about HF_TOKEN
+                    try:
+                        journal = load_blocker_journal(diag_output_dir)
+                        for entry in journal.get("entries", []):
+                            if entry.get("status") == "open" and "HF_TOKEN" in entry.get("issue", ""):
+                                resolve_blocker(
+                                    diag_output_dir,
+                                    entry["id"],
+                                    solution=f"Auto-fixed by rotating active HF_TOKEN with backup slot {best_backup['name']} ({best_backup['user']})"
+                                )
+                    except Exception as e:
+                        print(f"Error auto-resolving blocker during token rotation: {e}")
+                    
+                    st.success("✅ Tokens successfully rotated in .env! Hot-reloading environment...")
+                    
+                    # Hot-reload in memory
+                    if env_path.exists():
+                        for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+                            line = raw_line.strip()
+                            if not line or line.startswith("#") or "=" not in line:
+                                continue
+                            k_raw, v_raw = line.split("=", 1)
+                            key = k_raw.strip()
+                            cleaned = v_raw.strip()
+                            if (cleaned.startswith('"') and cleaned.endswith('"')) or (cleaned.startswith("'") and cleaned.endswith("'")):
+                                cleaned = cleaned[1:-1]
+                            else:
+                                hash_idx = cleaned.find(" #")
+                                if hash_idx != -1:
+                                    cleaned = cleaned[:hash_idx].rstrip()
+                                elif cleaned.startswith("#"):
+                                    cleaned = ""
+                            os.environ[key] = cleaned
+                            
+                    st.session_state["diag_results"] = None
+                    st.rerun()
+            else:
+                st.error("❌ **No valid Pro Hugging Face token found in backup slots.** Please add one in the fields below.")
+        else:
+            st.success("✅ **Primary HF_TOKEN is valid and active!** No auto-fix needed.")
+
+        # --- Section 2: Details Cards ---
+        st.markdown("#### Service Status Details")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("##### 🤗 Hugging Face Tokens")
+            for r in hf_res:
+                status_icon = "🟢" if r["valid"] else "🔴"
+                pro_badge = " [Pro]" if r["is_pro"] else ""
+                masked_val = f"{r['token'][:8]}...{r['token'][-4:]}" if r["token"] else "None"
+                
+                # Render gated status
+                gated_status = ""
+                if r["valid"]:
+                    if r.get("gated_accepted", True):
+                        gated_status = " (✅ Gated Model Access Approved)"
+                    else:
+                        gated_status = f" (⚠️ Gated Model Access Pending: `{r.get('gated_error')}`)"
+                
+                st.markdown(f"- **{r['name']}** ({masked_val}): {status_icon} {'Valid' if r['valid'] else 'Invalid/Error'} {pro_badge} {r['user']}{gated_status}")
+                if r.get("gated_accepted") == False and r["valid"]:
+                    st.caption("👉 To resolve this, visit https://huggingface.co/stabilityai/stable-video-diffusion-img2vid-xt-1-1 to accept the terms.")
+                if r["error"]:
+                    st.caption(f"Error detail: {r['error']}")
+                    
+            st.markdown("##### ❄️ Pollinations IP Limits")
+            p_status = results["pollinations"]
+            p_icon = "🟢" if p_status.get("status") == "VALID" else "🟡" if "BLOCKED" in p_status.get("status", "") else "🔴"
+            st.markdown(f"Status: {p_icon} **{p_status.get('status')}**")
+            if p_status.get("error"):
+                st.caption(f"Detail: {p_status.get('error')}")
+
+        with col2:
+            st.markdown("##### 🟢 NVIDIA NIM Keys")
+            for r in results["nvidia"]:
+                llm_icon = "🟢" if "VALID" in r["llm"] else "🔴"
+                img_icon = "🟢" if "VALID" in r["image"] else "🟡" if "RESTRICTED" in r["image"] else "🔴"
+                masked_val = f"{r['key'][:8]}...{r['key'][-4:]}" if r["key"] else "None"
+                st.markdown(f"- **{r['name']}** ({masked_val}):")
+                st.markdown(f"  - LLM check: {llm_icon} `{r['llm']}`")
+                st.markdown(f"  - Qwen-Image check: {img_icon} `{r['image']}`")
+
+            st.markdown("##### ♊ Gemini API Keys")
+            for r in results["gemini"]:
+                gem_icon = "🟢" if r["valid"] else "🔴"
+                masked_val = f"{r['key'][:8]}...{r['key'][-4:]}" if r["key"] else "None"
+                st.markdown(f"- **{r['name']}** ({masked_val}): {gem_icon} {r['image']}")
+                if r["error"]:
+                    st.caption(f"Error detail: {r['error']}")
+                    
+    # --- Section: Blocker Learning Agent ---
+    st.markdown("---")
+    st.markdown("### 🧠 AI Coding Agent - Blocker Memory & Learning Journal")
+    st.caption("Auto-captured errors, manual learning rules, and suggested fixes from past debug sessions.")
+
+    # 1. Display blocker status HTML
+    try:
+        st.markdown(blocker_status_html(diag_output_dir), unsafe_allow_html=True)
+    except Exception as e:
+        st.error(f"Error displaying blocker status HTML: {e}")
+
+    # 2. Interactive panel to resolve open blockers
+    try:
+        status_data = blocker_status(diag_output_dir)
+        open_blockers = status_data.get("recent_open", [])
+        if open_blockers:
+            st.markdown("#### 🔧 Resolve Open Blockers")
+            for blocker in open_blockers:
+                blocker_id = blocker["id"]
+                issue_text = blocker["issue"]
+                command_text = blocker["command"]
+                severity_badge = "🔴" if blocker.get("severity") == "high" else "🟡"
+                with st.expander(f"{severity_badge} Blocker: {issue_text[:75]}...", expanded=False):
+                    st.markdown(f"**ID:** `{blocker_id}`")
+                    st.markdown(f"**Command/Stage:** `{command_text}`")
+                    st.markdown(f"**Issue Description:**\n{issue_text}")
+                    
+                    with st.form(f"resolve_blocker_form_{blocker_id}"):
+                        sol_val = st.text_area("Solution / Resolution Notes", placeholder="How did you fix this issue?", key=f"sol_{blocker_id}")
+                        sol_submitted = st.form_submit_button("✅ Mark Resolved")
+                        if sol_submitted and sol_val.strip():
+                            resolve_blocker(diag_output_dir, blocker_id, sol_val)
+                            st.success(f"Blocker resolved!")
+                            st.rerun()
+    except Exception as e:
+        st.error(f"Error rendering open blockers: {e}")
+
+    # 3. Form to teach the agent a new fix manually
+    with st.expander("➕ Teach Agent a New Fix (Record Bug/Solution)"):
+        with st.form("teach_fix_form"):
+            new_issue = st.text_area("Issue Description", placeholder="e.g. Gemini TTS fails with HTTP 429 rate limit")
+            new_solution = st.text_area("Solution / Fix Details", placeholder="e.g. Switched active key slot, or verified that slot 7 was a different key type")
+            new_component = st.text_input("Component", placeholder="e.g. Gemini TTS")
+            new_notes = st.text_area("Additional Notes", placeholder="e.g. Pool slots 1-6 are standard developer keys; slot 7 is enterprise only.")
+            new_severity = st.selectbox("Severity", ["low", "medium", "high"], index=1)
+            new_tags_str = st.text_input("Tags (comma separated)", placeholder="gemini, tts, rate_limit")
+            
+            teach_submitted = st.form_submit_button("💾 Save Learning Entry")
+            if teach_submitted and new_issue.strip() and new_solution.strip():
+                try:
+                    tags_list = [t.strip() for t in new_tags_str.split(",") if t.strip()]
+                    absorb_blocker_solution(
+                        diag_output_dir,
+                        issue=new_issue,
+                        solution=new_solution,
+                        component=new_component,
+                        notes=new_notes,
+                        severity=new_severity,
+                        tags=tags_list
+                    )
+                    st.success("✅ Learning entry recorded successfully!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Failed to save learning entry: {e}")
+
+    # --- Section 3: Credentials Editor Panel ---
+    st.markdown("---")
+    st.markdown("#### 🔑 Quick Credentials Editor")
+    st.markdown("<small style='color: #94a3b8;'>Directly view or update your credentials in `.env` without accessing terminal/code.</small>", unsafe_allow_html=True)
+    
+    with st.form("env_vars_editor_form"):
+        hf_token_val = st.text_input("Active HF_TOKEN", value=env_vars.get("HF_TOKEN", ""), type="password", help="Primary Hugging Face token used for image generators and video rendering.")
+        nvidia_val = st.text_input("NVIDIA_API_KEY", value=env_vars.get("NVIDIA_API_KEY", ""), type="password", help="Primary NVIDIA NIM API Key used for Llama/Qwen.")
+        gemini_val = st.text_input("GEMINI_API_KEY", value=env_vars.get("GEMINI_API_KEY", ""), type="password", help="Primary Gemini API key for story building, lyric writing, and image fallback.")
+        
+        with st.expander("Backup Hugging Face Tokens (HF_TOKEN_2 to HF_TOKEN_5)"):
+            hf2 = st.text_input("HF_TOKEN_2", value=env_vars.get("HF_TOKEN_2", ""), type="password")
+            hf3 = st.text_input("HF_TOKEN_3", value=env_vars.get("HF_TOKEN_3", ""), type="password")
+            hf4 = st.text_input("HF_TOKEN_4", value=env_vars.get("HF_TOKEN_4", ""), type="password")
+            hf5 = st.text_input("HF_TOKEN_5", value=env_vars.get("HF_TOKEN_5", ""), type="password")
+            
+        submitted = st.form_submit_button("💾 Save Credentials & Reload", use_container_width=True)
+        if submitted:
+            # Write to .env
+            update_dotenv_file(env_path, "HF_TOKEN", hf_token_val)
+            update_dotenv_file(env_path, "NVIDIA_API_KEY", nvidia_val)
+            update_dotenv_file(env_path, "GEMINI_API_KEY", gemini_val)
+            update_dotenv_file(env_path, "HF_TOKEN_2", hf2)
+            update_dotenv_file(env_path, "HF_TOKEN_3", hf3)
+            update_dotenv_file(env_path, "HF_TOKEN_4", hf4)
+            update_dotenv_file(env_path, "HF_TOKEN_5", hf5)
+            
+            st.success("✅ Credentials successfully updated in .env! Hot-reloading environment...")
+            
+            # Hot-reload in memory
+            if env_path.exists():
+                for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+                    line = raw_line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    k_raw, v_raw = line.split("=", 1)
+                    key = k_raw.strip()
+                    cleaned = v_raw.strip()
+                    if (cleaned.startswith('"') and cleaned.endswith('"')) or (cleaned.startswith("'") and cleaned.endswith("'")):
+                        cleaned = cleaned[1:-1]
+                    else:
+                        hash_idx = cleaned.find(" #")
+                        if hash_idx != -1:
+                            cleaned = cleaned[:hash_idx].rstrip()
+                        elif cleaned.startswith("#"):
+                            cleaned = ""
+                    os.environ[key] = cleaned
+                    
+            st.session_state["diag_results"] = None
+            st.rerun()
 
 
 def render_project_brain_studio(settings) -> None:

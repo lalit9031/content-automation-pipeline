@@ -711,11 +711,13 @@ class NvidiaQwenImageProvider:
     HF_MODEL          = "Qwen/Qwen-Image"
 
     def __init__(self, settings: Settings) -> None:
+        self.settings = settings
         self.together_api_keys = self._dedupe_keys(
             list(getattr(settings, "together_api_keys", ()) or ([getattr(settings, "together_api_key", "")] if getattr(settings, "together_api_key", "") else []))
         )
         self.nvidia_api_keys = self._dedupe_keys(list(settings.nvidia_api_keys or ([settings.nvidia_api_key] if settings.nvidia_api_key else [])))
         self.hf_tokens = self._dedupe_keys(list(getattr(settings, "hf_token_keys", ()) or ([settings.hf_token] if settings.hf_token else [])))
+        self.gemini_api_keys = self._dedupe_keys(list(settings.gemini_api_keys or ([settings.gemini_api_key] if settings.gemini_api_key else [])))
         nim_model = (settings.nvidia_image_model or "").strip().lower()
         self.nim_url = (
             self.NVIDIA_NIM_URL if nim_model in ("", "qwen/qwen-image", "qwen-image")
@@ -809,51 +811,177 @@ class NvidiaQwenImageProvider:
                 print(f"[Qwen/NIM] key slot {idx} error: {exc}")
         return None
 
-    # ── Path 3: HuggingFace fal-ai ─────────────────────────────────────────
-    def _try_hf_fal(self, prompt: str) -> bytes | None:
-        """Call Qwen-Image via HuggingFace fal-ai router."""
+    # ── Path 3: HuggingFace Space ──────────────────────────────────────────
+    def _try_hf_space(self, prompt: str, variant: ImageVariant) -> bytes | None:
+        """Call official FLUX.1-dev Space via gradio_client utilizing user's ZeroGPU Pro quota."""
         if not self.hf_tokens:
             return None
         try:
-            from huggingface_hub import InferenceClient
+            from gradio_client import Client
         except ImportError:
-            return None
+            import subprocess, sys
+            try:
+                subprocess.check_call([sys.executable, "-m", "pip", "install", "gradio_client"])
+                from gradio_client import Client
+            except:
+                return None
+
+        w = max(256, min(2048, variant.width))
+        h = max(256, min(2048, variant.height))
+        
         for idx, token in enumerate(self.hf_tokens, start=1):
             try:
-                print(f"[Qwen/HF-fal] trying key slot {idx}...")
-                client = InferenceClient(provider="fal-ai", api_key=token)
-                pil_image = client.text_to_image(prompt, model=self.HF_MODEL)
-                import io
-                buf = io.BytesIO()
-                pil_image.save(buf, format="PNG")
-                return buf.getvalue()
+                print(f"[Qwen/HF-Space] trying slot {idx}...")
+                client = Client("black-forest-labs/FLUX.1-dev", token=token)
+                result = client.predict(
+                    prompt=prompt,
+                    seed=0,
+                    randomize_seed=True,
+                    width=w,
+                    height=h,
+                    guidance_scale=3.5,
+                    num_inference_steps=24,
+                    api_name="/infer"
+                )
+                if result:
+                    image_path = result[0] if isinstance(result, tuple) else result
+                    with open(image_path, "rb") as f:
+                        print(f"✅ [Qwen/HF-Space] generated successfully using slot {idx}")
+                        return f.read()
             except Exception as exc:
-                print(f"[Qwen/HF-fal] key slot {idx} error: {exc}")
+                print(f"[Qwen/HF-Space] slot {idx} failed: {exc}")
+        return None
+
+    # ── Path 2.5: Pollinations ─────────────────────────────────────────────
+    def _try_pollinations(self, prompt: str, variant: ImageVariant) -> bytes | None:
+        """Call Pollinations.ai free image generation API as fallback."""
+        import urllib.parse, os, base64
+        try:
+            import requests
+        except ImportError:
+            return None
+            
+        encoded_prompt = urllib.parse.quote(prompt)
+        request_width = min(1024, variant.width)
+        request_height = min(1024, variant.height)
+
+        p_key = getattr(self.settings, "pollinations_api_key", "") or os.environ.get("POLLINATIONS_API_KEY", "")
+        if p_key:
+            try:
+                print("[Qwen/Pollinations] trying authenticated...")
+                payload = {
+                    "prompt": prompt,
+                    "model": "flux",
+                    "width": request_width,
+                    "height": request_height,
+                    "n": 1,
+                    "response_format": "b64_json"
+                }
+                headers = {
+                    "Authorization": f"Bearer {p_key}",
+                    "Content-Type": "application/json"
+                }
+                r = requests.post("https://gen.pollinations.ai/v1/images/generations", headers=headers, json=payload, timeout=60)
+                if r.status_code == 200:
+                    data = r.json().get("data", [])
+                    if data and "b64_json" in data[0]:
+                        img_bytes = base64.b64decode(data[0]["b64_json"])
+                        if len(img_bytes) > 5000:
+                            print("✅ [Qwen/Pollinations] generated successfully (authenticated)")
+                            return img_bytes
+            except Exception as exc:
+                print(f"[Qwen/Pollinations] authenticated failed: {exc}")
+
+        for p_model in ["flux", "sana", "turbo"]:
+            for seed in [42, 1337, 999]:
+                try:
+                    print(f"[Qwen/Pollinations] trying unauthenticated {p_model} seed={seed}...")
+                    p_url = (
+                        f"https://image.pollinations.ai/prompt/{encoded_prompt}"
+                        f"?width={request_width}&height={request_height}"
+                        f"&model={p_model}&nologo=true&seed={seed}"
+                    )
+                    r = requests.get(p_url, timeout=60, headers={"User-Agent": "Mozilla/5.0"})
+                    if r.status_code == 200 and len(r.content) > 5000:
+                        print(f"✅ [Qwen/Pollinations] generated successfully ({p_model})")
+                        return r.content
+                except Exception as exc:
+                    print(f"[Qwen/Pollinations] unauthenticated {p_model} failed: {exc}")
+        return None
+
+    # ── Path 5: Gemini REST API ────────────────────────────────────────────
+    def _try_gemini(self, prompt: str) -> bytes | None:
+        """Call Gemini REST API as a reliable fallback."""
+        if not self.gemini_api_keys:
+            return None
+        import requests, base64, os
+        gemini_model = getattr(self.settings, "gemini_image_model", None) or "gemini-2.5-flash-image"
+        gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent"
+        
+        for idx, key in enumerate(self.gemini_api_keys, start=1):
+            try:
+                print(f"[Qwen/Gemini] trying key slot {idx}...")
+                r = requests.post(
+                    gemini_url,
+                    params={"key": key},
+                    json={
+                        "contents": [{"parts": [{"text": prompt}]}],
+                        "generationConfig": {"responseModalities": ["IMAGE", "TEXT"]},
+                    },
+                    timeout=45,
+                )
+                if r.status_code == 200:
+                    cands = r.json().get("candidates", [{}])
+                    parts = cands[0].get("content", {}).get("parts", []) if cands else []
+                    for part in parts:
+                        raw = part.get("inlineData", {}).get("data", "")
+                        if raw:
+                            img_bytes = base64.b64decode(raw)
+                            if img_bytes and len(img_bytes) > 5000:
+                                print(f"✅ [Qwen/Gemini] generated successfully using slot {idx}")
+                                return img_bytes
+                else:
+                    print(f"[Qwen/Gemini] slot {idx} HTTP {r.status_code}: {r.text[:200]}")
+            except Exception as exc:
+                print(f"[Qwen/Gemini] slot {idx} failed: {exc}")
         return None
 
     # ── Main entry ─────────────────────────────────────────────────────────
     def create(self, prompt: str, variant: ImageVariant) -> bytes:
-        # 1. Together.ai (cheapest + serverless)
-        image_bytes = self._try_together(prompt)
+        # 1. NVIDIA NIM cloud (using all nvidia keys 1 by 1)
+        print("[Qwen] Trying NVIDIA NIM...")
+        image_bytes = self._try_nvidia_nim(prompt)
 
-        # 2. NVIDIA NIM cloud
+        # 2. Pollinations
         if image_bytes is None:
-            print("[Qwen] Together.ai unavailable, trying NVIDIA NIM...")
-            image_bytes = self._try_nvidia_nim(prompt)
+            print("[Qwen] NVIDIA NIM unavailable, trying Pollinations...")
+            image_bytes = self._try_pollinations(prompt, variant)
 
-        # 3. HuggingFace fal-ai
+        # 3. HuggingFace Space (utilizing ZeroGPU Pro quota)
         if image_bytes is None:
-            print("[Qwen] NVIDIA NIM unavailable, trying HuggingFace fal-ai...")
-            image_bytes = self._try_hf_fal(prompt)
+            print("[Qwen] Pollinations unavailable, trying HuggingFace Space...")
+            image_bytes = self._try_hf_space(prompt, variant)
+
+        # 4. Together.ai (as fallback if configured)
+        if image_bytes is None and self.together_api_keys:
+            print("[Qwen] HF Space unavailable, trying Together.ai...")
+            image_bytes = self._try_together(prompt)
+
+        # 5. Gemini REST API (reliable fallback using Gemini keys)
+        if image_bytes is None:
+            print("[Qwen] Together.ai unavailable, trying Gemini REST API...")
+            image_bytes = self._try_gemini(prompt)
 
         if image_bytes is None:
             prompt_len = len((prompt or "").strip())
             prompt_head = (prompt or "").strip()[:220]
             raise RuntimeError(
                 "Qwen-Image generation failed on all providers.\n"
-                "  - Together.ai: set TOGETHER_API_KEY in .env (get free key at api.together.ai)\n"
                 "  - NVIDIA NIM: check NVIDIA_API_KEY (nim.api.nvidia.com)\n"
-                "  - HuggingFace fal-ai: check HF_TOKEN / add fal-ai credits\n"
+                "  - Pollinations: check pollinations.ai status\n"
+                "  - HuggingFace Space: check HF_TOKEN / ZeroGPU quota status\n"
+                "  - Together.ai: set TOGETHER_API_KEY in .env (get free key at api.together.ai)\n"
+                "  - Gemini REST API: check GEMINI_API_KEY / Google AI Studio quota\n"
                 f"  - Prompt length: {prompt_len} chars\n"
                 f"  - Prompt preview: {prompt_head}"
             )

@@ -84,9 +84,34 @@ assets/
 4. **Add a new story project** — create `projects/<name>/scene_manifest.json` in KidsStudio-Orchestrator
 5. **Push to git** — always push to `main` branch: `git push origin main`
 6. **Run video compilation** — use the scene_compiler.py script above
+7. **Run pipeline diagnostics** — execute the custom diagnostic script:
+   ```bash
+   python scripts/diagnose_pipeline.py
+   ```
+
+## Common Issues & Troubleshooting (ZeroGPU & Image Providers)
+
+### 1. ZeroGPU Quota Exhaustion (429 / 180s vs 120s limit)
+* **Symptom**: `You have exceeded your ZeroGPU quota...` error during rendering, even though your Pro account shows `0/40 mins` used.
+* **Cause**: The primary `HF_TOKEN` in `.env` is invalid or expired. The Gradio client falls back to making anonymous requests, which are capped tightly by IP.
+* **Fix**: Run `python scripts/diagnose_pipeline.py` to verify token statuses. The script will automatically prompt to swap the expired `HF_TOKEN` in `.env` with a working Pro token from the backup pool slots (`HF_TOKEN_2` to `HF_TOKEN_10`).
+
+### 2. Qwen-Image Asset Generation Failures
+* **Symptom**: `Qwen-Image generation failed on all providers` during storyboard asset generation.
+* **Root Causes**:
+  * *NVIDIA NIM (403)*: Trial keys lack "Public API Endpoints" permission for visual genai endpoints (though they work for LLMs).
+  * *Pollinations (402)*: IP address rate limits or queue limits (common on shared VPN/sandbox egress IPs).
+  * *HuggingFace (402)*: Default serverless API routes to paid partners (`fal-ai`, `nscale`) which require pre-paid account credits.
+* **Fix**: In [image.py](file:///Volumes/Crucial%20X9/Mac/System_file/content-automation-pipeline/src/content_pipeline/bots/image.py), the `NvidiaQwenImageProvider` handles this using a 5-step fallback:
+  1. NVIDIA NIM
+  2. Pollinations (fully functional when run locally on your Mac's dedicated IP)
+  3. HuggingFace Space (queries `black-forest-labs/FLUX.1-dev` via `gradio_client` using your Pro ZeroGPU quota for free)
+  4. Together.ai
+  5. Gemini REST API (ultimate safety net using `gemini-2.5-flash-image` with your working Gemini keys)
 
 ## Important Rules
 - Never commit `.env`, `*.mp4`, `scratch/`, `output/`, `__pycache__/`
 - Always use `--force-with-lease` not `--force` when force pushing
 - The Gemini TTS key pool slots 1-6 (NOT slot 7) — slot 7 is a different key type
 - Image sizes: max 2048px, max 5MB (`IMAGE_MAX_DIMENSION`, `IMAGE_MAX_BYTES` in .env)
+
