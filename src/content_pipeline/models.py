@@ -203,6 +203,9 @@ class VideoClip:
             image_max_bytes=int(data.get("image_max_bytes", 5 * 1024 * 1024)),
         )
 
+    def as_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
 
 @dataclass(frozen=True)
 class VideoEpisode:

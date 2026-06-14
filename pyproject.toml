@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "Daily content pipeline starter: prompt, imagery, and controlled publishing."
 requires-python = ">=3.11"
 dependencies = [
+  "boto3>=1.42.0",
   "cairosvg>=2.7.1",
   "edge-tts>=6.1.12",
   "requests>=2.32.0",

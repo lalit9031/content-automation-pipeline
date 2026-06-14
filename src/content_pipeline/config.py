@@ -17,6 +17,11 @@ class Settings:
     openai_image_model: str = "gpt-image-1"
     anthropic_api_key: str = ""
     anthropic_model: str = ""
+    claude_code_use_bedrock: bool = False
+    claude_bedrock_model_id: str = ""
+    bedrock_model_id: str = "global.amazon.nova-2-lite-v1:0"
+    bedrock_auth_mode: str = "iam"
+    aws_region: str = "ap-southeast-2"
     gcp_project_id: str = ""
     gcp_location: str = "us-central1"
     imagen_model: str = "imagen-4.0-generate-001"
@@ -29,6 +34,7 @@ class Settings:
     image_fallback_provider: str = "pollinations"
     voice_provider: str = "edge"
     indian_tts_voice: str = "en-IN-PrabhatNeural"
+    voicebox_url: str = "http://127.0.0.1:17493"
     image_max_dimension: int = 4096
     image_max_bytes: int = 5 * 1024 * 1024
     publish_linkedin: bool = False
@@ -52,6 +58,13 @@ class Settings:
     hf_tokens: tuple[str, ...] = ()
     hf_token_keys: tuple[str, ...] = ()
     hf_song_generation_space: str = ""
+    hf_video_render_mode: str = "zero_gpu_space"
+    hf_zero_gpu_space_id: str = ""
+    hf_zero_gpu_space_api_name: str = "/render_package"
+    hf_zero_gpu_video_model: str = "stabilityai/stable-video-diffusion-img2vid-xt-1-1"
+    hf_zero_gpu_space_timeout_seconds: int = 1800
+    hf_video_model: str = "Wan-AI/Wan2.2-I2V-A14B"
+    hf_video_provider: str = "auto"
     gemini_api_key: str = ""
     gemini_api_keys: tuple[str, ...] = ()
     gemini_video_model: str = "veo-3.0-fast-generate-001"
@@ -98,6 +111,18 @@ class Settings:
             openai_image_model=os.getenv("OPENAI_IMAGE_MODEL", "gpt-image-1"),
             anthropic_api_key=os.getenv("ANTHROPIC_API_KEY", ""),
             anthropic_model=os.getenv("ANTHROPIC_MODEL", ""),
+            claude_code_use_bedrock=_as_bool(os.getenv("CLAUDE_CODE_USE_BEDROCK", "false")),
+            claude_bedrock_model_id=os.getenv("CLAUDE_BEDROCK_MODEL_ID", "").strip(),
+            bedrock_model_id=os.getenv(
+                "BEDROCK_MODEL_ID",
+                "global.amazon.nova-2-lite-v1:0",
+            ).strip(),
+            bedrock_auth_mode=os.getenv("BEDROCK_AUTH_MODE", "iam").strip().lower(),
+            aws_region=(
+                os.getenv("AWS_REGION", "")
+                or os.getenv("AWS_DEFAULT_REGION", "")
+                or "ap-southeast-2"
+            ).strip(),
             gcp_project_id=os.getenv("GCP_PROJECT_ID", ""),
             gcp_location=os.getenv("GCP_LOCATION", "us-central1"),
             imagen_model=os.getenv("IMAGEN_MODEL", "imagen-4.0-generate-001"),
@@ -114,6 +139,10 @@ class Settings:
             image_fallback_provider=os.getenv("IMAGE_FALLBACK_PROVIDER", "pollinations").strip().lower(),
             voice_provider="edge",
             indian_tts_voice=os.getenv("INDIAN_TTS_VOICE", "en-IN-PrabhatNeural"),
+            voicebox_url=os.getenv(
+                "VOICEBOX_URL",
+                "http://127.0.0.1:17493",
+            ).strip().rstrip("/"),
             image_max_dimension=int(os.getenv("IMAGE_MAX_DIMENSION", "4096")),
             image_max_bytes=int(os.getenv("IMAGE_MAX_BYTES", str(5 * 1024 * 1024))),
             publish_linkedin=_as_bool(os.getenv("PUBLISH_LINKEDIN", "false")),
@@ -148,6 +177,16 @@ class Settings:
                 os.getenv("HF_TOKEN", "") or os.getenv("HF_API_KEY", ""),
             ),
             hf_song_generation_space=os.getenv("HF_SONG_GENERATION_SPACE", "").strip(),
+            hf_video_render_mode=os.getenv("HF_VIDEO_RENDER_MODE", "zero_gpu_space").strip().lower() or "zero_gpu_space",
+            hf_zero_gpu_space_id=os.getenv("HF_ZERO_GPU_SPACE_ID", "").strip(),
+            hf_zero_gpu_space_api_name=os.getenv("HF_ZERO_GPU_SPACE_API_NAME", "/render_package").strip() or "/render_package",
+            hf_zero_gpu_video_model=os.getenv(
+                "HF_ZERO_GPU_VIDEO_MODEL",
+                "stabilityai/stable-video-diffusion-img2vid-xt-1-1",
+            ).strip(),
+            hf_zero_gpu_space_timeout_seconds=int(os.getenv("HF_ZERO_GPU_SPACE_TIMEOUT_SECONDS", "1800")),
+            hf_video_model=os.getenv("HF_VIDEO_MODEL", "Wan-AI/Wan2.2-I2V-A14B").strip(),
+            hf_video_provider=os.getenv("HF_VIDEO_PROVIDER", "auto").strip().lower() or "auto",
             gemini_api_keys=(_gemini_keys := _read_key_pool("GEMINI_API_KEY", 10, fallback_env="GOOGLE_API_KEY")),
             gemini_api_key=_first_key(
                 _gemini_keys,

@@ -47,7 +47,7 @@ All secrets are in `.env` — never commit this file.
 | `HF_TOKEN` | HuggingFace gated model downloads (voice cloning) |
 | `GOOGLE_DRIVE_FOLDER_ID` | Auto-backup destination |
 | `IMAGE_PROVIDER` | Switch between `openai` / `gemini` / `flux` |
-| `PROMPT_PROVIDER` | Switch between `openai` / `gemini` |
+| `PROMPT_PROVIDER` | Text provider such as `bedrock_nova`, `openai`, or `anthropic` |
 
 ## Git Workflow
 - **`main`** — stable/production branch (always push finished work here)

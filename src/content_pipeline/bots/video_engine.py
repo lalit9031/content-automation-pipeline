@@ -34,6 +34,7 @@ Usage
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import textwrap
@@ -42,6 +43,8 @@ from datetime import date, datetime, timezone
 from html import escape
 from pathlib import Path
 from typing import Any
+import tempfile
+import zipfile
 
 from content_pipeline.bots.image import ImageProvider, ImageVariant
 from content_pipeline.config import Settings
@@ -245,6 +248,265 @@ def generate_auto_2_5d_clips(
         generated.append(clip_path)
 
     return generated
+
+
+def generate_hf_image_to_video_clips(
+    episode: VideoEpisode,
+    image_provider: ImageProvider,
+    output_dir: Path,
+    settings: Settings,
+) -> list[Path]:
+    """Generate animated clips using ZeroGPU Space or direct HF inference."""
+    executable = shutil.which("ffmpeg")
+    if not executable:
+        raise RuntimeError(
+            "FFmpeg is required to normalize Hugging Face video clips. Install with: brew install ffmpeg"
+        )
+    if not settings.hf_token:
+        raise ValueError("HF_TOKEN is required for Hugging Face video generation.")
+
+    root = _episode_root(output_dir, episode)
+    auto_dir = root / "clips" / "auto_2_5d"
+    auto_dir.mkdir(parents=True, exist_ok=True)
+
+    variant = ImageVariant(
+        "9:16" if episode.aspect == "shorts" else "16:9",
+        episode.width,
+        episode.height,
+        "unused",
+    )
+
+    generated: list[Path] = []
+    for clip in episode.clips:
+        if clip.source_type != "auto_2_5d":
+            continue
+
+        clip_path = auto_dir / clip.expected_file
+        if clip_path.exists():
+            generated.append(clip_path)
+            continue
+
+        still_path = clip_path.with_suffix(".png")
+        if not still_path.exists():
+            image_bytes = image_provider.create(clip.prompt, variant)
+            _ensure_png_bytes(image_bytes, still_path)
+
+    render_mode = getattr(settings, "hf_video_render_mode", "zero_gpu_space").strip().lower() or "zero_gpu_space"
+    if render_mode == "legacy_2_5d":
+        return generate_auto_2_5d_clips(episode, image_provider, output_dir)
+    if render_mode == "zero_gpu_space":
+        space_id = getattr(settings, "hf_zero_gpu_space_id", "").strip()
+        if not space_id:
+            raise ValueError(
+                "HF_ZERO_GPU_SPACE_ID is required for HF_VIDEO_RENDER_MODE=zero_gpu_space. "
+                "Set the Space ID to avoid billed Hugging Face inference usage."
+            )
+        generated_paths: list[Path] = []
+        for clip in episode.clips:
+            if clip.source_type != "auto_2_5d":
+                continue
+            clip_path = auto_dir / clip.expected_file
+            if clip_path.exists():
+                generated_paths.append(clip_path)
+                continue
+            package_zip = _build_hf_zero_gpu_episode_package(root, episode, [clip])
+            rendered_zip = _render_episode_via_zero_gpu_space(package_zip, settings)
+            _extract_zip_to_workspace(rendered_zip, root)
+            if not clip_path.exists():
+                raise FileNotFoundError(
+                    f"ZeroGPU space finished but rendered clip is missing: {clip_path}"
+                )
+            generated_paths.append(clip_path)
+        return generated_paths
+
+    return _generate_hf_motion_clips_via_inference(
+        episode=episode,
+        image_provider=image_provider,
+        output_dir=output_dir,
+        settings=settings,
+        executable=executable,
+        variant=variant,
+    )
+
+
+def _generate_hf_motion_clips_via_inference(
+    *,
+    episode: VideoEpisode,
+    image_provider: ImageProvider,
+    output_dir: Path,
+    settings: Settings,
+    executable: str,
+    variant: ImageVariant,
+) -> list[Path]:
+    try:
+        from huggingface_hub import InferenceClient
+        from huggingface_hub.inference._generated.types.image_to_video import ImageToVideoTargetSize
+    except ImportError as exc:
+        raise RuntimeError("huggingface_hub is required for Hugging Face video generation.") from exc
+
+    root = _episode_root(output_dir, episode)
+    auto_dir = root / "clips" / "auto_2_5d"
+    auto_dir.mkdir(parents=True, exist_ok=True)
+
+    client_kwargs: dict[str, Any] = {
+        "api_key": settings.hf_token,
+        "timeout": 300,
+    }
+    hf_video_provider = getattr(settings, "hf_video_provider", "auto") or "auto"
+    if hf_video_provider != "auto":
+        client_kwargs["provider"] = hf_video_provider
+    client = InferenceClient(**client_kwargs)
+
+    generated: list[Path] = []
+    for clip in episode.clips:
+        if clip.source_type != "auto_2_5d":
+            continue
+
+        clip_path = auto_dir / clip.expected_file
+        if clip_path.exists():
+            generated.append(clip_path)
+            continue
+
+        still_path = clip_path.with_suffix(".png")
+        if not still_path.exists():
+            image_bytes = image_provider.create(clip.prompt, variant)
+            _ensure_png_bytes(image_bytes, still_path)
+
+        motion_prompt = _hf_motion_prompt(clip, episode)
+        raw_path = clip_path.with_name(f"{clip_path.stem}.hf_raw.mp4")
+        animated_bytes = _generate_hf_motion_bytes(
+            client,
+            still_path,
+            motion_prompt,
+            episode,
+            clip,
+            getattr(settings, "hf_video_model", "Wan-AI/Wan2.2-I2V-A14B"),
+            ImageToVideoTargetSize(height=episode.height, width=episode.width),
+        )
+        raw_path.write_bytes(animated_bytes)
+        _normalize_video_to_duration(
+            executable=executable,
+            input_path=raw_path,
+            output_path=clip_path,
+            target_duration_seconds=clip.duration_seconds,
+            width=episode.width,
+            height=episode.height,
+            overlay_text=clip.on_screen_text or clip.title,
+        )
+        try:
+            raw_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+        generated.append(clip_path)
+
+    return generated
+
+
+def _build_hf_zero_gpu_episode_package(
+    workspace_dir: Path,
+    episode: VideoEpisode,
+    clips: list[VideoClip] | None = None,
+) -> Path:
+    runtime_dir = workspace_dir / ".runtime"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    suffix = "_".join(clip.id for clip in clips) if clips else "all"
+    package_path = runtime_dir / f"{episode.episode_id}_{suffix}_zero_gpu_input.zip"
+    if package_path.exists():
+        package_path.unlink()
+    episode_payload = episode.as_dict()
+    if clips is not None:
+        episode_payload["clips"] = [clip.as_dict() for clip in clips]
+    with zipfile.ZipFile(package_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("episode.json", json.dumps(episode_payload, indent=2, ensure_ascii=False) + "\n")
+        clip_iterable = clips if clips is not None else [
+            clip for clip in episode.clips if clip.source_type == "auto_2_5d"
+        ]
+        for clip in clip_iterable:
+            if clip.source_type != "auto_2_5d":
+                continue
+            still_path = workspace_dir / "clips" / "auto_2_5d" / Path(clip.expected_file).with_suffix(".png").name
+            if not still_path.exists():
+                raise FileNotFoundError(f"Missing still image for {clip.expected_file}: {still_path}")
+            archive.write(
+                still_path,
+                arcname=f"clips/auto_2_5d/{still_path.name}",
+            )
+    return package_path
+
+
+def _render_episode_via_zero_gpu_space(package_zip: Path, settings: Settings) -> Path:
+    try:
+        from gradio_client import Client, handle_file
+        from huggingface_hub.errors import HfHubHTTPError
+    except ImportError as exc:
+        raise RuntimeError("gradio_client is required to submit work to the ZeroGPU space.") from exc
+
+    space_id = getattr(settings, "hf_zero_gpu_space_id", "").strip()
+    if not space_id:
+        raise ValueError("HF_ZERO_GPU_SPACE_ID is required for ZeroGPU rendering.")
+
+    timeout = {"httpx_kwargs": {"timeout": float(getattr(settings, "hf_zero_gpu_space_timeout_seconds", 1800))}}
+    client_kwargs: dict[str, Any] = {"src": space_id, **timeout}
+    result = None
+    last_error: Exception | None = None
+    for token in (settings.hf_token or None, None):
+        try:
+            if token:
+                client_kwargs["token"] = token
+            else:
+                client_kwargs.pop("token", None)
+            client = Client(**client_kwargs)
+            api_name = getattr(settings, "hf_zero_gpu_space_api_name", "/render_package")
+            try:
+                result = client.predict(
+                    handle_file(str(package_zip)),
+                    api_name=api_name,
+                )
+            except ValueError as api_error:
+                if "api_name" not in str(api_error):
+                    raise
+                result = client.predict(
+                    handle_file(str(package_zip)),
+                    fn_index=0,
+                )
+            last_error = None
+            break
+        except HfHubHTTPError as exc:
+            status_code = getattr(getattr(exc, "response", None), "status_code", None)
+            if status_code == 401 and token:
+                last_error = exc
+                continue
+            if status_code == 404:
+                raise FileNotFoundError(
+                    f"ZeroGPU Space '{space_id}' was not found or is not accessible. "
+                    "Check the Space repo ID (owner/space-name), make sure the Space exists, "
+                    "and confirm your HF token can access it if the Space is private."
+                ) from exc
+            raise
+    if last_error is not None:
+        raise FileNotFoundError(
+            f"ZeroGPU Space '{space_id}' rejected the provided token with 401 and also failed without a token. "
+            "Double-check the Space ID and whether the Space is public."
+        ) from last_error
+    if isinstance(result, (list, tuple)):
+        result = result[0]
+    if not result:
+        raise RuntimeError("ZeroGPU space returned no output package.")
+    rendered_zip = Path(str(result))
+    if not rendered_zip.exists():
+        raise RuntimeError(f"ZeroGPU space output package does not exist: {rendered_zip}")
+    return rendered_zip
+
+
+def _extract_zip_to_workspace(zip_path: Path, workspace_dir: Path) -> None:
+    with zipfile.ZipFile(zip_path, "r") as archive:
+        for member in archive.infolist():
+            target = workspace_dir / member.filename
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if member.is_dir():
+                continue
+            with archive.open(member, "r") as source, open(target, "wb") as destination:
+                shutil.copyfileobj(source, destination)
 
 
 # ---------------------------------------------------------------------------
@@ -879,6 +1141,168 @@ def _ensure_png_bytes(image_bytes: bytes, png_path: Path) -> Path:
     return png_path
 
 
+def _hf_motion_prompt(clip: VideoClip, episode: VideoEpisode) -> str:
+    base = clip.prompt.strip()
+    if episode.aspect == "shorts":
+        aspect_hint = "Vertical kids animation in a 9:16 frame."
+    else:
+        aspect_hint = "Landscape kids animation in a 16:9 frame."
+    return (
+        f"{base} "
+        f"{aspect_hint} "
+        "Animate the approved still as a colorful, child-friendly storybook video with gentle character acting, "
+        "smooth camera drift, expressive faces, lively background motion, and a polished cinematic feel. "
+        "Keep the same composition and character design from the approved image. "
+        "No text, no subtitles, no logo, no watermark, no sudden cuts, no flicker."
+    )
+
+
+def _hf_num_frames_for_duration(duration_seconds: int) -> float:
+    if duration_seconds <= 5:
+        return 49.0
+    if duration_seconds <= 8:
+        return 65.0
+    if duration_seconds <= 10:
+        return 81.0
+    return 97.0
+
+
+def _stable_seed(value: str) -> int:
+    seed = 0
+    for index, char in enumerate(value):
+        seed = (seed + (index + 1) * ord(char)) % 2_147_483_647
+    return seed or 1
+
+
+def _generate_hf_motion_bytes(
+    client: Any,
+    image_path: Path,
+    prompt: str,
+    episode: VideoEpisode,
+    clip: VideoClip,
+    model: str,
+    target_size: Any,
+) -> bytes:
+    last_error: Exception | None = None
+    base_kwargs = {
+        "model": model,
+        "prompt": prompt,
+        "negative_prompt": (
+            "text, subtitles, captions, watermark, logo, flicker, jitter, distortion, extra limbs, warped faces, "
+            "scene cuts, low quality"
+        ),
+        "num_frames": _hf_num_frames_for_duration(clip.duration_seconds),
+        "num_inference_steps": 30,
+        "guidance_scale": 7.0,
+        "seed": _stable_seed(f"{episode.episode_id}:{clip.id}"),
+        "target_size": target_size,
+    }
+    attempts = [
+        base_kwargs,
+        {
+            "model": model,
+            "prompt": prompt,
+            "negative_prompt": base_kwargs["negative_prompt"],
+            "num_frames": base_kwargs["num_frames"],
+            "seed": base_kwargs["seed"],
+        },
+        {
+            "model": model,
+            "prompt": prompt,
+            "negative_prompt": base_kwargs["negative_prompt"],
+        },
+    ]
+    for kwargs in attempts:
+        try:
+            return client.image_to_video(image_path, **kwargs)
+        except Exception as exc:
+            last_error = exc
+    raise RuntimeError(
+        f"Hugging Face image-to-video failed for {clip.id}: {last_error}"
+    )
+
+
+def _probe_video_duration_seconds(path: Path) -> float:
+    probe = shutil.which("ffprobe")
+    if not probe:
+        return 0.0
+    try:
+        result = subprocess.run(
+            [
+                probe,
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(path),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return float(result.stdout.strip())
+    except Exception:
+        return 0.0
+
+
+def _normalize_video_to_duration(
+    *,
+    executable: str,
+    input_path: Path,
+    output_path: Path,
+    target_duration_seconds: int,
+    width: int,
+    height: int,
+    overlay_text: str = "",
+) -> None:
+    source_duration = _probe_video_duration_seconds(input_path)
+    if source_duration <= 0:
+        source_duration = max(1.0, float(target_duration_seconds))
+    speed = max(0.1, float(target_duration_seconds) / source_duration)
+
+    text_filter = ""
+    clean_text = overlay_text.replace("'", "").replace(":", "").strip()
+    if clean_text:
+        try:
+            filters_output = subprocess.check_output([executable, "-filters"], text=True)
+            if "drawtext" in filters_output:
+                text_filter = (
+                    f",drawtext=text='{clean_text}':fontcolor=white:fontsize=42:font='Arial':"
+                    "box=1:boxcolor=black@0.65:boxborderw=18:x=(w-text_w)/2:y=h-100"
+                )
+        except Exception:
+            text_filter = ""
+
+    subprocess.run(
+        [
+            executable,
+            "-y",
+            "-i",
+            str(input_path),
+            "-vf",
+            (
+                f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
+                f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,"
+                f"setpts={speed:.6f}*PTS"
+                f"{text_filter}"
+            ),
+            "-an",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            "-movflags",
+            "+faststart",
+            str(output_path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
 def _episode_root(output_dir: Path, episode: VideoEpisode) -> Path:
     return (
         output_dir
@@ -900,6 +1324,10 @@ def _episode_as_dict(episode: VideoEpisode) -> dict[str, Any]:
         "youtube_description": episode.youtube_description,
         "hashtags": episode.hashtags,
     }
+
+
+def _safe_text(value: object) -> str:
+    return "" if value is None else str(value)
 
 
 def _fit_clips_to_duration(
@@ -963,9 +1391,9 @@ def _story_markdown(episode: VideoEpisode) -> str:
             [
                 f"### {index}. {clip.title}  ({clip.duration_seconds}s)  {mode_label}  {source_label}",
                 "",
-                clip.narration,
+                _safe_text(clip.narration),
                 "",
-                f"On screen: {clip.on_screen_text}",
+                f"On screen: {_safe_text(clip.on_screen_text)}",
                 "",
                 f"Save as: `{clip.expected_file}`",
                 "",
@@ -1031,11 +1459,11 @@ def _youtube_metadata_markdown(episode: VideoEpisode) -> str:
             "",
             "## Description",
             "",
-            episode.youtube_description,
+            _safe_text(episode.youtube_description),
             "",
             "## Hashtags",
             "",
-            " ".join(episode.hashtags),
+            " ".join(_safe_text(tag) for tag in episode.hashtags),
             "",
         ]
     )
@@ -1116,11 +1544,11 @@ def _clip_card(clip: VideoClip, index: int) -> str:
   <div class="pill">{source_label}</div>
   <div class="pill">{clip.duration_seconds}s</div>
   <h3>{escape(clip.title)}</h3>
-  <p><strong>Narration:</strong> {escape(clip.narration)}</p>
-  <p><strong>On screen:</strong> {escape(clip.on_screen_text)}</p>
+  <p><strong>Narration:</strong> {escape(_safe_text(clip.narration))}</p>
+  <p><strong>On screen:</strong> {escape(_safe_text(clip.on_screen_text))}</p>
   <p><strong>Save as:</strong> <code>{escape(clip.expected_file)}</code></p>
   <label>Prompt</label>
-  <textarea id="{prompt_id}">{escape(clip.prompt)}</textarea>
+  <textarea id="{prompt_id}">{escape(_safe_text(clip.prompt))}</textarea>
   <button onclick="copyText('{prompt_id}')">Copy Prompt</button>
 </article>"""
 
@@ -1134,7 +1562,7 @@ def _subtitle_srt(episode: VideoEpisode) -> str:
             [
                 str(index),
                 f"{_timestamp(start)} --> {_timestamp(end)}",
-                clip.narration or clip.on_screen_text,
+                _safe_text(clip.narration or clip.on_screen_text),
                 "",
             ]
         )

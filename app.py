@@ -11,6 +11,7 @@ from datetime import date
 from html import escape
 from pathlib import Path
 from collections.abc import Mapping
+from types import SimpleNamespace
 
 import site
 import importlib
@@ -29,6 +30,8 @@ sys.path_importer_cache.clear()
 SRC_DIR = PROJECT_ROOT / "src"
 if SRC_DIR.exists() and str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
+
+DEFAULT_ZERO_GPU_SPACE_ID = "Lalit9031/zero-gpu-video"
 
 
 def resolve_2d_orchestrator_root() -> Path:
@@ -939,6 +942,892 @@ def generate_manifest_from_scratch(topic: str, video_id: str, settings) -> dict:
             pass
             
     raise RuntimeError("Gemini failed to generate manifest from topic.")
+
+
+def _title_case_from_lyrics(lyrics: str) -> str:
+    text = re.sub(r"\s+", " ", lyrics.strip())
+    if not text:
+        return "A Sailor Went To Sea"
+    first_line = text.splitlines()[0].strip()
+    words = re.findall(r"[A-Za-z0-9']+", first_line)
+    if not words:
+        return "A Sailor Went To Sea"
+    title = " ".join(words[:8]).strip().title()
+    return title[:60] or "A Sailor Went To Sea"
+
+
+def _build_poem_storyboard_fallback(
+    lyrics: str,
+    video_id: str,
+    target_duration_seconds: int,
+    scene_duration_seconds: int,
+    *,
+    language: str = "English",
+    style_hint: str = "",
+) -> dict:
+    """Create a deterministic storyboard manifest when the LLM call fails."""
+    scene_count = max(1, math.ceil(target_duration_seconds / max(scene_duration_seconds, 1)))
+    scene_duration_seconds = max(5, int(scene_duration_seconds))
+    total_duration_seconds = scene_count * scene_duration_seconds
+    lyric_lines = [line.strip(" -*•\t") for line in lyrics.splitlines() if line.strip()]
+    if not lyric_lines:
+        lyric_lines = [lyrics.strip() or "A friendly sailor sails across the sea."]
+
+    base_slug = _slugify(lyrics[:48] or video_id or "sailor_story")
+    base_slug = base_slug or "sailor_story"
+    style_hint = style_hint.strip() or "cheerful seaside nursery rhyme, pastel 3D cartoon, warm sun, soft waves, playful sailor"
+    title = _title_case_from_lyrics(lyrics) if lyrics.strip() else "A Sailor Went To Sea"
+
+    camera_cycle = [
+        "slow_zoom_in",
+        "pan_left",
+        "pan_right",
+        "gentle_push_in",
+        "wide_reveal",
+        "soft_dolly_in",
+        "center_hold",
+        "slow_zoom_out",
+    ]
+    water_cycle = [
+        "sparkling sea",
+        "gentle sea breeze",
+        "rolling ocean waves",
+        "bright sunlit shoreline",
+        "playful ocean foam",
+        "soft blue horizon",
+    ]
+    sailor_character = {
+        "folder_name": "sailor_v1",
+        "scale_factor": 250,
+        "motion_path": {
+            "enabled": False,
+            "start_position": [520, 320],
+            "start_scale": 1.0,
+        },
+        "states": [
+            {
+                "time_range": [0.0, 100.0],
+                "animation_state": "idle",
+            }
+        ],
+    }
+
+    scenes: list[dict[str, object]] = []
+    for index in range(scene_count):
+        lyric_excerpt = lyric_lines[index % len(lyric_lines)]
+        scene_number = index + 1
+        background_slug = f"{base_slug}_scene_{scene_number:02d}_bg"
+        camera = camera_cycle[index % len(camera_cycle)]
+        ocean_note = water_cycle[index % len(water_cycle)]
+        narrative = (
+            lyric_excerpt
+            if index < len(lyric_lines)
+            else f"The sailor keeps the rhyme moving with {ocean_note}."
+        )
+        scenes.append(
+            {
+                "scene_sequence": scene_number,
+                "title": f"Scene {scene_number:02d}: {narrative[:42].rstrip('.,! ')}",
+                "scene_duration_seconds": scene_duration_seconds,
+                "background_asset": f"assets/environments/{background_slug}.png",
+                "camera_effect": camera,
+                "dialogue": [
+                    {
+                        "speaker": "Narrator",
+                        "text": narrative,
+                    }
+                ],
+                "scene_characters": [sailor_character],
+                "visual_notes": (
+                    f"{style_hint}. Focus on the sailor and the ocean atmosphere. "
+                    f"Scene feeling: {ocean_note}."
+                ),
+            }
+        )
+
+    return {
+        "video_id": video_id,
+        "canvas_dimensions": [1280, 720],
+        "fps": 24,
+        "global_bgm": "assets/character/bg_music.mp3",
+        "voice_presets": {
+            "Narrator": "Rasalgethi",
+        },
+        "story_mode": "poem_storyboard",
+        "source_lyrics": lyrics,
+        "source_language": language,
+        "scene_duration_seconds": scene_duration_seconds,
+        "target_duration_seconds": total_duration_seconds,
+        "scene_count": scene_count,
+        "storyboard_summary": {
+            "title": title,
+            "logline": (
+                f"A {scene_count}-scene lyric video built from a {language.lower()} poem, "
+                f"with {scene_duration_seconds}-second scenes for a {total_duration_seconds}-second runtime."
+            ),
+            "visual_style": style_hint,
+            "motion_style": "gentle camera drift, soft pushes, and calm, loop-friendly motion",
+            "color_palette": "blue ocean, warm sunlight, sandy beige, soft white foam",
+            "narration_style": "clear storybook narration with a warm, sing-along rhythm",
+            "main_character": "Recurring sailor character",
+            "approval_note": "Approve the storyboard grid, then generate the 8 scene clips and combine them into the final video.",
+        },
+        "timeline_scenes": scenes,
+    }
+
+
+def generate_poem_storyboard_manifest(
+    lyrics: str,
+    video_id: str,
+    settings,
+    *,
+    target_duration_seconds: int = 80,
+    scene_duration_seconds: int = 10,
+    language: str = "English",
+    style_hint: str = "",
+) -> dict:
+    """Generate a storyboard manifest for a poem / rhyme video."""
+    target_duration_seconds = max(20, int(target_duration_seconds))
+    scene_duration_seconds = max(5, min(20, int(scene_duration_seconds)))
+    scene_count = max(1, math.ceil(target_duration_seconds / scene_duration_seconds))
+    total_duration_seconds = scene_count * scene_duration_seconds
+    prompt = f"""
+You are a kid-safe 2D video storyboard agent.
+
+Create a storyboard for the following poem or lyrics:
+
+{lyrics.strip()}
+
+Requirements:
+- Total runtime: {total_duration_seconds} seconds.
+- Scene duration: {scene_duration_seconds} seconds per scene.
+- Scene count: exactly {scene_count}.
+- Use a recurring sailor character and ocean-themed visuals.
+- Keep the tone playful, warm, and visually rich.
+- Make the storyboard easy to approve scene by scene.
+- Use background_asset paths like "assets/environments/{_slugify(video_id or 'poem')}_scene_01_bg.png".
+- Include a clear style summary, main character, motion style, and approval note.
+- Return strict JSON only. No markdown.
+
+JSON schema:
+{{
+  "video_id": "{video_id}",
+  "canvas_dimensions": [1280, 720],
+  "fps": 24,
+  "global_bgm": "assets/character/bg_music.mp3",
+  "voice_presets": {{
+    "Narrator": "Rasalgethi"
+  }},
+  "story_mode": "poem_storyboard",
+  "source_lyrics": "original lyrics",
+  "source_language": "{language}",
+  "scene_duration_seconds": {scene_duration_seconds},
+  "target_duration_seconds": {total_duration_seconds},
+  "scene_count": {scene_count},
+  "storyboard_summary": {{
+    "title": "short title",
+    "logline": "1 sentence logline",
+    "visual_style": "style summary",
+    "motion_style": "motion summary",
+    "color_palette": "palette summary",
+    "narration_style": "narration summary",
+    "main_character": "main character summary",
+    "approval_note": "approval guidance"
+  }},
+  "timeline_scenes": [
+    {{
+      "scene_sequence": 1,
+      "title": "scene title",
+      "scene_duration_seconds": {scene_duration_seconds},
+      "background_asset": "assets/environments/{_slugify(video_id or 'poem')}_scene_01_bg.png",
+      "camera_effect": "zoom_in",
+      "dialogue": [
+        {{
+          "speaker": "Narrator",
+          "text": "narration line"
+        }}
+      ],
+      "scene_characters": [
+        {{
+          "folder_name": "sailor_v1",
+          "scale_factor": 250,
+          "motion_path": {{
+            "enabled": false,
+            "start_position": [520, 320],
+            "start_scale": 1.0
+          }},
+          "states": [
+            {{
+              "time_range": [0.0, 100.0],
+              "animation_state": "idle"
+            }}
+          ]
+        }}
+      ],
+      "visual_notes": "scene-specific visual guidance"
+    }}
+  ]
+}}
+
+Style hint:
+{style_hint.strip() or "cheerful seaside nursery rhyme, pastel 3D cartoon, warm sun, soft waves, playful sailor"}
+""".strip()
+
+    keys = list(settings.gemini_api_keys) if hasattr(settings, "gemini_api_keys") else []
+    if not keys and settings.gemini_api_key:
+        keys = [settings.gemini_api_key]
+    if os.environ.get("GEMINI_API_KEY") and os.environ.get("GEMINI_API_KEY") not in keys:
+        keys.insert(0, os.environ.get("GEMINI_API_KEY"))
+
+    custom_ui_key = st.session_state.get("custom_gemini_api_key", "").strip()
+    if custom_ui_key:
+        if custom_ui_key in keys:
+            keys.remove(custom_ui_key)
+        keys.insert(0, custom_ui_key)
+
+    keys = [k for k in keys if k]
+    if not keys:
+        return _build_poem_storyboard_fallback(
+            lyrics,
+            video_id,
+            total_duration_seconds,
+            scene_duration_seconds,
+            language=language,
+            style_hint=style_hint,
+        )
+
+    for key in keys:
+        try:
+            from google import genai
+            from google.genai import types
+
+            client = genai.Client(api_key=key)
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
+                config=types.GenerateContentConfig(response_mime_type="application/json"),
+            )
+            data = json.loads(response.text)
+            if "timeline_scenes" not in data:
+                raise ValueError("Gemini response missing timeline_scenes.")
+            normalize_2d_scene_manifest(data)
+            data["story_mode"] = "poem_storyboard"
+            data["source_lyrics"] = lyrics
+            data["source_language"] = language
+            data["scene_duration_seconds"] = int(data.get("scene_duration_seconds", scene_duration_seconds))
+            data["target_duration_seconds"] = int(data.get("target_duration_seconds", total_duration_seconds))
+            data["scene_count"] = int(data.get("scene_count", len(data.get("timeline_scenes", []))))
+            if "storyboard_summary" not in data:
+                data["storyboard_summary"] = {}
+            return data
+        except Exception:
+            continue
+
+    return _build_poem_storyboard_fallback(
+        lyrics,
+        video_id,
+        total_duration_seconds,
+        scene_duration_seconds,
+        language=language,
+        style_hint=style_hint,
+    )
+
+
+def _flow_title_from_topic(topic: str) -> str:
+    text = re.sub(r"\s+", " ", topic.strip())
+    if not text:
+        return "Cinematic Flow Story"
+    words = re.findall(r"[A-Za-z0-9']+", text)
+    if not words:
+        return "Cinematic Flow Story"
+    title = " ".join(words[:10]).strip().title()
+    return title[:60] or "Cinematic Flow Story"
+
+
+def _build_flow_storyboard_fallback(
+    topic: str,
+    video_id: str,
+    target_duration_seconds: int,
+    scene_duration_seconds: int,
+    *,
+    aspect: str = "landscape",
+    style_hint: str = "",
+    audience: str = "adult",
+) -> dict:
+    """Create a deterministic Flow-style storyboard manifest."""
+    scene_count = max(1, math.ceil(target_duration_seconds / max(scene_duration_seconds, 1)))
+    scene_duration_seconds = max(5, int(scene_duration_seconds))
+    width, height = (720, 1280) if aspect == "shorts" else (1280, 720)
+    topic_words = [word.strip() for word in re.split(r"[\n,;:]+", topic) if word.strip()]
+    if not topic_words:
+        topic_words = [topic.strip() or "cinematic journey"]
+    topic_slug = _slugify(topic[:60] or video_id or "flow_story")
+    title = _flow_title_from_topic(topic)
+    style_hint = style_hint.strip() or "bright kids-animation, colorful storybook visuals, expressive characters, gentle camera movement, no text, no watermark"
+
+    scene_blueprints = [
+        "opening establish the world and main mood",
+        "introduce the central character or subject",
+        "create a small turn or challenge",
+        "show a closer detail or reaction shot",
+        "build motion and visual energy",
+        "raise the emotional or visual stakes",
+        "resolve the story beat",
+        "close on a memorable final frame",
+    ]
+    camera_cycle = [
+        "slow_zoom_in",
+        "pan_left",
+        "pan_right",
+        "move_back",
+        "dolly_in",
+        "tilt_up",
+        "steady_push_in",
+        "hold_frame",
+    ]
+    clips: list[dict[str, object]] = []
+    for index in range(scene_count):
+        clip_number = index + 1
+        beat = scene_blueprints[index % len(scene_blueprints)]
+        source_topic = topic_words[index % len(topic_words)]
+        duration = scene_duration_seconds
+        if index == scene_count - 1:
+            duration = max(5, target_duration_seconds - scene_duration_seconds * (scene_count - 1))
+        clip_title = f"Scene {clip_number:02d}: {beat.title()}"
+        prompt = (
+            f"{aspect.upper()} cinematic scene for: {topic}. "
+            f"Beat: {beat}. "
+            f"Subject focus: {source_topic}. "
+            "Maintain continuity of character design, color palette, and scene geography from the prior shot. "
+            f"First frame: establish the scene with a clear wide shot. Last frame: end on a clean transitional frame that can extend into the next shot. "
+            f"Camera control: {camera_cycle[index % len(camera_cycle)]}. "
+            "Use subtle motion, readable composition, and polished visual storytelling. "
+            f"Style: {style_hint}. "
+            f"Audience: {audience}. "
+            "No text, no logos, no watermark."
+        )
+        clips.append(
+            {
+                "id": f"scene_{clip_number:02d}",
+                "title": clip_title,
+                "duration_seconds": duration,
+                "narration": f"{title} - {beat}.",
+                "on_screen_text": beat.title(),
+                "visual_mode": "motion_video",
+                "prompt": prompt,
+                "source_type": "auto_2_5d",
+                "expected_file": f"scene_{clip_number:02d}.mp4",
+            }
+        )
+
+    return {
+        "episode_id": f"{video_id}_{topic_slug}_{aspect}",
+        "title": title,
+        "description": f"A Flow-style storyboard for {topic}.",
+        "aspect": aspect,
+        "width": width,
+        "height": height,
+        "youtube_title": title[:80],
+        "youtube_description": (
+            f"Flow-style storyboard video for {topic}.\n\n"
+            "Disclosure: AI-generated visuals and narration may be used. Original content only."
+        ),
+        "hashtags": ["#FlowStory", "#AIVideo", "#Storyboard", "#Cinematic", "#OriginalContent"],
+        "story_mode": "flow_storyboard",
+        "source_topic": topic,
+        "target_duration_seconds": scene_duration_seconds * scene_count,
+        "scene_duration_seconds": scene_duration_seconds,
+        "scene_count": scene_count,
+        "storyboard_summary": {
+            "title": title,
+            "logline": f"A {scene_count}-scene Flow-style story built around {topic}.",
+            "visual_style": style_hint,
+            "camera_language": "first frame, last frame, and camera control per scene",
+            "continuity_rules": "Keep character design, palette, and spatial geography consistent across the full sequence.",
+            "motion_style": "gentle cinematic motion with animated character acting and clean transitions between clips",
+            "approval_note": "Approve the storyboard grid, then generate the animated scene clips and assemble the final video.",
+        },
+        "clips": clips,
+    }
+
+
+def generate_flow_storyboard_manifest(
+    topic: str,
+    video_id: str,
+    settings,
+    *,
+    target_duration_seconds: int = 80,
+    scene_duration_seconds: int = 10,
+    aspect: str = "landscape",
+    style_hint: str = "",
+    audience: str = "adult",
+) -> dict:
+    """Generate a Flow-style storyboard manifest with scene continuity controls."""
+    target_duration_seconds = max(20, int(target_duration_seconds))
+    scene_duration_seconds = max(5, min(20, int(scene_duration_seconds)))
+    scene_count = max(1, math.ceil(target_duration_seconds / scene_duration_seconds))
+    total_duration_seconds = scene_count * scene_duration_seconds
+    width, height = (720, 1280) if aspect == "shorts" else (1280, 720)
+    prompt = f"""
+You are a Google Flow-style video director.
+
+Create a cinematic storyboard manifest for the following topic:
+
+{topic.strip()}
+
+Requirements:
+- Total runtime: {total_duration_seconds} seconds.
+- Scene duration: {scene_duration_seconds} seconds per scene.
+- Scene count: exactly {scene_count}.
+- Aspect ratio: {aspect}.
+- Build a strong continuity plan across scenes.
+- Each scene must include a clear first-frame idea, a final-frame idea, and a camera control direction.
+- Use one consistent visual style, character design, and scene geography.
+- If the input reads like a poem or lyrics, treat each scene as a lyric-friendly animated beat with repeating visual motifs and kid-safe motion.
+- Make the prompts ready for clip generation.
+- Return strict JSON only.
+
+JSON schema:
+{{
+  "episode_id": "{video_id}",
+  "title": "short title",
+  "description": "one sentence description",
+  "aspect": "{aspect}",
+  "width": {width},
+  "height": {height},
+  "youtube_title": "short clickable title",
+  "youtube_description": "description paragraph",
+  "hashtags": ["#tag1", "#tag2"],
+  "story_mode": "flow_storyboard",
+  "source_topic": "{topic}",
+  "target_duration_seconds": {total_duration_seconds},
+  "scene_duration_seconds": {scene_duration_seconds},
+  "scene_count": {scene_count},
+  "storyboard_summary": {{
+    "title": "story title",
+    "logline": "short logline",
+    "visual_style": "style summary",
+    "camera_language": "camera summary",
+    "continuity_rules": "continuity summary",
+    "motion_style": "motion summary",
+    "approval_note": "approval guidance"
+  }},
+  "clips": [
+    {{
+      "id": "scene_01",
+      "title": "scene title",
+      "duration_seconds": {scene_duration_seconds},
+      "narration": "narration line",
+      "on_screen_text": "short text",
+      "visual_mode": "motion_video",
+      "prompt": "clip prompt with first/last frame and camera control",
+      "source_type": "auto_2_5d",
+      "expected_file": "scene_01.mp4"
+    }}
+  ]
+}}
+
+Style hint:
+{style_hint.strip() or "bright kids-animation, colorful storybook visuals, expressive characters, gentle camera movement, no text, no watermark"}
+""".strip()
+
+    keys = list(settings.gemini_api_keys) if hasattr(settings, "gemini_api_keys") else []
+    if not keys and settings.gemini_api_key:
+        keys = [settings.gemini_api_key]
+    if os.environ.get("GEMINI_API_KEY") and os.environ.get("GEMINI_API_KEY") not in keys:
+        keys.insert(0, os.environ.get("GEMINI_API_KEY"))
+    custom_ui_key = st.session_state.get("custom_gemini_api_key", "").strip()
+    if custom_ui_key:
+        if custom_ui_key in keys:
+            keys.remove(custom_ui_key)
+        keys.insert(0, custom_ui_key)
+    keys = [k for k in keys if k]
+    if not keys:
+        return _build_flow_storyboard_fallback(
+            topic,
+            video_id,
+            total_duration_seconds,
+            scene_duration_seconds,
+            aspect=aspect,
+            style_hint=style_hint,
+            audience=audience,
+        )
+
+    for key in keys:
+        try:
+            from google import genai
+            from google.genai import types
+
+            client = genai.Client(api_key=key)
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
+                config=types.GenerateContentConfig(response_mime_type="application/json"),
+            )
+            data = json.loads(response.text)
+            if "clips" not in data:
+                raise ValueError("Gemini response missing clips.")
+            data["story_mode"] = "flow_storyboard"
+            data["source_topic"] = topic
+            data["target_duration_seconds"] = int(data.get("target_duration_seconds", total_duration_seconds))
+            data["scene_duration_seconds"] = int(data.get("scene_duration_seconds", scene_duration_seconds))
+            data["scene_count"] = int(data.get("scene_count", len(data.get("clips", []))))
+            data["width"] = int(data.get("width", width))
+            data["height"] = int(data.get("height", height))
+            if "storyboard_summary" not in data:
+                data["storyboard_summary"] = {}
+            return data
+        except Exception:
+            continue
+
+    return _build_flow_storyboard_fallback(
+        topic,
+        video_id,
+        total_duration_seconds,
+        scene_duration_seconds,
+        aspect=aspect,
+        style_hint=style_hint,
+        audience=audience,
+    )
+
+
+def render_current_video_flow_agent(settings) -> None:
+    """Render a Flow-style storyboard-first video workflow."""
+    import content_pipeline.bots.video_engine as video_engine
+
+    video_engine = importlib.reload(video_engine)
+    from content_pipeline.models import VideoEpisode
+
+    prefix = "flow_video"
+
+    def k(name: str) -> str:
+        return f"{prefix}_{name}"
+
+    output_dir = resolve_output_dir(st.session_state.get("output_dir_pref", str(settings.output_dir)))
+    st.session_state.setdefault(k("topic"), st.session_state.get("video_studio_topic", "A cinematic video about momentum and change"))
+    st.session_state.setdefault(k("aspect"), "landscape")
+    st.session_state.setdefault(k("target_duration"), 80)
+    st.session_state.setdefault(k("scene_duration"), 10)
+    st.session_state.setdefault(
+        k("style_hint"),
+        "bright kids-animation, colorful storybook visuals, expressive characters, gentle camera movement, no text, no watermark",
+    )
+    st.session_state[k("image_provider_choice")] = "nvidia"
+    st.session_state.setdefault(k("motion_engine"), "ZeroGPU Space")
+    st.session_state[k("zero_gpu_space_id")] = (
+        getattr(settings, "hf_zero_gpu_space_id", "").strip() or DEFAULT_ZERO_GPU_SPACE_ID
+    )
+    st.session_state.setdefault(k("manifest"), {})
+    st.session_state.setdefault(k("workspace_path"), "")
+    st.session_state.setdefault(k("final_video_path"), "")
+    st.session_state.setdefault(k("approved"), False)
+    st.session_state.setdefault(k("generation_log"), [])
+
+    st.markdown("### 🧭 Flow Storyboard Studio")
+    st.caption(
+        "A scene-first workflow inspired by Google Flow: plan the story, lock continuity, approve the grid, generate animated clips, then assemble the master video."
+    )
+    st.caption("Pipeline: NVIDIA renders storyboard images, ZeroGPU animates them into clips, and FFmpeg assembles the final video.")
+
+    def _render_mode_settings() -> tuple[str, object]:
+        motion_engine = st.session_state.get(k("motion_engine"), "ZeroGPU Space")
+        mode_map = {
+            "ZeroGPU Space": "zero_gpu_space",
+            "Direct HF Inference": "direct_inference",
+            "Legacy 2.5D Fallback": "legacy_2_5d",
+        }
+        overrides = {
+            "hf_video_render_mode": mode_map.get(motion_engine, "zero_gpu_space"),
+            "hf_zero_gpu_space_id": (
+                st.session_state.get(k("zero_gpu_space_id"), "").strip()
+                or getattr(settings, "hf_zero_gpu_space_id", "").strip()
+                or DEFAULT_ZERO_GPU_SPACE_ID
+            ),
+            "hf_zero_gpu_space_api_name": getattr(settings, "hf_zero_gpu_space_api_name", "/render_package"),
+            "hf_zero_gpu_video_model": getattr(
+                settings,
+                "hf_zero_gpu_video_model",
+                "stabilityai/stable-video-diffusion-img2vid-xt-1-1",
+            ),
+            "hf_zero_gpu_space_timeout_seconds": getattr(
+                settings,
+                "hf_zero_gpu_space_timeout_seconds",
+                1800,
+            ),
+        }
+        base = dict(vars(settings))
+        base.update(overrides)
+        return motion_engine, SimpleNamespace(**base)
+
+    left_col, right_col = st.columns([5.4, 4.6])
+
+    with left_col:
+        st.text_input("Story / Poem / Lyrics", key=k("topic"))
+        st.selectbox(
+            "Aspect Ratio",
+            options=["landscape", "shorts"],
+            format_func=lambda item: "Landscape 16:9" if item == "landscape" else "Vertical 9:16",
+            key=k("aspect"),
+        )
+        st.selectbox(
+            "Render Mode",
+            options=["ZeroGPU Space", "Direct HF Inference", "Legacy 2.5D Fallback"],
+            help="ZeroGPU Space runs the render inside a Hugging Face Space with free GPU quota. Direct HF Inference uses the billed API. Legacy 2.5D keeps the old still-motion path.",
+            key=k("motion_engine"),
+        )
+        zero_gpu_space_id = (
+            st.session_state.get(k("zero_gpu_space_id"), "").strip()
+            or getattr(settings, "hf_zero_gpu_space_id", "").strip()
+            or DEFAULT_ZERO_GPU_SPACE_ID
+        )
+        st.caption(f"Configured ZeroGPU Space ID: `{zero_gpu_space_id}`")
+        zero_gpu_ready = bool(zero_gpu_space_id)
+        if st.session_state.get(k("motion_engine")) == "ZeroGPU Space":
+            zero_gpu_model = getattr(settings, "hf_zero_gpu_video_model", "stabilityai/stable-video-diffusion-img2vid-xt-1-1")
+            if zero_gpu_ready:
+                st.info(
+                    f"Using ZeroGPU Space `{zero_gpu_space_id}` with `HF_ZERO_GPU_VIDEO_MODEL={zero_gpu_model}`."
+                )
+            else:
+                st.warning(
+                    "Set `HF_ZERO_GPU_SPACE_ID` in `.env` to enable ZeroGPU mode."
+                )
+        elif st.session_state.get(k("motion_engine")) == "Direct HF Inference":
+            hf_video_model = getattr(settings, "hf_video_model", "Wan-AI/Wan2.2-I2V-A14B")
+            st.info(
+                f"Using direct Hugging Face inference with `HF_VIDEO_MODEL={hf_video_model}`. This counts as Inference Usage."
+            )
+        duration_cols = st.columns(2)
+        with duration_cols[0]:
+            st.number_input(
+                "Target Duration (sec)",
+                min_value=20,
+                max_value=600,
+                step=10,
+                key=k("target_duration"),
+            )
+        with duration_cols[1]:
+            st.number_input(
+                "Scene Duration (sec)",
+                min_value=5,
+                max_value=20,
+                step=1,
+                key=k("scene_duration"),
+            )
+        st.text_area(
+            "Style Hint",
+            key=k("style_hint"),
+            height=120,
+            help="Describe the visual language, mood, and pacing you want for the full sequence.",
+        )
+
+        current_target = int(st.session_state.get(k("target_duration"), 80))
+        current_scene = int(st.session_state.get(k("scene_duration"), 10))
+        scene_count = max(1, math.ceil(current_target / max(current_scene, 1)))
+        st.caption(
+            f"Planned runtime: about {scene_count * current_scene}s across {scene_count} scene(s)."
+        )
+
+        button_cols = st.columns(2)
+        with button_cols[0]:
+            if st.button("✨ Build Flow Storyboard", type="primary", use_container_width=True, key=f"{prefix}_btn_build"):
+                try:
+                    motion_engine, _ = _render_mode_settings()
+                    manifest = generate_flow_storyboard_manifest(
+                        st.session_state.get(k("topic"), "").strip(),
+                        f"flow_{_slugify(st.session_state.get(k('topic'), 'flow_story'))}",
+                        settings,
+                        target_duration_seconds=int(st.session_state.get(k("target_duration"), 80)),
+                        scene_duration_seconds=int(st.session_state.get(k("scene_duration"), 10)),
+                        aspect=st.session_state.get(k("aspect"), "landscape"),
+                        style_hint=st.session_state.get(k("style_hint"), "").strip(),
+                        audience="kid",
+                    )
+                    st.session_state[k("manifest")] = manifest
+                    st.session_state[k("approved")] = False
+                    st.session_state[k("workspace_path")] = ""
+                    st.session_state[k("final_video_path")] = ""
+                    st.session_state[k("generation_log")] = [f"Storyboard created with {len(manifest.get('clips', []))} scenes."]
+                    st.success(f"Storyboard drafted for {motion_engine.lower()}. Review the scene cards on the right.")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Failed to build flow storyboard: {exc}")
+        with button_cols[1]:
+            if st.button("🧱 Create Workspace", use_container_width=True, key=f"{prefix}_btn_workspace"):
+                try:
+                    manifest = st.session_state.get(k("manifest"), {})
+                    if not manifest:
+                        st.warning("Build the storyboard first.")
+                    else:
+                        episode = VideoEpisode.from_dict(manifest)
+                        workspace = video_engine.create_episode_workspace(output_dir, episode)
+                        st.session_state[k("workspace_path")] = str(workspace[-1].parent.parent)
+                        st.session_state[k("generation_log")].append(f"Workspace created: {workspace[-1].parent.parent}")
+                        st.success("Workspace created.")
+                        st.rerun()
+                except Exception as exc:
+                    st.error(f"Failed to create workspace: {exc}")
+
+        render_blocked = st.session_state.get(k("motion_engine")) == "ZeroGPU Space" and not zero_gpu_ready
+        if st.button("🎨 Generate Scene Clips", use_container_width=True, key=f"{prefix}_btn_clips", disabled=render_blocked):
+            try:
+                manifest = st.session_state.get(k("manifest"), {})
+                if not manifest:
+                    st.warning("Build the storyboard first.")
+                elif not st.session_state.get(f"{prefix}_approved", False):
+                    st.error("Please approve the storyboard grid before generating scene clips.")
+                elif render_blocked:
+                    st.error("ZeroGPU mode requires `HF_ZERO_GPU_SPACE_ID` in `.env`. Set it before generating clips.")
+                else:
+                    episode = VideoEpisode.from_dict(manifest)
+                    workspace = video_engine.create_episode_workspace(output_dir, episode)
+                    st.session_state[k("workspace_path")] = str(workspace[-1].parent.parent)
+                    provider_name = "nvidia"
+                    st.session_state[k("image_provider_choice")] = provider_name
+                    provider = image_provider(replace(settings, image_provider=provider_name))
+                    motion_engine, render_settings = _render_mode_settings()
+                    if motion_engine == "Legacy 2.5D Fallback":
+                        generated = video_engine.generate_auto_2_5d_clips(episode, provider, output_dir)
+                    else:
+                        generated = video_engine.generate_hf_image_to_video_clips(episode, provider, output_dir, render_settings)
+                    st.session_state[k("generation_log")].append(f"Generated {len(generated)} clip(s).")
+                    st.success(f"Generated {len(generated)} animated scene clip(s).")
+                    st.rerun()
+            except Exception as exc:
+                st.error(f"Failed to generate scene clips: {exc}")
+
+    with right_col:
+        manifest = st.session_state.get(k("manifest"), {})
+        summary = manifest.get("storyboard_summary", {})
+        if manifest:
+            scene_count = len(manifest.get("clips", []))
+            total_duration = sum(int(clip.get("duration_seconds", 0)) for clip in manifest.get("clips", []))
+            st.markdown(
+                f"""
+                <div class="metric-box">
+                    <div class="metric-label">Animated Flow Storyboard</div>
+                    <div class="metric-value" style="font-size:18px;">{escape(str(summary.get('title', manifest.get('title', 'Flow Storyboard'))))}</div>
+                    <div style="margin-top:8px;font-size:13px;color:#cbd5e1;line-height:1.5;">{escape(str(summary.get('logline', manifest.get('description', ''))))}</div>
+                    <div style="margin-top:8px;font-size:13px;color:#94a3b8;">
+                        <b>Visual Style:</b> {escape(str(summary.get('visual_style', '')))}<br/>
+                        <b>Camera Language:</b> {escape(str(summary.get('camera_language', '')))}<br/>
+                        <b>Continuity:</b> {escape(str(summary.get('continuity_rules', '')))}<br/>
+                        <b>Motion:</b> {escape(str(summary.get('motion_style', '')))}<br/>
+                        <b>Runtime:</b> {total_duration}s across {scene_count} scenes
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            if summary.get("approval_note"):
+                st.info(str(summary.get("approval_note")))
+            st.checkbox(
+                "I approve the Flow storyboard grid and continuity plan",
+                key=f"{prefix}_approved",
+            )
+            if st.button(
+                "🖼️ Generate Scene Assets",
+                use_container_width=True,
+                key=f"{prefix}_btn_assets",
+                disabled=render_blocked,
+            ):
+                try:
+                    manifest = st.session_state.get(k("manifest"), {})
+                    if not manifest:
+                        st.warning("Build the storyboard first.")
+                    elif not st.session_state.get(f"{prefix}_approved", False):
+                        st.error("Please approve the storyboard grid before generating scene assets.")
+                    elif render_blocked:
+                        st.error("ZeroGPU mode requires `HF_ZERO_GPU_SPACE_ID` in `.env`. Set it before generating assets.")
+                    else:
+                        episode = VideoEpisode.from_dict(manifest)
+                        workspace = video_engine.create_episode_workspace(output_dir, episode)
+                        st.session_state[k("workspace_path")] = str(workspace[-1].parent.parent)
+                        provider_name = "nvidia"
+                        st.session_state[k("image_provider_choice")] = provider_name
+                        provider = image_provider(replace(settings, image_provider=provider_name))
+                        motion_engine, render_settings = _render_mode_settings()
+                        if motion_engine == "Legacy 2.5D Fallback":
+                            generated = video_engine.generate_auto_2_5d_clips(episode, provider, output_dir)
+                        else:
+                            generated = video_engine.generate_hf_image_to_video_clips(episode, provider, output_dir, render_settings)
+                        st.session_state[k("generation_log")].append(f"Generated {len(generated)} clip(s) after workspace setup.")
+                        st.success("Scene assets generated as animated clips.")
+                        st.rerun()
+                except Exception as exc:
+                    st.error(f"Failed to generate scene assets: {exc}")
+
+            scene_items = manifest.get("clips", [])
+            if scene_items:
+                st.markdown("#### Scene Grid")
+                for idx, clip in enumerate(scene_items, start=1):
+                    st.markdown(
+                        f"""
+                        <div class="metric-box" style="margin-bottom:12px;">
+                            <div class="metric-label">Scene {idx}</div>
+                            <div class="metric-value" style="font-size:15px;">{escape(str(clip.get('title', f'Scene {idx}')))}</div>
+                            <div style="margin-top:4px;color:#cbd5e1;font-size:13px;">{escape(str(clip.get('duration_seconds', 0)))} sec · {escape(str(clip.get('on_screen_text', '')))}</div>
+                            <div style="margin-top:6px;color:#94a3b8;font-size:13px;line-height:1.45;">{escape(str(clip.get('narration', '')))}</div>
+                            <details style="margin-top:8px;">
+                                <summary style="cursor:pointer;color:#fbbf24;">Prompt + continuity notes</summary>
+                                <div style="white-space:pre-wrap;margin-top:8px;color:#e2e8f0;font-size:12px;">{escape(str(clip.get('prompt', '')))}</div>
+                            </details>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+                workspace_path = st.session_state.get(k("workspace_path"), "")
+                if workspace_path:
+                    st.caption(f"Workspace: `{workspace_path}`")
+                workspace = Path(workspace_path)
+                episode = VideoEpisode.from_dict(json.loads((workspace / "episode.json").read_text(encoding="utf-8")))
+                final_video = workspace / "video" / "episode_review.mp4"
+                if st.button(
+                    "🎬 Assemble Final Video",
+                    type="primary",
+                    use_container_width=True,
+                    key=f"{prefix}_btn_assemble",
+                    disabled=render_blocked,
+                ):
+                    if not st.session_state.get(f"{prefix}_approved", False):
+                        st.error("Please approve the storyboard grid before assembling the final video.")
+                    elif render_blocked:
+                        st.error("ZeroGPU mode requires `HF_ZERO_GPU_SPACE_ID` in `.env`. Set it before assembling the video.")
+                    else:
+                        try:
+                            provider_name = "nvidia"
+                            st.session_state[k("image_provider_choice")] = provider_name
+                            provider = image_provider(replace(settings, image_provider=provider_name))
+                            motion_engine, render_settings = _render_mode_settings()
+                            if motion_engine == "Legacy 2.5D Fallback":
+                                video_engine.generate_auto_2_5d_clips(episode, provider, output_dir)
+                            else:
+                                video_engine.generate_hf_image_to_video_clips(episode, provider, output_dir, render_settings)
+                            assembled_path = video_engine.assemble_episode(workspace)
+                            st.session_state[k("final_video_path")] = str(assembled_path)
+                            st.success("Final video assembled.")
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(f"Failed to assemble video: {exc}")
+
+                if final_video.exists():
+                    st.markdown("#### Final Preview")
+                    st.video(str(final_video))
+                    with open(final_video, "rb") as final_file:
+                        st.download_button(
+                            "Download Final Video",
+                            data=final_file.read(),
+                            file_name=final_video.name,
+                            mime="video/mp4",
+                            use_container_width=True,
+                            key=f"{prefix}_download_final",
+                        )
+
+        if st.session_state.get(k("generation_log")):
+            st.markdown("#### Flow Log")
+            for line in st.session_state.get(k("generation_log"), []):
+                st.caption(line)
 
 
 def apply_manifest_suggestions(manifest_data: dict, user_suggestion: str, settings) -> dict:
@@ -3305,11 +4194,21 @@ def render_frontdoor(settings: Settings) -> None:
             """
             <div class="hero" style="background: linear-gradient(135deg, rgba(168,85,247,0.15), rgba(56,189,248,0.15)); border: 1px solid rgba(168,85,247,0.3); margin-bottom: 24px;">
               <h1 style="font-size: 32px;">🎬 Premium Video Compilation Studio</h1>
-              <p style="margin-top: 6px; font-size: 14px;">Generate, render, and orchestrate stunning 5-minute premium explainer videos featuring cohesive 3D Pixar character illustrations.</p>
+              <p style="margin-top: 6px; font-size: 14px;">Generate, render, and orchestrate premium explainer videos or animated Flow-style storyboards from approved scene grids.</p>
             </div>
             """,
             unsafe_allow_html=True,
         )
+
+        video_workflow_mode = st.selectbox(
+            "Video Workflow",
+            options=["Premium Explainer", "Flow Agent"],
+            help="Premium Explainer keeps the existing 5-minute pipeline. Flow Agent gives you a scene-first storyboard workflow with stronger continuity control.",
+            key="video_workflow_mode",
+        )
+        if video_workflow_mode == "Flow Agent":
+            render_current_video_flow_agent(settings)
+            st.stop()
 
         left_col, right_col = st.columns([5.5, 4.5])
 
@@ -3519,6 +4418,71 @@ def render_frontdoor(settings: Settings) -> None:
                         )
                         lang_choice = "Hindi"
                         st.info("ℹ️ Adults / Seniors stories are locked to Hindi language.")
+
+                    is_poem_mode = genre_choice == "Poem Teaching Video"
+                    poem_lyrics_key = f"poem_lyrics_{selected_project}"
+                    poem_duration_key = f"poem_target_duration_{selected_project}"
+                    poem_scene_key = f"poem_scene_duration_{selected_project}"
+                    poem_style_key = f"poem_style_hint_{selected_project}"
+                    poem_approved_key = f"poem_storyboard_approved_{selected_project}"
+
+                    if is_poem_mode:
+                        st.markdown("#### 🎼 Poem / Lyrics Storyboard Agent")
+                        st.caption(
+                            "Paste the poem or lyrics, choose the runtime, and the agent will suggest a scene-by-scene storyboard."
+                        )
+                        st.session_state.setdefault(
+                            poem_lyrics_key,
+                            config_data.get(
+                                "source_lyrics",
+                                "A sailor went to sea, sea, sea\nTo see what he could see, see, see",
+                            ),
+                        )
+                        st.session_state.setdefault(poem_duration_key, int(config_data.get("target_duration_seconds", 80)))
+                        st.session_state.setdefault(poem_scene_key, int(config_data.get("scene_duration_seconds", 10)))
+                        st.session_state.setdefault(
+                            poem_style_key,
+                            config_data.get(
+                                "visual_style_hint",
+                                "cheerful seaside nursery rhyme, pastel 3D cartoon, warm sun, soft waves, playful sailor",
+                            ),
+                        )
+                        poem_lyrics = st.text_area(
+                            "Poem / Lyrics",
+                            height=180,
+                            key=poem_lyrics_key,
+                            help="Paste the exact poem or nursery rhyme. The planner will turn it into scene beats.",
+                        )
+                        poem_cols = st.columns(3)
+                        with poem_cols[0]:
+                            target_duration_seconds = st.number_input(
+                                "Target Duration (sec)",
+                                min_value=20,
+                                max_value=600,
+                                step=10,
+                                key=poem_duration_key,
+                            )
+                        with poem_cols[1]:
+                            scene_duration_seconds = st.number_input(
+                                "Scene Duration (sec)",
+                                min_value=5,
+                                max_value=20,
+                                step=1,
+                                key=poem_scene_key,
+                            )
+                        with poem_cols[2]:
+                            scene_count_preview = max(1, math.ceil(target_duration_seconds / max(scene_duration_seconds, 1)))
+                            st.metric("Scene Count", scene_count_preview)
+                        st.text_input(
+                            "Visual Style Hint",
+                            key=poem_style_key,
+                            help="Describe the look and feel you want for the storyboard grid and clip prompts.",
+                        )
+                        st.caption(
+                            f"Storyboard plan: {scene_count_preview} scenes × {int(scene_duration_seconds)}s ≈ {scene_count_preview * int(scene_duration_seconds)}s."
+                        )
+                    else:
+                        st.session_state.pop(poem_approved_key, None)
                     
                     # API Key resolution
                     active_key = st.session_state.get("custom_gemini_api_key", "").strip()
@@ -3535,6 +4499,12 @@ def render_frontdoor(settings: Settings) -> None:
                             config_data["audience"] = audience_choice
                             config_data["genre"] = genre_choice
                             config_data["language"] = lang_choice
+                            if is_poem_mode:
+                                config_data["story_mode"] = "poem_storyboard"
+                                config_data["source_lyrics"] = st.session_state.get(poem_lyrics_key, "").strip()
+                                config_data["target_duration_seconds"] = int(st.session_state.get(poem_duration_key, 80))
+                                config_data["scene_duration_seconds"] = int(st.session_state.get(poem_scene_key, 10))
+                                config_data["visual_style_hint"] = st.session_state.get(poem_style_key, "").strip()
                             try:
                                 with open(config_path, "w", encoding="utf-8") as f:
                                     json.dump(config_data, f, indent=4)
@@ -3545,15 +4515,44 @@ def render_frontdoor(settings: Settings) -> None:
                                 if str(orchestrator_path) not in sys.path:
                                     sys.path.insert(0, str(orchestrator_path))
                                 try:
-                                    from src.core.story_agent import AICreativeAgent
-                                    agent = AICreativeAgent(active_key)
-                                    res = agent.generate_story_from_topic(story_topic_cin, audience_choice, genre_choice, lang_choice)
-                                    if res["status"] == "success":
-                                        st.session_state[f"script_blueprint_{selected_project}"] = res["script"]
-                                        st.success("Drafting complete! Review and edit on the right.")
-                                        st.rerun()
+                                    if is_poem_mode:
+                                        poem_input = st.session_state.get(poem_lyrics_key, "").strip()
+                                        if not poem_input:
+                                            st.warning("Please paste the poem or lyrics first.")
+                                        else:
+                                            target_duration = int(st.session_state.get(poem_duration_key, 80))
+                                            scene_duration = int(st.session_state.get(poem_scene_key, 10))
+                                            style_hint = st.session_state.get(poem_style_key, "").strip()
+                                            poem_manifest = generate_poem_storyboard_manifest(
+                                                poem_input,
+                                                selected_project,
+                                                settings,
+                                                target_duration_seconds=target_duration,
+                                                scene_duration_seconds=scene_duration,
+                                                language=lang_choice,
+                                                style_hint=style_hint,
+                                            )
+                                            normalize_2d_scene_manifest(poem_manifest)
+                                            with open(manifest_path, "w", encoding="utf-8") as f:
+                                                json.dump(poem_manifest, f, indent=2, ensure_ascii=False)
+                                            st.session_state[f"script_blueprint_{selected_project}"] = json.dumps(
+                                                poem_manifest.get("storyboard_summary", {}),
+                                                indent=2,
+                                                ensure_ascii=False,
+                                            )
+                                            st.session_state[poem_approved_key] = False
+                                            st.success("Poem storyboard drafted successfully. Review the scene grid, then generate scene assets and approve it.")
+                                            st.rerun()
                                     else:
-                                        st.error(res["message"])
+                                        from src.core.story_agent import AICreativeAgent
+                                        agent = AICreativeAgent(active_key)
+                                        res = agent.generate_story_from_topic(story_topic_cin, audience_choice, genre_choice, lang_choice)
+                                        if res["status"] == "success":
+                                            st.session_state[f"script_blueprint_{selected_project}"] = res["script"]
+                                            st.success("Drafting complete! Review and edit on the right.")
+                                            st.rerun()
+                                        else:
+                                            st.error(res["message"])
                                 except Exception as e:
                                     st.error(f"Failed to draft script: {e}")
                 
@@ -3591,11 +4590,84 @@ def render_frontdoor(settings: Settings) -> None:
                             st.rerun()
                         except Exception as e:
                             st.error(f"Failed to save script: {e}")
+
+                    if manifest_data.get("story_mode") == "poem_storyboard":
+                        poem_summary = manifest_data.get("storyboard_summary", {})
+                        st.markdown("### 🎼 Poem Storyboard Summary")
+                        summary_cols = st.columns([1.1, 0.9])
+                        with summary_cols[0]:
+                            st.markdown(
+                                f"""
+                                <div class="metric-box">
+                                    <div class="metric-label">Storyboard Title</div>
+                                    <div class="metric-value" style="font-size:18px;">{escape(str(poem_summary.get('title', manifest_data.get('video_id', 'Poem Story'))))}</div>
+                                    <div style="margin-top:8px;font-size:13px;color:#cbd5e1;line-height:1.5;">{escape(str(poem_summary.get('logline', '')))}</div>
+                                    <div style="margin-top:8px;font-size:13px;color:#94a3b8;">
+                                        <b>Style:</b> {escape(str(poem_summary.get('visual_style', '')))}<br/>
+                                        <b>Motion:</b> {escape(str(poem_summary.get('motion_style', '')))}<br/>
+                                        <b>Palette:</b> {escape(str(poem_summary.get('color_palette', '')))}<br/>
+                                        <b>Narration:</b> {escape(str(poem_summary.get('narration_style', '')))}
+                                    </div>
+                                </div>
+                                """,
+                                unsafe_allow_html=True,
+                            )
+                            if poem_summary.get("approval_note"):
+                                st.info(str(poem_summary.get("approval_note")))
+                            if st.button(
+                                "🖼️ Generate Scene Assets",
+                                type="secondary",
+                                use_container_width=True,
+                                key=f"btn_generate_poem_assets_{selected_project}",
+                            ):
+                                with st.spinner("Generating storyboard backgrounds and sprite assets..."):
+                                    try:
+                                        generated_assets = generate_missing_assets(manifest_data, orchestrator_path, settings)
+                                        if generated_assets:
+                                            st.success("Generated assets: " + ", ".join(generated_assets))
+                                        else:
+                                            st.info("All referenced assets already exist.")
+                                        st.rerun()
+                                    except Exception as exc:
+                                        st.error(f"Failed to generate assets: {exc}")
+                        with summary_cols[1]:
+                            st.markdown("#### Scene Plan")
+                            for scene in scenes:
+                                scene_seq = scene.get("scene_sequence")
+                                scene_dur = scene.get("scene_duration_seconds") or scene.get("duration_seconds") or 10
+                                scene_title = scene.get("title", f"Scene {scene_seq}")
+                                narration = ""
+                                dialogue = scene.get("dialogue", [])
+                                if dialogue:
+                                    narration = str(dialogue[0].get("text", ""))
+                                st.markdown(
+                                    f"""
+                                    <div class="metric-box" style="margin-bottom:12px;">
+                                        <div class="metric-label">Scene {scene_seq}</div>
+                                        <div class="metric-value" style="font-size:15px;">{escape(str(scene_title))}</div>
+                                        <div style="margin-top:4px;color:#cbd5e1;font-size:13px;">{escape(str(scene_dur))} sec</div>
+                                        <div style="margin-top:6px;color:#94a3b8;font-size:13px;line-height:1.45;">{escape(narration)}</div>
+                                    </div>
+                                    """,
+                                    unsafe_allow_html=True,
+                                )
                             
             with tab2:
                 st.markdown("### 🚀 Compile Storyboard Video")
+                story_mode = config_data.get("story_mode", manifest_data.get("story_mode", "standard_story"))
+                poem_requires_approval = story_mode == "poem_storyboard"
+                if poem_requires_approval:
+                    st.checkbox(
+                        "I approve the poem storyboard grid and scene plan",
+                        key=f"poem_storyboard_approved_{selected_project}",
+                    )
+                    if not st.session_state.get(f"poem_storyboard_approved_{selected_project}", False):
+                        st.info("Review the storyboard grid above, generate the scene assets, and then approve it here before compiling.")
                 
                 if st.button("🎬 Compile Video Master", type="primary", use_container_width=True, key=f"btn_compile_cin_master_{selected_project}"):
+                    if poem_requires_approval and not st.session_state.get(f"poem_storyboard_approved_{selected_project}", False):
+                        st.error("Please approve the poem storyboard grid before compiling.")
+                        st.stop()
                     st.info("Compiling cinematic storyboard video... Downloading backgrounds, synthesizing TTS vocals, applying Ken Burns zoom filters and mixing background music.")
                     
                     compiler_script = orchestrator_path / "batch_story_compiler.py"
@@ -3971,7 +5043,8 @@ def render_frontdoor(settings: Settings) -> None:
                                 st.markdown(f"**Scene {scene.get('scene_sequence')}**")
                                 if bg_path.exists():
                                     st.image(str(bg_path), use_container_width=True)
-                                st.caption(f"Camera: `{scene.get('camera_effect')}`")
+                                scene_duration = scene.get("scene_duration_seconds") or scene.get("duration_seconds") or 10
+                                st.caption(f"Camera: `{scene.get('camera_effect')}` · {scene_duration}s")
                                 
                         # Render character body images in a row
                         unique_characters = {}

@@ -1,0 +1,10 @@
+gradio>=5.0.0
+spaces
+diffusers>=0.31.0
+torch>=2.8.0
+transformers>=4.46.0
+accelerate>=0.34.0
+safetensors>=0.4.5
+pillow>=10.4.0
+numpy>=1.26.0
+imageio[ffmpeg]>=2.37.0

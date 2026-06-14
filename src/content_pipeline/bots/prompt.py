@@ -161,6 +161,44 @@ def _build_openai_compatible_client(*, api_key: str, base_url: str):
     return OpenAI(api_key=api_key, base_url=base_url)
 
 
+def _build_bedrock_client(settings: Settings):
+    import boto3
+    from botocore.config import Config
+
+    if settings.bedrock_auth_mode == "iam":
+        os.environ.pop("AWS_BEARER_TOKEN_BEDROCK", None)
+
+    return boto3.client(
+        "bedrock-runtime",
+        region_name=settings.aws_region,
+        config=Config(
+            connect_timeout=10,
+            read_timeout=3600,
+            retries={"max_attempts": 3, "mode": "standard"},
+        ),
+    )
+
+
+def _bedrock_text(response: dict[str, object]) -> str:
+    output = response.get("output")
+    if not isinstance(output, dict):
+        raise ValueError("Bedrock response did not contain output.")
+    message = output.get("message")
+    if not isinstance(message, dict):
+        raise ValueError("Bedrock response did not contain a message.")
+    content = message.get("content")
+    if not isinstance(content, list):
+        raise ValueError("Bedrock response did not contain message content.")
+    text = "\n".join(
+        str(block["text"]).strip()
+        for block in content
+        if isinstance(block, dict) and str(block.get("text", "")).strip()
+    )
+    if not text:
+        raise ValueError("Bedrock response did not contain text.")
+    return text
+
+
 def _nvidia_text_model(settings: Settings) -> str:
     return _first_non_empty(
         [
@@ -392,6 +430,46 @@ def _generate_package_with_openai(settings: Settings, *, day: str, avoid_topics:
     raise RuntimeError("OpenAI prompt generation failed.")
 
 
+def _generate_package_with_nova(
+    settings: Settings,
+    *,
+    day: str,
+    avoid_topics: list[str] | None = None,
+) -> ContentPackage:
+    return _generate_package_with_bedrock(
+        settings,
+        day=day,
+        avoid_topics=avoid_topics,
+        model_id=settings.bedrock_model_id,
+    )
+
+
+def _generate_package_with_bedrock(
+    settings: Settings,
+    *,
+    day: str,
+    avoid_topics: list[str] | None = None,
+    model_id: str,
+) -> ContentPackage:
+    if not model_id.strip():
+        raise ValueError("BEDROCK_MODEL_ID is required")
+    response = _build_bedrock_client(settings).converse(
+        modelId=model_id.strip(),
+        messages=[
+            {
+                "role": "user",
+                "content": [{"text": _daily_package_prompt(day, avoid_topics)}],
+            }
+        ],
+        inferenceConfig={
+            "maxTokens": 4096,
+            "temperature": 0.3,
+        },
+    )
+    payload = _extract_json_object(_bedrock_text(response))
+    return ContentPackage.from_dict(payload)  # type: ignore[arg-type]
+
+
 def _generate_package_with_nvidia(settings: Settings, *, day: str, avoid_topics: list[str] | None = None) -> ContentPackage:
     keys = _nvidia_key_pool(settings)
     if not keys:
@@ -544,6 +622,29 @@ def _generate_long_form_with_openai(
     if last_error:
         raise last_error
     raise RuntimeError("OpenAI long-form prompt generation failed.")
+
+
+def _generate_long_form_with_nova(
+    settings: Settings,
+    package: ContentPackage,
+    target_minutes: int,
+) -> LongFormVideoScript:
+    response = _build_bedrock_client(settings).converse(
+        modelId=settings.bedrock_model_id,
+        messages=[
+            {
+                "role": "user",
+                "content": [{"text": _long_form_prompt(package, target_minutes)}],
+            }
+        ],
+        inferenceConfig={
+            "maxTokens": 8192,
+            "temperature": 0.3,
+        },
+    )
+    payload = _extract_json_object(_bedrock_text(response))
+    script = LongFormVideoScript.from_dict(payload)  # type: ignore[arg-type]
+    return _fit_long_form_duration(script, 180, 300)
 
 
 def _generate_long_form_with_nvidia(
@@ -1089,10 +1190,12 @@ def generate_long_form_video_script(
     """Generate a narrated 3-5 minute video outline for an existing package."""
     if not 3 <= target_minutes <= 5:
         raise ValueError("Long-form video target must be between 3 and 5 minutes.")
-    for provider in ("openai", "nvidia", "gemini", "local"):
+    for provider in ("openai", "nova", "nvidia", "gemini", "local"):
         try:
             if provider == "openai":
                 return _generate_long_form_with_openai(settings, package, target_minutes)
+            if provider == "nova":
+                return _generate_long_form_with_nova(settings, package, target_minutes)
             if provider == "nvidia":
                 return _generate_long_form_with_nvidia(settings, package, target_minutes)
             if provider == "gemini":
@@ -1100,7 +1203,9 @@ def generate_long_form_video_script(
             return _generate_long_form_with_local_llm(settings, package, target_minutes)
         except Exception:
             continue
-    raise RuntimeError("Prompt generation failed across OpenAI, NVIDIA, Gemini, and Local LLM.")
+    raise RuntimeError(
+        "Prompt generation failed across OpenAI, Nova, NVIDIA, Gemini, and Local LLM."
+    )
 
 
 def _fit_long_form_duration(
@@ -1293,6 +1398,96 @@ class OpenAIPromptProvider:
         raise RuntimeError("Prompt generation failed across OpenAI, NVIDIA, Gemini, and Local LLM.")
 
 
+class NovaPromptProvider:
+    def __init__(self, settings: Settings) -> None:
+        self.settings = settings
+
+    def generate(self, day: str, avoid_topics: list[str] | None = None) -> ContentPackage:
+        for provider in ("nova", "openai", "nvidia", "gemini", "local"):
+            try:
+                if provider == "nova":
+                    return _generate_package_with_nova(
+                        self.settings,
+                        day=day,
+                        avoid_topics=avoid_topics,
+                    )
+                if provider == "openai":
+                    return _generate_package_with_openai(
+                        self.settings,
+                        day=day,
+                        avoid_topics=avoid_topics,
+                    )
+                if provider == "nvidia":
+                    return _generate_package_with_nvidia(
+                        self.settings,
+                        day=day,
+                        avoid_topics=avoid_topics,
+                    )
+                if provider == "gemini":
+                    return _generate_package_with_gemini(
+                        self.settings,
+                        day=day,
+                        avoid_topics=avoid_topics,
+                    )
+                return _generate_package_with_local_llm(
+                    self.settings,
+                    day=day,
+                    avoid_topics=avoid_topics,
+                )
+            except Exception:
+                continue
+        raise RuntimeError(
+            "Prompt generation failed across Nova, OpenAI, NVIDIA, Gemini, and Local LLM."
+        )
+
+
+class BedrockClaudePromptProvider:
+    def __init__(self, settings: Settings) -> None:
+        self.settings = settings
+        self.model_id = settings.claude_bedrock_model_id.strip()
+        if not self.model_id:
+            raise ValueError("CLAUDE_BEDROCK_MODEL_ID is required when CLAUDE_CODE_USE_BEDROCK is enabled")
+
+    def generate(self, day: str, avoid_topics: list[str] | None = None) -> ContentPackage:
+        for provider in ("bedrock", "openai", "nvidia", "gemini", "local"):
+            try:
+                if provider == "bedrock":
+                    return _generate_package_with_bedrock(
+                        self.settings,
+                        day=day,
+                        avoid_topics=avoid_topics,
+                        model_id=self.model_id,
+                    )
+                if provider == "openai":
+                    return _generate_package_with_openai(
+                        self.settings,
+                        day=day,
+                        avoid_topics=avoid_topics,
+                    )
+                if provider == "nvidia":
+                    return _generate_package_with_nvidia(
+                        self.settings,
+                        day=day,
+                        avoid_topics=avoid_topics,
+                    )
+                if provider == "gemini":
+                    return _generate_package_with_gemini(
+                        self.settings,
+                        day=day,
+                        avoid_topics=avoid_topics,
+                    )
+                return _generate_package_with_local_llm(
+                    self.settings,
+                    day=day,
+                    avoid_topics=avoid_topics,
+                )
+            except Exception:
+                continue
+        raise RuntimeError(
+            "Prompt generation failed across Bedrock Claude, OpenAI, NVIDIA, Gemini, and Local LLM."
+        )
+
+
 class AnthropicPromptProvider:
     def __init__(self, settings: Settings) -> None:
         if not settings.anthropic_api_key or not settings.anthropic_model:
@@ -1336,7 +1531,11 @@ def prompt_provider(settings: Settings) -> PromptProvider:
         return MockPromptProvider()
     if settings.prompt_provider == "openai":
         return OpenAIPromptProvider(settings)
+    if settings.prompt_provider in {"nova", "bedrock", "bedrock_nova"}:
+        return NovaPromptProvider(settings)
     if settings.prompt_provider == "anthropic":
+        if settings.claude_code_use_bedrock:
+            return BedrockClaudePromptProvider(settings)
         return AnthropicPromptProvider(settings)
     raise ValueError(f"Unsupported PROMPT_PROVIDER: {settings.prompt_provider}")
 
