@@ -16,6 +16,7 @@ class Settings:
     openai_model: str = "gpt-5.4-mini"
     openai_image_model: str = "gpt-image-1"
     anthropic_api_key: str = ""
+    anthropic_api_keys: tuple[str, ...] = ()
     anthropic_model: str = ""
     claude_code_use_bedrock: bool = False
     claude_bedrock_model_id: str = ""
@@ -109,7 +110,8 @@ class Settings:
             openai_api_key=_first_key(_openai_keys, os.getenv("OPENAI_API_KEY", "")),
             openai_model=os.getenv("OPENAI_MODEL", "gpt-5.4-mini"),
             openai_image_model=os.getenv("OPENAI_IMAGE_MODEL", "gpt-image-1"),
-            anthropic_api_key=os.getenv("ANTHROPIC_API_KEY", ""),
+            anthropic_api_keys=(_anthropic_keys := _read_key_pool("ANTHROPIC_API_KEY", 5, start_index=1)),
+            anthropic_api_key=_first_key(_anthropic_keys, os.getenv("ANTHROPIC_API_KEY", "")),
             anthropic_model=os.getenv("ANTHROPIC_MODEL", ""),
             claude_code_use_bedrock=_as_bool(os.getenv("CLAUDE_CODE_USE_BEDROCK", "false")),
             claude_bedrock_model_id=os.getenv("CLAUDE_BEDROCK_MODEL_ID", "").strip(),
@@ -260,12 +262,12 @@ def _clean_env_value(raw_value: str) -> str:
     return value
 
 
-def _read_key_pool(prefix: str, total_slots: int, fallback_env: str | None = None) -> tuple[str, ...]:
+def _read_key_pool(prefix: str, total_slots: int, *, fallback_env: str | None = None, start_index: int = 2) -> tuple[str, ...]:
     keys: list[str] = []
     primary = os.getenv(prefix, "").strip()
     if primary:
         keys.append(primary)
-    for index in range(2, total_slots + 1):
+    for index in range(start_index, total_slots + 1):
         value = os.getenv(f"{prefix}_{index}", "").strip()
         if value:
             keys.append(value)

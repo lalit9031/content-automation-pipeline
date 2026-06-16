@@ -1490,23 +1490,87 @@ class BedrockClaudePromptProvider:
 
 class AnthropicPromptProvider:
     def __init__(self, settings: Settings) -> None:
-        if not settings.anthropic_api_key or not settings.anthropic_model:
-            raise ValueError("ANTHROPIC_API_KEY and ANTHROPIC_MODEL are required")
+        self.settings = settings
+        self.model = settings.anthropic_model
+        self._keys = list(settings.anthropic_api_keys) or (
+            [settings.anthropic_api_key] if settings.anthropic_api_key else []
+        )
+        if not self._keys:
+            raise ValueError("ANTHROPIC_API_KEY is required")
         try:
-            import anthropic
+            import anthropic  # noqa: F401
         except ImportError as exc:
             raise RuntimeError("Install live dependencies with: pip install -e '.[live]'") from exc
-        self.client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-        self.model = settings.anthropic_model
+        self._anthropic_module = anthropic
 
-    def generate(self, day: str, avoid_topics: list[str] | None = None) -> ContentPackage:
+    @staticmethod
+    def _is_openrouter_key(api_key: str) -> bool:
+        """Detect OpenRouter API keys (sk-or-v1- prefix)."""
+        return api_key.startswith("sk-or-v1-")
+
+    @staticmethod
+    def _openrouter_model(anthropic_model: str) -> str:
+        """Map a generic Anthropic model name to an OpenRouter model slug.
+
+        Uses the ~ prefix which tells OpenRouter to resolve to the latest
+        version of that model family.
+        """
+        model_lower = anthropic_model.lower()
+        if "opus" in model_lower:
+            return "~anthropic/claude-opus-latest"
+        if "sonnet" in model_lower:
+            return "~anthropic/claude-sonnet-latest"
+        if "haiku" in model_lower:
+            return "~anthropic/claude-haiku-latest"
+        if "fable" in model_lower:
+            return "~anthropic/claude-fable-latest"
+        return "~anthropic/claude-sonnet-latest"
+
+    def _generate_with_openrouter(
+        self, api_key: str, day: str, avoid_topics: list[str] | None = None
+    ) -> ContentPackage:
+        from openai import OpenAI
+
+        client = OpenAI(
+            api_key=api_key,
+            base_url="https://openrouter.ai/api/v1",
+        )
+        model = self._openrouter_model(self.model)
         avoid_text = _avoid_topics_text(avoid_topics)
-        message = self.client.messages.create(
+        response = client.chat.completions.create(
+            model=model,
+            max_tokens=1600,
+            messages=[
+                {"role": "system", "content": f"Output only valid JSON. {EDITORIAL_STYLE}"},
+                {
+                    "role": "user",
+                    "content": (
+                        f"Date: {day}. Produce keys: date, topic, image_prompt, "
+                        "linkedin_infographic with headline, subtitle, left_panel "
+                        "(title/points), right_panel (title/points), takeaway_title, "
+                        "takeaway_points, workflow and discussion_prompt, "
+                        "video_script with hook, points and cta, linkedin_caption, "
+                        "hashtags, seo_title, seo_description. Choose a fresh useful "
+                        "topic in the specified professional delivery niche."
+                        f"{avoid_text}"
+                    ),
+                },
+            ],
+        )
+        content = response.choices[0].message.content
+        if content is None:
+            raise ValueError("OpenRouter returned empty content.")
+        return ContentPackage.from_dict(_extract_json_object(content))
+
+    def _generate_with_anthropic_sdk(
+        self, api_key: str, day: str, avoid_topics: list[str] | None = None
+    ) -> ContentPackage:
+        client = self._anthropic_module.Anthropic(api_key=api_key)
+        avoid_text = _avoid_topics_text(avoid_topics)
+        message = client.messages.create(
             model=self.model,
             max_tokens=1600,
-            system=(
-                f"Output only valid JSON. {EDITORIAL_STYLE}"
-            ),
+            system=f"Output only valid JSON. {EDITORIAL_STYLE}",
             messages=[
                 {
                     "role": "user",
@@ -1524,6 +1588,20 @@ class AnthropicPromptProvider:
             ],
         )
         return ContentPackage.from_dict(json.loads(message.content[0].text))
+
+    def generate(self, day: str, avoid_topics: list[str] | None = None) -> ContentPackage:
+        last_error: Exception | None = None
+        for api_key in self._keys:
+            try:
+                if self._is_openrouter_key(api_key):
+                    return self._generate_with_openrouter(api_key, day, avoid_topics)
+                return self._generate_with_anthropic_sdk(api_key, day, avoid_topics)
+            except Exception as exc:
+                last_error = exc
+                continue
+        if last_error:
+            raise last_error
+        raise RuntimeError("Anthropic prompt generation failed across all keys.")
 
 
 def prompt_provider(settings: Settings) -> PromptProvider:

@@ -99,6 +99,8 @@ from content_pipeline.bots.project_brain import (
 )
 from content_pipeline.config import Settings
 from content_pipeline.pipeline import run_linkedin_mvp
+from content_pipeline.bots.three_d_video import render_3d_video_studio
+
 
 
 def on_music_lyrics_changed():
@@ -2652,9 +2654,9 @@ def render_frontdoor(settings: Settings) -> None:
         
     elif active_cat == "Video":
         st.session_state.setdefault("active_video_page", "Current Video Studio")
-        sub_cols = st.columns(2)
-        sub_pages = ["Current Video Studio", "2D Video Studio"]
-        sub_icons = ["🎬 Current Video Studio", "🎥 2D Video Studio"]
+        sub_cols = st.columns(3)
+        sub_pages = ["Current Video Studio", "2D Video Studio", "3D Video Studio"]
+        sub_icons = ["🎬 Current Video Studio", "🎥 2D Video Studio", "🔮 3D Video Studio"]
         for i, (page, icon) in enumerate(zip(sub_pages, sub_icons)):
             with sub_cols[i]:
                 is_active = st.session_state["active_video_page"] == page
@@ -2726,7 +2728,8 @@ def render_frontdoor(settings: Settings) -> None:
     elif active_cat == "Video":
         subpage_mapping = {
             "Current Video Studio": "Video",
-            "2D Video Studio": "2DVideo"
+            "2D Video Studio": "2DVideo",
+            "3D Video Studio": "3DVideo"
         }
         active_p = subpage_mapping.get(st.session_state["active_video_page"], "Video")
     elif active_cat == "Image":
@@ -3018,7 +3021,7 @@ def render_frontdoor(settings: Settings) -> None:
         st.session_state.setdefault("music_studio_script_generator", "NVIDIA Llama 3.3")
         st.selectbox(
             "Choose Script Generator",
-            options=["Gemini", "NVIDIA Llama 3.3", "Local LLM (Ollama/LM Studio)"],
+            options=["Gemini", "NVIDIA Llama 3.3", "Gemma 4 31B (OpenRouter)", "Local LLM (Ollama/LM Studio)"],
             index=1,
             key="music_studio_script_generator",
             help="Select the AI brain used to write lyrics and musical styles."
@@ -5411,6 +5414,9 @@ def render_frontdoor(settings: Settings) -> None:
                                             
                             st.caption(f"Location: `{output_video}` (Size: {output_video.stat().st_size / (1024*1024):.2f} MB)")
 
+    elif active_p == "3DVideo":
+        render_3d_video_studio(settings)
+
     elif active_p == "Image":
         # Dynamic prompt synchronization when topic, subject, or art style changes
         current_topic = st.session_state.get("image_topic", "")
@@ -5615,7 +5621,7 @@ def render_frontdoor(settings: Settings) -> None:
         st.session_state.setdefault("kids_studio_script_generator", "NVIDIA Llama 3.3")
         st.selectbox(
             "Choose Script Generator",
-            options=["Gemini", "NVIDIA Llama 3.3", "Local LLM (Ollama/LM Studio)"],
+            options=["Gemini", "NVIDIA Llama 3.3", "Gemma 4 31B (OpenRouter)", "Local LLM (Ollama/LM Studio)"],
             index=1,
             key="kids_studio_script_generator",
             help="Select the AI brain used to write stanzas and storytelling scripts."
@@ -7478,7 +7484,7 @@ def render_frontdoor(settings: Settings) -> None:
                 )
                 
                 # Script Generator Selector
-                generator_options = ["Gemini", "NVIDIA Llama 3.3", "Local LLM (Ollama/LM Studio)"]
+                generator_options = ["Gemini", "NVIDIA Llama 3.3", "Gemma 4 31B (OpenRouter)", "Local LLM (Ollama/LM Studio)"]
                 selected_generator = st.selectbox(
                     "Choose Script Generator:",
                     options=generator_options,
@@ -8061,7 +8067,7 @@ def render_frontdoor(settings: Settings) -> None:
         with col_gen:
             auto_generator = st.selectbox(
                 "Choose Script Generator:",
-                options=["Gemini", "NVIDIA Llama 3.3", "Local LLM (Ollama/LM Studio)"],
+                options=["Gemini", "NVIDIA Llama 3.3", "Gemma 4 31B (OpenRouter)", "Local LLM (Ollama/LM Studio)"],
                 index=1,
                 key="auto_script_generator_select"
             )
@@ -10147,7 +10153,9 @@ def generate_lyrics_and_style_unified(
         """
 
     gen_lower = script_generator.strip().lower()
-    if "nvidia" in gen_lower:
+    if "gemma" in gen_lower:
+        order = ["gemma", "nvidia", "gemini", "local"]
+    elif "nvidia" in gen_lower:
         order = ["nvidia", "gemini", "local"]
     elif "local" in gen_lower:
         order = ["local", "gemini"]
@@ -10155,7 +10163,36 @@ def generate_lyrics_and_style_unified(
         order = ["gemini", "local"]
 
     for engine in order:
-        if engine == "nvidia":
+        if engine == "gemma":
+            key = os.environ.get("FALLBACK_KEY_GEMMA4") or os.environ.get("OPENROUTER_API_KEY")
+            if key:
+                try:
+                    headers = {
+                        "Authorization": f"Bearer {key}",
+                        "Content-Type": "application/json",
+                        "HTTP-Referer": "https://github.com/google/antigravity",
+                        "X-Title": "Antigravity Music Studio"
+                    }
+                    payload = {
+                        "model": "google/gemma-4-31b-it",
+                        "messages": [
+                            {"role": "system", "content": system_instruction},
+                            {"role": "user", "content": user_prompt}
+                        ],
+                        "temperature": 0.3,
+                        "max_tokens": 2048,
+                        "response_format": {"type": "json_object"}
+                    }
+                    r = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, timeout=30)
+                    if r.status_code == 200:
+                        data = r.json()
+                        content = data["choices"][0]["message"]["content"]
+                        parsed = json.loads(content)
+                        if "lyrics" in parsed and "style" in parsed:
+                            return _finalize_song_output(parsed["lyrics"], parsed["style"])
+                except Exception:
+                    pass
+        elif engine == "nvidia":
             keys = list(settings.nvidia_api_keys)
             if not keys and settings.nvidia_api_key:
                 keys = [settings.nvidia_api_key]
@@ -10219,6 +10256,36 @@ def generate_lyrics_and_style_unified(
                     parsed = json.loads(response.text)
                     if "lyrics" in parsed and "style" in parsed:
                         return _finalize_song_output(parsed["lyrics"], parsed["style"])
+                except Exception:
+                    pass
+                    
+            # OpenRouter Gemini 3 Flash Preview Fallback for Audio lyric writing
+            or_key = os.environ.get("FALLBACK_KEY_GEMINI_3_FLASH") or os.environ.get("OPENROUTER_API_KEY")
+            if or_key:
+                try:
+                    headers = {
+                        "Authorization": f"Bearer {or_key}",
+                        "Content-Type": "application/json",
+                        "HTTP-Referer": "https://github.com/google/antigravity",
+                        "X-Title": "Antigravity Music Studio"
+                    }
+                    payload = {
+                        "model": "google/gemini-3-flash-preview",
+                        "messages": [
+                            {"role": "system", "content": system_instruction},
+                            {"role": "user", "content": user_prompt}
+                        ],
+                        "temperature": 0.3,
+                        "max_tokens": 2048,
+                        "response_format": {"type": "json_object"}
+                    }
+                    r = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, timeout=30)
+                    if r.status_code == 200:
+                        data = r.json()
+                        content = data["choices"][0]["message"]["content"]
+                        parsed = json.loads(content)
+                        if "lyrics" in parsed and "style" in parsed:
+                            return _finalize_song_output(parsed["lyrics"], parsed["style"])
                 except Exception:
                     pass
                     
