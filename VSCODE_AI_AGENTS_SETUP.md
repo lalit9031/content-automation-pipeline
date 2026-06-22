@@ -4,6 +4,26 @@ This guide provides a step-by-step walkthrough to configure both **Continue** (f
 
 ---
 
+## 🖥️ Minimum System Requirements
+
+The hardware you need depends on which workflows you choose to run locally vs. in the cloud:
+
+### 1. Cloud-Based Agents (Roo Code with AWS Bedrock Claude)
+* **CPU / GPU / RAM**: Any entry-level laptop or PC (e.g., 8GB RAM, integrated graphics).
+* **Requirement**: Active internet connection and valid AWS Bedrock API credentials. All model computation runs on AWS servers.
+
+### 2. Local Coding Assistant (Continue with Qwen2.5-Coder 14B)
+* **VRAM (GPU Memory)**: Minimum **12 GB VRAM** (to run the 14B model smoothly using FP8/Q4 quantization).
+* **System RAM**: 16 GB minimum (32 GB recommended).
+* **GPU**: Dedicated NVIDIA (CUDA) or AMD (ROCm) GPU.
+
+### 3. Local Video Rendering Pipeline (LTX-Video 13B / Wan2.1)
+* **VRAM (GPU Memory)**: Minimum **16 GB VRAM** (with aggressive `--lowvram` offloading). **24 GB VRAM** (e.g., AMD RX 7900 XTX or NVIDIA RTX 3090/4090) is highly recommended to prevent VRAM paging/crashes.
+* **System RAM**: **32 GB RAM** minimum.
+* **Storage**: 100 GB+ SSD space (each checkpoint and text encoder averages 5GB–15GB).
+
+---
+
 ## 📋 Prerequisites
 
 1. **Ollama Setup**:
