@@ -38,7 +38,8 @@ class ComfyUIClient:
             "--windows-standalone-build",
             "--enable-dynamic-vram",
             "--lowvram",
-            "--fp8_e4m3fn"
+            "--fp8_e4m3fn-unet",
+            "--fp8_e4m3fn-text-enc"
         ]
         log_path = Path("comfyui_server_runtime.log")
         log_file = open(log_path, "w", encoding="utf-8")

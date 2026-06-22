@@ -34,7 +34,8 @@ def start_comfyui():
         "--windows-standalone-build",
         "--enable-dynamic-vram",
         "--lowvram",
-        "--fp8_e4m3fn"
+        "--fp8_e4m3fn-unet",
+        "--fp8_e4m3fn-text-enc"
     ]
     # Write logs to a file to keep the console output clean
     log_path = Path("comfyui_server_runtime.log")
