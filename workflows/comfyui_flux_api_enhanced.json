@@ -8,10 +8,22 @@
       "sampler_name": "dpmpp_2m",
       "scheduler": "karras",
       "denoise": 0.8,
-      "model": ["10", 0],
-      "positive": ["6", 0],
-      "negative": ["7", 0],
-      "latent_image": ["5", 0]
+      "model": [
+        "10",
+        0
+      ],
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "latent_image": [
+        "5",
+        0
+      ]
     }
   },
   "4": {
@@ -32,35 +44,54 @@
     "class_type": "CLIPTextEncode",
     "inputs": {
       "text": "A beautiful landscape",
-      "clip": ["4", 1]
+      "clip": [
+        "4",
+        1
+      ]
     }
   },
   "7": {
     "class_type": "CLIPTextEncode",
     "inputs": {
       "text": "bad quality, blurry, ugly, lowres",
-      "clip": ["4", 1]
+      "clip": [
+        "4",
+        1
+      ]
     }
   },
   "8": {
-    "class_type": "VAEDecode",
+    "class_type": "VAEDecodeTiled",
     "inputs": {
-      "samples": ["3", 0],
-      "vae": ["4", 2]
+      "samples": [
+        "3",
+        0
+      ],
+      "vae": [
+        "4",
+        2
+      ],
+      "tile_size": 512
     }
   },
   "9": {
     "class_type": "SaveImage",
     "inputs": {
       "filename_prefix": "ComfyUI",
-      "images": ["8", 0]
+      "images": [
+        "8",
+        0
+      ]
     }
   },
   "10": {
     "class_type": "FluxGuidance",
     "inputs": {
       "guidance": 3.5,
-      "model": ["4", 0]
+      "model": [
+        "4",
+        0
+      ]
     }
   }
 }

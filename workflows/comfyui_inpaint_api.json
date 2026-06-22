@@ -17,7 +17,10 @@
     "class_type": "ImageToMask",
     "inputs": {
       "channel": "red",
-      "image": ["2", 0]
+      "image": [
+        "2",
+        0
+      ]
     }
   },
   "4": {
@@ -30,9 +33,18 @@
     "class_type": "VAEEncodeForInpaint",
     "inputs": {
       "grow_mask_by": 6,
-      "pixels": ["1", 0],
-      "vae": ["4", 2],
-      "mask": ["3", 0]
+      "pixels": [
+        "1",
+        0
+      ],
+      "vae": [
+        "4",
+        2
+      ],
+      "mask": [
+        "3",
+        0
+      ]
     }
   },
   "6": {
@@ -44,38 +56,66 @@
       "sampler_name": "euler",
       "scheduler": "normal",
       "denoise": 0.6,
-      "model": ["4", 0],
-      "positive": ["7", 0],
-      "negative": ["8", 0],
-      "latent_image": ["5", 0]
+      "model": [
+        "4",
+        0
+      ],
+      "positive": [
+        "7",
+        0
+      ],
+      "negative": [
+        "8",
+        0
+      ],
+      "latent_image": [
+        "5",
+        0
+      ]
     }
   },
   "7": {
     "class_type": "CLIPTextEncode",
     "inputs": {
       "text": "clear cartoon eye, pixar style, highly detailed",
-      "clip": ["4", 1]
+      "clip": [
+        "4",
+        1
+      ]
     }
   },
   "8": {
     "class_type": "CLIPTextEncode",
     "inputs": {
       "text": "blurry, low quality, distorted, deformed",
-      "clip": ["4", 1]
+      "clip": [
+        "4",
+        1
+      ]
     }
   },
   "10": {
     "class_type": "SaveImage",
     "inputs": {
       "filename_prefix": "Inpaint",
-      "images": ["9", 0]
+      "images": [
+        "9",
+        0
+      ]
     }
   },
   "9": {
-    "class_type": "VAEDecode",
+    "class_type": "VAEDecodeTiled",
     "inputs": {
-      "samples": ["6", 0],
-      "vae": ["4", 2]
+      "samples": [
+        "6",
+        0
+      ],
+      "vae": [
+        "4",
+        2
+      ],
+      "tile_size": 512
     }
   }
 }
