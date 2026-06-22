@@ -1,0 +1,151 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "🎨 Generate Reference Image (Flux)",
+            "type": "shell",
+            "command": "python generate_reference_image.py",
+            "group": "build",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "🎬 Generate Video (LTXV 13B + QA)",
+            "type": "shell",
+            "command": "python generate_video_request.py",
+            "group": "build",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "🔍 QA Test — Default Image + Video",
+            "type": "shell",
+            "command": "python test_visual_qa.py",
+            "group": "test",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "🔍 QA Test — Custom Image",
+            "type": "shell",
+            "command": "python test_visual_qa.py --image \"${input:imagePath}\" --prompt \"${input:promptText}\"",
+            "group": "test",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "🔍 QA Test — Custom Video",
+            "type": "shell",
+            "command": "python test_visual_qa.py --video \"${input:videoPath}\" --prompt \"${input:promptText}\"",
+            "group": "test",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "🚀 Start ComfyUI (25GB RAM cap)",
+            "type": "shell",
+            "command": "procgov.exe --maxmem 25G -- C:/ComfyUI/python_embeded/python.exe -s C:/ComfyUI/ComfyUI/main.py --windows-standalone-build --enable-dynamic-vram --lowvram --fp8_e4m3fn-unet --fp8_e4m3fn-text-enc",
+            "group": "build",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            },
+            "options": {
+                "cwd": "C:/ComfyUI"
+            },
+            "isBackground": true,
+            "problemMatcher": {
+                "pattern": {
+                    "regexp": "^$"
+                },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": "Starting server",
+                    "endsPattern": "To see the GUI go to"
+                }
+            }
+        },
+        {
+            "label": "🧠 Start Ollama (Moondream QA)",
+            "type": "shell",
+            "command": "ollama serve",
+            "group": "build",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            },
+            "isBackground": true,
+            "problemMatcher": []
+        },
+        {
+            "label": "🔄 Full Pipeline (Image → Video → QA)",
+            "dependsOn": [
+                "🎨 Generate Reference Image (Flux)",
+                "🎬 Generate Video (LTXV 13B + QA)"
+            ],
+            "dependsOrder": "sequence",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": []
+        }
+    ],
+    "inputs": [
+        {
+            "id": "imagePath",
+            "description": "Full path to the image file",
+            "default": "C:\\Users\\user\\Desktop\\Output file\\image\\girl_in_rain_aligned.png",
+            "type": "promptString"
+        },
+        {
+            "id": "videoPath",
+            "description": "Full path to the video file",
+            "default": "C:\\Users\\user\\Desktop\\Output file\\video\\girl_walking_to_river.mp4",
+            "type": "promptString"
+        },
+        {
+            "id": "promptText",
+            "description": "The generation prompt to test against",
+            "default": "Pixar 3D animated cute girl with umbrella walking in rain toward river bank",
+            "type": "promptString"
+        }
+    ]
+}
