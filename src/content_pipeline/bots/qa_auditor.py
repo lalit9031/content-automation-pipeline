@@ -44,6 +44,38 @@ _HARD_FAIL_SIGNALS: list[tuple[str, str]] = [
     ("melted face",         "deformed_face"),
     ("deformed face",       "deformed_face"),
     ("broken face",         "deformed_face"),
+    ("distorted face",      "deformed_face"),
+    ("warped face",         "deformed_face"),
+    ("mutated face",        "deformed_face"),
+    ("blurry face",         "deformed_face"),
+    ("glitch",              "artifact"),
+    ("visual defect",       "artifact"),
+    ("artifact",            "artifact"),
+    ("tearing",             "artifact"),
+    ("distorted features",  "artifact"),
+    ("melted features",     "artifact"),
+    ("deformed shoes",      "deformed_limbs"),
+    ("melted shoes",        "deformed_limbs"),
+    ("warped feet",         "deformed_limbs"),
+    ("broken legs",         "deformed_limbs"),
+    ("extra legs",          "deformed_limbs"),
+    ("sliding feet",        "deformed_limbs"),
+    ("weird gait",          "deformed_limbs"),
+    ("slipping feet",       "deformed_limbs"),
+    ("deformed feet",       "deformed_limbs"),
+    ("deformed legs",       "deformed_limbs"),
+    ("double feet",         "deformed_limbs"),
+    ("fused legs",          "deformed_limbs"),
+    ("shaking face",        "instability"),
+    ("shaking eyes",        "instability"),
+    ("jittery face",        "instability"),
+    ("jittery eyes",        "instability"),
+    ("flickering face",     "instability"),
+    ("flickering eyes",     "instability"),
+    ("blurry girl",         "out_of_focus"),
+    ("blurry subject",      "out_of_focus"),
+    ("out of focus face",   "out_of_focus"),
+    ("loss of detail",      "out_of_focus"),
 ]
 
 # SOFT fails: only trigger if NO outdoor counter-evidence words are present
@@ -88,14 +120,28 @@ _PASS_SIGNALS: list[str] = [
 ]
 
 
+def _has_unnegated_keyword(text: str, keyword: str) -> bool:
+    """Checks if a keyword exists in text and is not preceded by negation words."""
+    text_lower = text.lower()
+    idx = text_lower.find(keyword)
+    while idx != -1:
+        # Check characters before the keyword for negation
+        before = text_lower[max(0, idx - 25):idx]
+        negations = ["no ", "not ", "none ", "without ", "free of ", "clear of ", "isn't ", "aren't ", "never "]
+        if not any(neg in before for neg in negations):
+            return True
+        idx = text_lower.find(keyword, idx + len(keyword))
+    return False
+
+
 def _parse_moondream_response(text: str) -> dict[str, Any]:
     """
     Parse Moondream's natural-language image description into a QA result dict.
 
     Strategy:
     1. Try to parse as JSON first (rare but possible).
-    2. Scan HARD fail signals — always FAIL if found.
-    3. Scan SOFT fail signals — FAIL only if no outdoor counter-evidence.
+    2. Scan HARD fail signals — FAIL if found unnegated.
+    3. Scan SOFT fail signals — FAIL if found unnegated and no outdoor counter-evidence.
     4. Count PASS signals — 2+ hits = PASS.
     5. Fallback: default PASS with a note.
     """
@@ -111,9 +157,9 @@ def _parse_moondream_response(text: str) -> dict[str, Any]:
         except json.JSONDecodeError:
             pass
 
-    # 2. Hard FAIL signals — always trigger
+    # 2. Hard FAIL signals — always trigger if unnegated
     for keyword, defect_type in _HARD_FAIL_SIGNALS:
-        if keyword in text_lower:
+        if _has_unnegated_keyword(text_lower, keyword):
             return {
                 "status": "FAIL",
                 "reason": f"Detected '{keyword}' — subject/setting does not match prompt",
@@ -121,11 +167,11 @@ def _parse_moondream_response(text: str) -> dict[str, Any]:
                 "bounding_box": None,
             }
 
-    # 3. Soft FAIL signals — only trigger if no outdoor counter-evidence
+    # 3. Soft FAIL signals — only trigger if no outdoor counter-evidence and unnegated
     has_outdoor_evidence = any(w in text_lower for w in _OUTDOOR_COUNTER_EVIDENCE)
     if not has_outdoor_evidence:
         for keyword, defect_type in _SOFT_FAIL_SIGNALS:
-            if keyword in text_lower:
+            if _has_unnegated_keyword(text_lower, keyword):
                 return {
                     "status": "FAIL",
                     "reason": f"Detected '{keyword}' with no outdoor context — wrong setting",
@@ -177,6 +223,7 @@ class QAVisualAuditor:
         if "/v1" in url:
             url = url.split("/v1")[0]
         self.ollama_url = url.rstrip("/")
+        self.ollama_model = getattr(settings, "ollama_model", OLLAMA_MODEL)
 
     def _is_ollama_alive(self) -> bool:
         """Quick liveness check on Ollama server."""
@@ -219,12 +266,13 @@ class QAVisualAuditor:
             f"Describe everything you see in this image in detail. "
             f"Note the gender of the main subject (girl or man/boy), "
             f"whether the scene is indoors or outdoors, whether it is raining, "
-            f"whether an umbrella is present, and any visual defects such as "
-            f"broken faces, watermarks, or text overlays."
+            f"whether an umbrella is present, and look very closely for any visual defects such as "
+            f"deformed or blurry faces, shaking or jittery eyes, out-of-focus details, "
+            f"melting shoes, distorted legs or feet, watermarks, or text overlays."
         )
 
         payload = {
-            "model": OLLAMA_MODEL,
+            "model": self.ollama_model,
             "prompt": qa_prompt,
             "images": [img_b64],
             "stream": False,

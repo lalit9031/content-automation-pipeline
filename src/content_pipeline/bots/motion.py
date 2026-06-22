@@ -657,7 +657,14 @@ class ComfyUIMotionProvider:
                     ffmpeg_exe = str(embedded_path)
 
             if ffmpeg_exe:
-                print(f"Interpolating video frame rate from 5 FPS to 25 FPS using {ffmpeg_exe}...")
+                is_high_fps = bool(find_nodes("LTXVImgToVideo") or find_nodes("WanImageToVideo"))
+                if is_high_fps:
+                    print(f"Native high-FPS video detected (LTXV/Wan). Scaling to 1920x1080 without interpolation using {ffmpeg_exe} to prevent motion tearing...")
+                    filter_str = "scale=1920:1080:flags=lanczos"
+                else:
+                    print(f"Low-FPS video detected (SVD). Interpolating frame rate from 5 FPS to 25 FPS using {ffmpeg_exe}...")
+                    filter_str = "scale=1920:1080:flags=lanczos,minterpolate=fps=25:mi_mode=mci"
+
                 temp_output = destination.with_name(f"temp_interp_{destination.name}")
                 try:
                     subprocess.run(
@@ -667,7 +674,7 @@ class ComfyUIMotionProvider:
                             "-i",
                             str(destination),
                             "-vf",
-                            "scale=1920:1080:flags=lanczos,minterpolate=fps=25:mi_mode=mci",
+                            filter_str,
                             "-c:v",
                             "libx264",
                             "-preset",
@@ -684,7 +691,10 @@ class ComfyUIMotionProvider:
                     )
                     if temp_output.exists():
                         shutil.move(str(temp_output), str(destination))
-                        print(f"Successfully interpolated video to 25 FPS: {destination}")
+                        if is_high_fps:
+                            print(f"Successfully scaled video to 1920x1080: {destination}")
+                        else:
+                            print(f"Successfully interpolated video to 25 FPS: {destination}")
                 except Exception as interp_exc:
                     print(f"Warning: video frame rate interpolation failed: {interp_exc}")
                     if temp_output.exists():

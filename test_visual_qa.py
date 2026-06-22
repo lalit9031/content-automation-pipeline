@@ -105,77 +105,34 @@ def test_image(image_path: Path, prompt: str) -> dict:
     return result
 
 
-def test_video(video_path: Path, prompt: str, sample_count: int = 5) -> list[dict]:
-    """Extract frames from a video and audit each one."""
-    try:
-        import cv2
-    except ImportError:
-        print("❌ OpenCV not installed. Run: pip install opencv-python")
-        sys.exit(1)
-
+def test_video(video_path: Path, prompt: str, sample_count: int = 8) -> dict:
+    """Extract frames from a video and audit using VideoTesterAgent."""
     from content_pipeline.config import Settings
-    from content_pipeline.bots.qa_auditor import QAVisualAuditor
+    from content_pipeline.bots.video_tester import VideoTesterAgent
 
     if not video_path.exists():
         print(f"❌ Video not found: {video_path}")
         sys.exit(1)
 
     settings = Settings.from_environment()
-    auditor = QAVisualAuditor(settings)
-
-    cap = cv2.VideoCapture(str(video_path))
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    duration = total_frames / fps if fps > 0 else 0
+    tester = VideoTesterAgent(settings)
 
     print(f"\n{'='*60}")
     print(f"  MOONDREAM VISUAL QA TEST — VIDEO")
     print(f"{'='*60}")
     print(f"  Video:   {video_path.name}")
-    print(f"  Frames:  {total_frames} @ {fps:.1f} FPS ({duration:.1f}s)")
     print(f"  Prompt:  {prompt[:60]}...")
     print(f"  Samples: {sample_count} frames")
     print(f"{'='*60}\n")
 
-    # Sample evenly spaced frames
-    import numpy as np
-    indices = [int(i) for i in np.linspace(0, total_frames - 1, sample_count)]
-    results = []
-
-    for i, frame_idx in enumerate(indices):
-        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
-        ret, frame = cap.read()
-        if not ret:
-            print(f"  ⚠️  Could not read frame {frame_idx}")
-            continue
-
-        # Encode frame as PNG bytes
-        _, buf = cv2.imencode(".png", frame)
-        frame_bytes = buf.tobytes()
-
-        print(f"  Auditing frame {frame_idx} ({i+1}/{sample_count})...", end="  ")
-        result = auditor.audit_image(frame_bytes, prompt)
-        status = result.get("status", "?")
-        icon = "[PASS]" if status == "PASS" else "[FAIL]"
-        reason = f"— {result.get('reason', '')}" if result.get("reason") else ""
-        print(f"{icon} {status} {reason}")
-        results.append({"frame": frame_idx, **result})
-
-    cap.release()
-
-    # Summary
-    passed = sum(1 for r in results if r.get("status") == "PASS")
-    failed = len(results) - passed
-
+    result = tester.audit_video(video_path, prompt, sample_count)
+    
     print(f"\n{'='*60}")
-    print(f"  SUMMARY: {passed}/{len(results)} frames passed")
-    if failed:
-        print(f"  [FAIL] {failed} frames FAILED -- video needs re-generation")
-    else:
-        print(f"  [PASS] All frames passed -- video quality OK")
+    print(f"  FINAL VIDEO QA RESULT: {result['status']}")
+    print(f"  Reason: {result.get('reason')}")
     print(f"{'='*60}")
 
-    return results
+    return result
 
 
 def main():

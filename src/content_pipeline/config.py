@@ -103,6 +103,9 @@ class Settings:
     comfyui_inpaint_workflow: str = "workflows/comfyui_inpaint_api.json"
     comfyui_model_name: str = "flux1-dev.safetensors"
     comfyui_timeout_seconds: int = 300
+    video_freeze_threshold: float = 0.05
+    video_stutter_threshold: float = 4.0
+    ollama_model: str = "moondream"
     dotenv_path: Path | None = None
 
     @classmethod
@@ -249,6 +252,9 @@ class Settings:
             image_guidance_scale=float(os.getenv("IMAGE_GUIDANCE_SCALE", "7.5")),
             image_num_inference_steps=int(os.getenv("IMAGE_NUM_INFERENCE_STEPS", "20")),
             image_denoise_strength=float(os.getenv("IMAGE_DENOISE_STRENGTH", "0.7")),
+            video_freeze_threshold=float(os.getenv("VIDEO_FREEZE_THRESHOLD", "0.05")),
+            video_stutter_threshold=float(os.getenv("VIDEO_STUTTER_THRESHOLD", "4.0")),
+            ollama_model=os.getenv("OLLAMA_MODEL", "moondream").strip().lower(),
             dotenv_path=project_dir / ".env",
         )
 

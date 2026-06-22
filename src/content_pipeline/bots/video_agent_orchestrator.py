@@ -98,7 +98,7 @@ class VideoAgentOrchestrator:
                 raise render_exc
 
             # 4. Tester audits the output video
-            audit_result = self.tester.audit_video(destination, current_clip.prompt, sample_count=5)
+            audit_result = self.tester.audit_video(destination, current_clip.prompt, sample_count=12)
             
             if audit_result["status"] == "PASS":
                 print(f"\n[Orchestrator] Success! Video passed audit on attempt {attempt}.")
