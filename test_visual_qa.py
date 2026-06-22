@@ -58,13 +58,13 @@ def check_ollama() -> bool:
             models = json.loads(r.read())
             names = [m["name"] for m in models.get("models", [])]
             if not any("moondream" in n for n in names):
-                print("❌ Moondream not found in Ollama.")
+                print("[FAIL] Moondream not found in Ollama.")
                 print("   Run:  ollama pull moondream")
                 return False
-            print(f"✅ Ollama running. Models: {names}")
+            print(f"[OK] Ollama running. Models: {names}")
             return True
     except urllib.error.URLError:
-        print("❌ Ollama server is not running.")
+        print("[FAIL] Ollama server is not running.")
         print("   Run:  ollama serve")
         print("   Then: ollama pull moondream")
         return False
@@ -156,7 +156,7 @@ def test_video(video_path: Path, prompt: str, sample_count: int = 5) -> list[dic
         print(f"  Auditing frame {frame_idx} ({i+1}/{sample_count})...", end="  ")
         result = auditor.audit_image(frame_bytes, prompt)
         status = result.get("status", "?")
-        icon = "✅" if status == "PASS" else "❌"
+        icon = "[PASS]" if status == "PASS" else "[FAIL]"
         reason = f"— {result.get('reason', '')}" if result.get("reason") else ""
         print(f"{icon} {status} {reason}")
         results.append({"frame": frame_idx, **result})
@@ -170,9 +170,9 @@ def test_video(video_path: Path, prompt: str, sample_count: int = 5) -> list[dic
     print(f"\n{'='*60}")
     print(f"  SUMMARY: {passed}/{len(results)} frames passed")
     if failed:
-        print(f"  ❌ {failed} frames FAILED — video needs re-generation")
+        print(f"  [FAIL] {failed} frames FAILED -- video needs re-generation")
     else:
-        print(f"  ✅ All frames passed — video quality OK")
+        print(f"  [PASS] All frames passed -- video quality OK")
     print(f"{'='*60}")
 
     return results

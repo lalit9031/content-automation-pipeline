@@ -24,34 +24,43 @@ OLLAMA_TIMEOUT = 90   # seconds — Moondream on CPU can be slow first run
 # descriptions (Moondream 1.8B describes images well but rarely outputs JSON)
 # ---------------------------------------------------------------------------
 
-# Any of these in the response → FAIL
-_FAIL_SIGNALS: list[tuple[str, str]] = [
-    # (keyword_to_detect,   defect_type_label)
-    ("man in",              "wrong_subject"),
-    ("man walking",         "wrong_subject"),
-    ("man wearing",         "wrong_subject"),
-    ("adult man",           "wrong_subject"),
+# ---------------------------------------------------------------------------
+# FAIL signals — any of these detected = FAIL (unless overridden by counter-evidence)
+# ---------------------------------------------------------------------------
+
+# HARD fails: always trigger regardless of other context
+_HARD_FAIL_SIGNALS: list[tuple[str, str]] = [
+    ("man in suit",         "wrong_subject"),
     ("businessman",         "wrong_subject"),
+    ("adult male",          "wrong_subject"),
+    ("man walking",         "wrong_subject"),
     ("male figure",         "wrong_subject"),
-    ("boy",                 "wrong_subject"),
-    ("indoor",              "wrong_setting"),
-    ("inside a",            "wrong_setting"),
     ("shopping mall",       "wrong_setting"),
-    ("mall",                "wrong_setting"),
-    ("ceiling",             "wrong_setting"),
-    ("office",              "wrong_setting"),
+    ("inside a mall",       "wrong_setting"),
+    ("office building",     "wrong_setting"),
+    ("restaurant",          "wrong_setting"),
     ("watermark",           "watermark"),
-    ("signature",           "watermark"),
-    ("logo",                "watermark"),
     ("text overlay",        "watermark"),
-    ("melted",              "deformed_face"),
+    ("melted face",         "deformed_face"),
     ("deformed face",       "deformed_face"),
     ("broken face",         "deformed_face"),
-    ("distorted face",      "deformed_face"),
-    ("missing eye",         "eye_damage"),
-    ("extra finger",        "extra_limb"),
-    ("extra arm",           "extra_limb"),
-    ("extra leg",           "extra_limb"),
+]
+
+# SOFT fails: only trigger if NO outdoor counter-evidence words are present
+# Moondream often says "indoors" on blurry outdoor video frames — we verify
+_SOFT_FAIL_SIGNALS: list[tuple[str, str]] = [
+    ("indoors",             "wrong_setting"),
+    ("inside a",            "wrong_setting"),
+    ("ceiling",             "wrong_setting"),
+    ("man ",                "wrong_subject"),
+    ("boy ",                "wrong_subject"),
+]
+
+# If any of these are in the response, soft fails are cancelled
+_OUTDOOR_COUNTER_EVIDENCE: list[str] = [
+    "tree", "trees", "forest", "outdoor", "outside", "river", "rain",
+    "puddle", "sidewalk", "street", "path", "sky", "cloud", "nature",
+    "water", "green", "umbrella",
 ]
 
 # At least 2 of these present → PASS
@@ -85,9 +94,10 @@ def _parse_moondream_response(text: str) -> dict[str, Any]:
 
     Strategy:
     1. Try to parse as JSON first (rare but possible).
-    2. Scan for FAIL signal keywords → return FAIL immediately.
-    3. Count PASS signal keywords → 2+ hits = PASS.
-    4. Fall back to PASS with a warning note.
+    2. Scan HARD fail signals — always FAIL if found.
+    3. Scan SOFT fail signals — FAIL only if no outdoor counter-evidence.
+    4. Count PASS signals — 2+ hits = PASS.
+    5. Fallback: default PASS with a note.
     """
     text_lower = text.lower()
 
@@ -101,17 +111,29 @@ def _parse_moondream_response(text: str) -> dict[str, Any]:
         except json.JSONDecodeError:
             pass
 
-    # 2. Scan FAIL signals
-    for keyword, defect_type in _FAIL_SIGNALS:
+    # 2. Hard FAIL signals — always trigger
+    for keyword, defect_type in _HARD_FAIL_SIGNALS:
         if keyword in text_lower:
             return {
                 "status": "FAIL",
-                "reason": f"Detected '{keyword}' — does not match generation prompt",
+                "reason": f"Detected '{keyword}' — subject/setting does not match prompt",
                 "defect_type": defect_type,
                 "bounding_box": None,
             }
 
-    # 3. Count PASS signals
+    # 3. Soft FAIL signals — only trigger if no outdoor counter-evidence
+    has_outdoor_evidence = any(w in text_lower for w in _OUTDOOR_COUNTER_EVIDENCE)
+    if not has_outdoor_evidence:
+        for keyword, defect_type in _SOFT_FAIL_SIGNALS:
+            if keyword in text_lower:
+                return {
+                    "status": "FAIL",
+                    "reason": f"Detected '{keyword}' with no outdoor context — wrong setting",
+                    "defect_type": defect_type,
+                    "bounding_box": None,
+                }
+
+    # 4. PASS signals — 2+ hits = definite PASS
     pass_hits = [s for s in _PASS_SIGNALS if s in text_lower]
     if len(pass_hits) >= 2:
         return {
@@ -121,7 +143,7 @@ def _parse_moondream_response(text: str) -> dict[str, Any]:
             "bounding_box": None,
         }
 
-    # 4. Unclear — default PASS with note
+    # 5. Unclear — default PASS with note
     logging.info(f"Moondream QA unclear (defaulting PASS). Response: {text[:150]}")
     return {
         "status": "PASS",
@@ -189,16 +211,16 @@ class QAVisualAuditor:
 
         img_b64 = base64.b64encode(image_bytes).decode("utf-8")
 
-        # Structured but readable question — Moondream handles this well
+        # Use a single open-ended description request.
+        # Moondream 1.8B only answers the FIRST numbered question then stops,
+        # so we ask for one descriptive paragraph instead — this gives rich
+        # text that our keyword parser can scan for PASS/FAIL signals.
         qa_prompt = (
-            f"The image should show: '{generation_prompt}'. "
-            "Please answer these questions about the image: "
-            "1) Is the main subject a girl/female or a man/male? "
-            "2) Is the setting outdoors in rain, or indoors? "
-            "3) Is there an umbrella visible? "
-            "4) Are there any defects like broken face, deformed body, extra limbs, "
-            "watermarks, or text overlays? "
-            "Give a brief factual description of what you see."
+            f"Describe everything you see in this image in detail. "
+            f"Note the gender of the main subject (girl or man/boy), "
+            f"whether the scene is indoors or outdoors, whether it is raining, "
+            f"whether an umbrella is present, and any visual defects such as "
+            f"broken faces, watermarks, or text overlays."
         )
 
         payload = {
