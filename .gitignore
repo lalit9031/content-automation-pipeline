@@ -23,3 +23,6 @@ assets/brand/tech_with_lalit_logo.png
 models/
 rvc_worker_env/
 backup_restore/
+
+# Log files
+*.log
