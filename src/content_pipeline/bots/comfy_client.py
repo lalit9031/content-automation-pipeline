@@ -1,0 +1,185 @@
+from __future__ import annotations
+
+import json
+import logging
+import random
+import time
+import urllib.request
+import urllib.error
+from pathlib import Path
+from typing import Any
+
+
+class ComfyUIClient:
+    def __init__(self, base_url: str = "http://127.0.0.1:8188", timeout_seconds: int = 300) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.timeout_seconds = timeout_seconds
+
+    def _post(self, endpoint: str, payload: dict[str, Any]) -> dict[str, Any]:
+        url = f"{self.base_url}{endpoint}"
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=30) as res:
+            return json.loads(res.read().decode("utf-8"))
+
+    def _get(self, endpoint: str) -> dict[str, Any] | bytes:
+        url = f"{self.base_url}{endpoint}"
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=30) as res:
+            content_type = res.headers.get("Content-Type", "")
+            if "application/json" in content_type:
+                return json.loads(res.read().decode("utf-8"))
+            return res.read()
+
+    def upload_image(self, image_path: Path) -> str:
+        """
+        Uploads an image to the ComfyUI server using standard multipart/form-data.
+        Returns the uploaded filename name as stored on ComfyUI.
+        """
+        import requests
+        url = f"{self.base_url}/upload/image"
+        with open(image_path, "rb") as f:
+            files = {"image": (image_path.name, f, "image/png")}
+            r = requests.post(url, files=files)
+            r.raise_for_status()
+            return r.json()["name"]
+
+    def generate(self, workflow: dict[str, Any]) -> list[bytes]:
+        """
+        Sends the workflow to ComfyUI, waits for it to finish, and returns
+        the bytes of all generated output images, gifs, or videos.
+        """
+        # Ensure a unique client ID
+        client_id = f"content_pipeline_{random.randint(1, 1000000)}"
+        
+        # Post prompt to queue
+        payload = {
+            "prompt": workflow,
+            "client_id": client_id,
+        }
+        
+        try:
+            response = self._post("/prompt", payload)
+        except urllib.error.URLError as exc:
+            raise RuntimeError(
+                f"Failed to connect to local ComfyUI server at {self.base_url}. "
+                "Ensure ComfyUI is running and accessible."
+            ) from exc
+            
+        prompt_id = response.get("prompt_id")
+        if not prompt_id:
+            raise RuntimeError(f"ComfyUI response did not contain prompt_id: {response}")
+
+        logging.info(f"Queued ComfyUI job {prompt_id}. Waiting for completion...")
+        
+        # Poll history for completion
+        start_time = time.time()
+        completed_data = None
+        
+        while time.time() - start_time < self.timeout_seconds:
+            try:
+                history = self._get(f"/history/{prompt_id}")
+                if isinstance(history, dict) and prompt_id in history:
+                    completed_data = history[prompt_id]
+                    break
+            except Exception:
+                pass
+            time.sleep(2)
+            
+        if not completed_data:
+            raise TimeoutError(f"ComfyUI job {prompt_id} timed out after {self.timeout_seconds} seconds.")
+            
+        # Parse outputs (images, gifs, videos) and retrieve them
+        media_bytes_list: list[bytes] = []
+        outputs = completed_data.get("outputs", {})
+        for node_id, node_output in outputs.items():
+            for key in ("images", "gifs", "videos"):
+                if key in node_output:
+                    for media_info in node_output[key]:
+                        filename = media_info.get("filename")
+                        subfolder = media_info.get("subfolder", "")
+                        media_type = media_info.get("type", "output")
+                        if filename:
+                            query = f"filename={filename}&subfolder={subfolder}&type={media_type}"
+                            try:
+                                media_bytes = self._get(f"/view?{query}")
+                                if isinstance(media_bytes, bytes):
+                                    media_bytes_list.append(media_bytes)
+                            except Exception as exc:
+                                logging.warning(f"Failed to fetch {key[:-1]} {filename} from ComfyUI: {exc}")
+                            
+        return media_bytes_list
+
+
+def load_workflow_json(path_or_str: str | Path) -> dict[str, Any]:
+    """Loads a ComfyUI workflow JSON file."""
+    path = Path(path_or_str)
+    if not path.exists():
+        # Return empty dictionary to prevent crash, fallback to mock/another provider will handle it
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def customize_txt2img_workflow(
+    workflow: dict[str, Any],
+    prompt: str,
+    width: int,
+    height: int,
+    seed: int | None = None,
+    model_name: str | None = None,
+) -> dict[str, Any]:
+    """
+    Attempts to customize a txt2img workflow JSON dynamically.
+    Scans all nodes for resolution, text prompt, seed, and model checkpoints,
+    making it compatible with SD 1.5, SDXL, Flux.1, and custom workflows.
+    """
+    import copy
+    wf = copy.deepcopy(workflow)
+    
+    if seed is None:
+        seed = random.randint(1, 1125899906842624)
+        
+    for nid, node in wf.items():
+        if not isinstance(node, dict) or "inputs" not in node:
+            continue
+        inputs = node["inputs"]
+        if not isinstance(inputs, dict):
+            continue
+
+        # 1. Update resolution (width, height)
+        # Any node containing BOTH width and height inputs is updated (e.g. EmptyLatentImage)
+        if "width" in inputs and "height" in inputs:
+            if isinstance(inputs["width"], (int, float)) and isinstance(inputs["height"], (int, float)):
+                inputs["width"] = width
+                inputs["height"] = height
+
+        # 2. Update positive text prompt
+        # Any node containing text-like input fields (text, prompt, positive, text_l, text_g, t5xxl)
+        # is updated, unless it contains typical negative prompt words.
+        for text_key in ("text", "prompt", "positive", "text_l", "text_g", "t5xxl"):
+            if text_key in inputs and isinstance(inputs[text_key], str):
+                curr_text = str(inputs[text_key]).lower().strip()
+                negative_words = ["negative", "low quality", "bad quality", "ugly", "blurry", "noise", "deformed"]
+                if not any(word in curr_text for word in negative_words):
+                    inputs[text_key] = prompt
+
+        # 3. Update seed
+        for seed_key in ("seed", "noise_seed"):
+            if seed_key in inputs and isinstance(inputs[seed_key], (int, float)):
+                inputs[seed_key] = seed
+
+        # 4. Update checkpoint/model name
+        if model_name:
+            for ckpt_key in ("ckpt_name", "unet_name", "model_name"):
+                if ckpt_key in inputs and isinstance(inputs[ckpt_key], str):
+                    inputs[ckpt_key] = model_name
+
+    return wf

@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Content Automation Pipeline</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --background: #f4f7fb;
+        --surface: #ffffff;
+        --ink: #11243d;
+        --muted: #536579;
+        --accent: #0a66c2;
+        --border: #dce5ef;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--background);
+        color: var(--ink);
+        font: 16px/1.65 Arial, sans-serif;
+      }
+      main {
+        width: min(820px, calc(100% - 40px));
+        margin: 64px auto;
+        padding: clamp(28px, 6vw, 56px);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        background: var(--surface);
+      }
+      h1 {
+        margin: 0 0 16px;
+        font-size: clamp(32px, 5vw, 46px);
+        line-height: 1.12;
+      }
+      p { color: var(--muted); }
+      .badge {
+        display: inline-block;
+        margin-bottom: 22px;
+        padding: 6px 12px;
+        border-radius: 999px;
+        color: var(--accent);
+        background: #e9f3ff;
+        font-weight: bold;
+        font-size: 14px;
+      }
+      a {
+        color: var(--accent);
+        font-weight: bold;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <span class="badge">Content Automation Pipeline</span>
+      <h1>Daily content creation with controlled publishing.</h1>
+      <p>
+        This application helps its owner generate social-media captions and visual
+        assets, then prepare content for review before publishing to authorized
+        accounts.
+      </p>
+      <p>
+        LinkedIn publishing, when enabled, is performed only after the account
+        owner authorizes the app and confirms the posting workflow.
+      </p>
+      <p><a href="privacy-policy.html">View the Privacy Policy</a></p>
+    </main>
+  </body>
+</html>

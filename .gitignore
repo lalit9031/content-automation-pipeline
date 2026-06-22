@@ -1,0 +1,25 @@
+.env
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+output/*
+!output/.gitkeep
+credentials/
+.secrets/
+scripts/client_secret_*.json
+.DS_Store
+
+# Temporary scratch space and testing
+scratch/
+test_*.png
+
+# Large media assets not supported on basic Git pushes (e.g. Hugging Face)
+assets/brand/talking_avatar.gif
+assets/brand/tech_with_lalit_logo.png
+
+# Local large model files and environments
+models/
+rvc_worker_env/
+backup_restore/
