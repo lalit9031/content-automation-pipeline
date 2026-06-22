@@ -95,7 +95,10 @@
         "39",
         0
       ],
-      "tile_size": 512
+      "tile_size": 512,
+      "temporal_size": 64,
+      "temporal_overlap": 8,
+      "overlap": 64
     }
   },
   "56": {
