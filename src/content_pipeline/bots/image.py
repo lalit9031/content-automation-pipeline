@@ -83,6 +83,29 @@ class ImagenProvider:
                 aspect_ratio=variant.aspect_ratio,
                 output_mime_type="image/png",
             )
+            
+            # Add quality enhancement parameters for Imagen
+            if self.settings.image_quality == "high":
+                # For high quality, increase steps and use better settings
+                if hasattr(config, 'num_inference_steps'):
+                    config.num_inference_steps = self.settings.image_num_inference_steps
+                if hasattr(config, 'denoiser_strength'):
+                    config.denoiser_strength = self.settings.image_denoise_strength
+                if self.settings.image_seed > 0:
+                    config.seed = self.settings.image_seed
+            elif self.settings.image_quality == "medium":
+                # Medium quality - balanced settings
+                if hasattr(config, 'num_inference_steps'):
+                    config.num_inference_steps = min(self.settings.image_num_inference_steps, 15)
+                if hasattr(config, 'denoiser_strength'):
+                    config.denoiser_strength = min(self.settings.image_denoise_strength, 0.6)
+            else:
+                # Low quality - faster generation
+                if hasattr(config, 'num_inference_steps'):
+                    config.num_inference_steps = min(self.settings.image_num_inference_steps, 8)
+                if hasattr(config, 'denoiser_strength'):
+                    config.denoiser_strength = min(self.settings.image_denoise_strength, 0.4)
+            
             response = self.client.models.generate_images(
                 model=self.model,
                 prompt=prompt,
@@ -162,6 +185,27 @@ class GeminiImageProvider:
                         aspect_ratio=variant.aspect_ratio,
                         output_mime_type="image/png",
                     )
+                    # Add quality enhancement parameters
+                    if self.settings.image_quality == "high":
+                        # For high quality, increase steps and use better settings
+                        if hasattr(config, 'num_inference_steps'):
+                            config.num_inference_steps = self.settings.image_num_inference_steps
+                        if hasattr(config, 'denoiser_strength'):
+                            config.denoiser_strength = self.settings.image_denoise_strength
+                        if self.settings.image_seed > 0:
+                            config.seed = self.settings.image_seed
+                    elif self.settings.image_quality == "medium":
+                        # Medium quality - balanced settings
+                        if hasattr(config, 'num_inference_steps'):
+                            config.num_inference_steps = min(self.settings.image_num_inference_steps, 15)
+                        if hasattr(config, 'denoiser_strength'):
+                            config.denoiser_strength = min(self.settings.image_denoise_strength, 0.6)
+                    else:
+                        # Low quality - faster generation
+                        if hasattr(config, 'num_inference_steps'):
+                            config.num_inference_steps = min(self.settings.image_num_inference_steps, 8)
+                        if hasattr(config, 'denoiser_strength'):
+                            config.denoiser_strength = min(self.settings.image_denoise_strength, 0.4)
                 try:
                     response = client.models.generate_images(
                         model=self.model,
@@ -639,9 +683,104 @@ class ComfyUIImageProvider:
             base_url=settings.comfyui_url,
             timeout_seconds=settings.comfyui_timeout_seconds
         )
-        self.workflow_path = settings.comfyui_image_workflow
+        # Use enhanced workflow with quality-aware settings
+        self.workflow_path = Path(settings.comfyui_image_workflow)
         self.model_name = settings.comfyui_model_name
         self.fallback_provider = _fallback_image_provider(settings)
+
+    def _enhance_prompt_for_quality(self, prompt: str, quality: str) -> str:
+        """Enhance prompt based on quality level"""
+        base_prompt = prompt.strip()
+        
+        if quality == "high":
+            # High quality: add detail, style, and quality descriptors
+            return f"{base_prompt}, high detail, intricate features, professional lighting, sharp focus, 8k, photorealistic, cinematic composition"
+        elif quality == "medium":
+            # Medium quality: balanced detail and composition
+            return f"{base_prompt}, good composition, natural lighting, clear details, professional quality"
+        else:
+            # Low quality: simple, clear description
+            return f"{base_prompt}, clear outline, simple background, good visibility"
+
+    def _get_negative_prompt(self, quality: str) -> str:
+        """Get quality-specific negative prompt"""
+        base_negative = "blurry, low resolution, distorted, deformed, ugly, bad anatomy, watermark, text, logo"
+        
+        if quality == "high":
+            return f"{base_negative}, low detail, simple background, cartoon style, abstract"
+        elif quality == "medium":
+            return f"{base_negative}, blurry, out of focus, noisy, distorted"
+        else:
+            return f"{base_negative}, abstract, unclear, distorted, complex background"
+
+    def _get_sampler_config(self, quality: str) -> dict:
+        """Get sampler configuration based on quality level"""
+        is_flux = False
+        if hasattr(self, "model_name") and self.model_name:
+            is_flux = "flux" in self.model_name.lower()
+
+        if is_flux:
+            # Flux-specific sampler settings (flow matching)
+            base_config = {
+                "steps": 25,
+                "cfg": 1.0,           # ALWAYS 1.0 for Flux to prevent image degradation
+                "sampler_name": "euler",
+                "scheduler": "simple",
+                "denoise": 1.0,       # Typically 1.0 for text-to-image
+                "guidance": self.settings.image_guidance_scale if self.settings.image_guidance_scale != 7.5 else 3.5
+            }
+            if quality == "high":
+                return {
+                    **base_config,
+                    "steps": 30,
+                    "guidance": self.settings.image_guidance_scale if self.settings.image_guidance_scale != 7.5 else 4.0,
+                }
+            elif quality == "medium":
+                return {
+                    **base_config,
+                    "steps": 25,
+                    "guidance": self.settings.image_guidance_scale if self.settings.image_guidance_scale != 7.5 else 3.5,
+                }
+            else:  # low
+                return {
+                    **base_config,
+                    "steps": 15,
+                    "guidance": self.settings.image_guidance_scale if self.settings.image_guidance_scale != 7.5 else 2.5,
+                }
+
+        # Standard SD/SDXL settings
+        base_config = {
+            "steps": 25,
+            "cfg": 3.5,
+            "sampler_name": "dpmpp_2m",
+            "scheduler": "karras",
+            "denoise": 0.8
+        }
+        
+        # Quality-specific adjustments
+        if quality == "high":
+            return {
+                **base_config,
+                "steps": 30,
+                "cfg": 5.0,
+                "denoise": 0.9,
+                "sampler_name": "euler_ancestral"
+            }
+        elif quality == "medium":
+            return {
+                **base_config,
+                "steps": 25,
+                "cfg": 3.5,
+                "denoise": 0.8
+            }
+        else:  # low
+            return {
+                **base_config,
+                "steps": 20,
+                "cfg": 2.5,
+                "denoise": 0.7,
+                "sampler_name": "euler"
+            }
 
     def create(self, prompt: str, variant: ImageVariant) -> bytes:
         from content_pipeline.bots.comfy_client import load_workflow_json, customize_txt2img_workflow
@@ -655,12 +794,19 @@ class ComfyUIImageProvider:
                 )
                 return self.fallback_provider.create(prompt, variant)
                 
+            # Enhance prompt based on quality level
+            enhanced_prompt = self._enhance_prompt_for_quality(prompt, self.settings.image_quality)
+            negative_prompt = self._get_negative_prompt(self.settings.image_quality)
+            sampler_config = self._get_sampler_config(self.settings.image_quality)
+            
             customized = customize_txt2img_workflow(
                 workflow=workflow,
-                prompt=prompt,
+                prompt=enhanced_prompt,
                 width=variant.width,
                 height=variant.height,
-                model_name=self.model_name
+                model_name=self.model_name,
+                negative_prompt=negative_prompt,
+                sampler_config=sampler_config
             )
             
             image_list = self.client.generate(customized)
@@ -704,12 +850,25 @@ class OpenAIImageProvider:
             try:
                 # We do not pass response_format explicitly to support a wider range of custom and legacy endpoints.
                 # Standard OpenAI endpoints return a temporary URL by default, which we download securely.
-                result = client.images.generate(
-                    model=self.model,
-                    prompt=prompt,
-                    size=_openai_size_for(variant),
-                    timeout=90,
-                )
+                kwargs = {
+                    "model": self.model,
+                    "prompt": prompt,
+                    "size": _openai_size_for(variant),
+                    "timeout": 90,
+                }
+                
+                # Add quality parameter for OpenAI gpt-image-1 model
+                if self.model == "gpt-image-1":
+                    if self.settings.image_quality == "hd":
+                        kwargs["quality"] = "hd"
+                    elif self.settings.image_quality == "standard":
+                        kwargs["quality"] = "standard"
+                
+                # Add seed parameter if configured
+                if self.settings.image_seed > 0:
+                    kwargs["seed"] = self.settings.image_seed
+                
+                result = client.images.generate(**kwargs)
                 image_base64 = getattr(result.data[0], "b64_json", None)
                 if image_base64:
                     image_bytes = base64.b64decode(image_base64)
@@ -1286,6 +1445,18 @@ class PollinationsImageProvider:
             img = Image.new("RGB", (variant.width, variant.height), color="#1e293b")
             draw = ImageDraw.Draw(img)
             draw.text((40, 40), f"Asset Placeholder\nPrompt: {prompt[:60]}...", fill="#cbd5e1")
+            
+            # Apply quality enhancement to placeholder if high quality is requested
+            if self.settings.image_quality == "high":
+                try:
+                    from PIL import ImageEnhance
+                    enhancer = ImageEnhance.Sharpness(img)
+                    img = enhancer.enhance(1.1)
+                    enhancer = ImageEnhance.Contrast(img)
+                    img = enhancer.enhance(1.05)
+                except Exception:
+                    pass
+            
             out_buffer = io.BytesIO()
             img.save(out_buffer, format="PNG")
             return out_buffer.getvalue()
@@ -1300,6 +1471,27 @@ class PollinationsImageProvider:
             if img.width < variant.width or img.height < variant.height:
                 resample_filter = getattr(Image, "Resampling", Image).LANCZOS
                 img = img.resize((variant.width, variant.height), resample=resample_filter)
+            
+            # Apply quality enhancement based on settings
+            if self.settings.image_quality == "high":
+                # Apply sharpening and contrast enhancement for high quality
+                try:
+                    from PIL import ImageEnhance
+                    enhancer = ImageEnhance.Sharpness(img)
+                    img = enhancer.enhance(1.2)
+                    enhancer = ImageEnhance.Contrast(img)
+                    img = enhancer.enhance(1.1)
+                except Exception:
+                    pass
+            elif self.settings.image_quality == "medium":
+                # Mild enhancement for medium quality
+                try:
+                    from PIL import ImageEnhance
+                    enhancer = ImageEnhance.Sharpness(img)
+                    img = enhancer.enhance(1.1)
+                except Exception:
+                    pass
+            
             out_buffer = io.BytesIO()
             img.save(out_buffer, format="PNG")
             image_bytes = out_buffer.getvalue()
@@ -1388,17 +1580,29 @@ class NvidiaFluxImageProvider:
 
         flux_w, flux_h = self._map_flux_dimensions(variant.width, variant.height)
 
+        # Adjust steps based on quality settings
+        steps = self.steps
+        if self.settings.image_quality == "high":
+            # Use higher steps for high quality
+            steps = min(self.settings.image_num_inference_steps, self.steps)
+        elif self.settings.image_quality == "medium":
+            # Use medium steps
+            steps = min(self.settings.image_num_inference_steps, 15)
+        else:
+            # Use lower steps for low quality
+            steps = min(self.settings.image_num_inference_steps, 8)
+
         for attempt in range(len(self.api_keys)):
             api_key = self._next_key()
             payload = {
                 "prompt": prompt,
-                "seed": 0,
-                "steps": self.steps,
+                "seed": self.settings.image_seed if self.settings.image_seed > 0 else 0,
+                "steps": steps,
                 "width": flux_w,
                 "height": flux_h,
                 # cfg_scale only for dev model
                 **({
-                    "cfg_scale": 3.5,
+                    "cfg_scale": self.settings.image_guidance_scale,
                 } if "dev" in self.model_key else {}),
             }
             req = urllib.request.Request(

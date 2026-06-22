@@ -66,9 +66,16 @@ class ComfyUIClient:
         try:
             response = self._post("/prompt", payload)
         except urllib.error.URLError as exc:
+            err_body = ""
+            if hasattr(exc, "read"):
+                try:
+                    err_body = exc.read().decode("utf-8")
+                except Exception:
+                    pass
+            logging.error(f"ComfyUI /prompt error: {exc}. Server response: {err_body}")
             raise RuntimeError(
                 f"Failed to connect to local ComfyUI server at {self.base_url}. "
-                "Ensure ComfyUI is running and accessible."
+                f"Details: {exc}. Response: {err_body}"
             ) from exc
             
         prompt_id = response.get("prompt_id")
@@ -135,11 +142,14 @@ def customize_txt2img_workflow(
     height: int,
     seed: int | None = None,
     model_name: str | None = None,
+    negative_prompt: str | None = None,
+    sampler_config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
     Attempts to customize a txt2img workflow JSON dynamically.
-    Scans all nodes for resolution, text prompt, seed, and model checkpoints,
-    making it compatible with SD 1.5, SDXL, Flux.1, and custom workflows.
+    Scans all nodes for resolution, text prompt, seed, model checkpoints,
+    negative prompt, and sampler settings, making it compatible with
+    SD 1.5, SDXL, Flux.1, and custom workflows.
     """
     import copy
     wf = copy.deepcopy(workflow)
@@ -171,12 +181,26 @@ def customize_txt2img_workflow(
                 if not any(word in curr_text for word in negative_words):
                     inputs[text_key] = prompt
 
-        # 3. Update seed
+        # 3. Update negative prompt
+        if negative_prompt and "negative" in inputs and isinstance(inputs["negative"], str):
+            inputs["negative"] = negative_prompt
+
+        # 4. Update sampler settings
+        if sampler_config:
+            # Update sampler configuration
+            for sampler_key in ("sampler_name", "scheduler", "steps", "cfg", "denoise", "guidance"):
+                if sampler_key in sampler_config and sampler_key in inputs:
+                    if isinstance(sampler_config[sampler_key], (int, float)) and isinstance(inputs[sampler_key], (int, float)):
+                        inputs[sampler_key] = sampler_config[sampler_key]
+                    elif isinstance(sampler_config[sampler_key], str) and isinstance(inputs[sampler_key], str):
+                        inputs[sampler_key] = sampler_config[sampler_key]
+
+        # 5. Update seed
         for seed_key in ("seed", "noise_seed"):
             if seed_key in inputs and isinstance(inputs[seed_key], (int, float)):
                 inputs[seed_key] = seed
 
-        # 4. Update checkpoint/model name
+        # 6. Update checkpoint/model name
         if model_name:
             for ckpt_key in ("ckpt_name", "unet_name", "model_name"):
                 if ckpt_key in inputs and isinstance(inputs[ckpt_key], str):

@@ -38,6 +38,11 @@ class Settings:
     voicebox_url: str = "http://127.0.0.1:17493"
     image_max_dimension: int = 4096
     image_max_bytes: int = 5 * 1024 * 1024
+    image_quality: str = "high"
+    image_seed: int = 0
+    image_guidance_scale: float = 7.5
+    image_num_inference_steps: int = 20
+    image_denoise_strength: float = 0.7
     publish_linkedin: bool = False
     linkedin_client_id: str = ""
     linkedin_client_secret: str = ""
@@ -234,11 +239,16 @@ class Settings:
             comic_kokoro_model_repo=os.getenv("COMIC_KOKORO_MODEL_REPO", "hexgrad/Kokoro-82M"),
             comic_chatterbox_model_repo=os.getenv("COMIC_CHATTERBOX_MODEL_REPO", "ResembleAI/chatterbox"),
             comfyui_url=os.getenv("COMFYUI_URL", "http://127.0.0.1:8188").strip().rstrip("/"),
-            comfyui_image_workflow=os.getenv("COMFYUI_IMAGE_WORKFLOW", "workflows/comfyui_flux_api.json").strip(),
+            comfyui_image_workflow=os.getenv("COMFYUI_IMAGE_WORKFLOW", "workflows/comfyui_flux_api_enhanced.json").strip(),
             comfyui_video_workflow=os.getenv("COMFYUI_VIDEO_WORKFLOW", "workflows/comfyui_svd_api.json").strip(),
             comfyui_inpaint_workflow=os.getenv("COMFYUI_INPAINT_WORKFLOW", "workflows/comfyui_inpaint_api.json").strip(),
             comfyui_model_name=os.getenv("COMFYUI_MODEL_NAME", "flux1-dev.safetensors").strip(),
             comfyui_timeout_seconds=int(os.getenv("COMFYUI_TIMEOUT_SECONDS", "300")),
+            image_quality=os.getenv("IMAGE_QUALITY", "high").strip().lower(),
+            image_seed=int(os.getenv("IMAGE_SEED", "0")),
+            image_guidance_scale=float(os.getenv("IMAGE_GUIDANCE_SCALE", "7.5")),
+            image_num_inference_steps=int(os.getenv("IMAGE_NUM_INFERENCE_STEPS", "20")),
+            image_denoise_strength=float(os.getenv("IMAGE_DENOISE_STRENGTH", "0.7")),
             dotenv_path=project_dir / ".env",
         )
 

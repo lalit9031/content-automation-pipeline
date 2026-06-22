@@ -63,9 +63,6 @@ def invoke_model(
     if not prompt.strip():
         raise ValueError("The prompt must not be empty.")
 
-    if os.getenv("BEDROCK_AUTH_MODE", "iam").strip().lower() == "iam":
-        os.environ.pop("AWS_BEARER_TOKEN_BEDROCK", None)
-
     model_id = MODEL_IDS.get(model, model)
     client = boto3.client("bedrock-runtime", region_name=region)
     request = {

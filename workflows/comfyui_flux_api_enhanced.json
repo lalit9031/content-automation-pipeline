@@ -4,12 +4,12 @@
     "inputs": {
       "seed": 0,
       "steps": 25,
-      "cfg": 1.0,
-      "sampler_name": "euler",
-      "scheduler": "simple",
-      "denoise": 1.0,
-      "model": ["4", 0],
-      "positive": ["10", 0],
+      "cfg": 3.5,
+      "sampler_name": "dpmpp_2m",
+      "scheduler": "karras",
+      "denoise": 0.8,
+      "model": ["10", 0],
+      "positive": ["6", 0],
       "negative": ["7", 0],
       "latent_image": ["5", 0]
     }
@@ -60,7 +60,7 @@
     "class_type": "FluxGuidance",
     "inputs": {
       "guidance": 3.5,
-      "conditioning": ["6", 0]
+      "model": ["4", 0]
     }
   }
 }

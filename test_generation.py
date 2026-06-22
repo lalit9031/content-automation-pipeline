@@ -21,8 +21,10 @@ def main():
     variant = ImageVariant("1:1", 1080, 1080, "test_image")
     
     prompt = (
-        "A majestic lion sitting on a golden throne in a royal castle, "
-        "fantasy digital art, 8k resolution, cinematic lighting, highly detailed"
+        "A beautiful 3D claymation style illustration of two young Indian boys named Sonu and Monu, "
+        "who are best friends, standing together happily in their beautiful rural village. "
+        "The scene features cozy houses, trees, soft plasticine clay textures, "
+        "warm cheerful volumetric lighting, and a gentle depth of field."
     )
     print(f"Generating image with prompt: '{prompt}'...")
     

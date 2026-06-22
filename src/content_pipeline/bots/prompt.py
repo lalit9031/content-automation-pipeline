@@ -165,9 +165,6 @@ def _build_bedrock_client(settings: Settings):
     import boto3
     from botocore.config import Config
 
-    if settings.bedrock_auth_mode == "iam":
-        os.environ.pop("AWS_BEARER_TOKEN_BEDROCK", None)
-
     return boto3.client(
         "bedrock-runtime",
         region_name=settings.aws_region,
