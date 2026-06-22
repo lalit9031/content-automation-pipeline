@@ -186,7 +186,7 @@ class ComfyUIClient:
                                     media_bytes = self._get(f"/view?{query}")
                                     if isinstance(media_bytes, bytes):
                                         media_bytes_list.append(media_bytes)
-                                  except Exception as exc:
+                                except Exception as exc:
                                     logging.warning(f"Failed to fetch {key[:-1]} {filename} from ComfyUI: {exc}")
                                 
             return media_bytes_list
