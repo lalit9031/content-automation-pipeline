@@ -698,18 +698,19 @@ class ComfyUIMotionProvider:
             }
         except Exception as exc:
             import logging
-            logging.warning(f"ComfyUI video generation failed: {exc}. Falling back to Hugging Face SVD provider...")
-            import dataclasses
-            if image_path and image_path.exists() and not clip.reference_image_file:
-                clip = dataclasses.replace(clip, reference_image_file=str(image_path))
-            
-            try:
-                hf_provider = HuggingFaceSVDMotionProvider(self.settings)
-                return hf_provider.create_clip(clip, plan, destination)
-            except Exception as hf_exc:
-                logging.warning(f"Hugging Face SVD video generation failed: {hf_exc}. Falling back to local_2_5d provider...")
-                fallback = LocalTwoPointFiveDMotionProvider()
-                return fallback.create_clip(clip, plan, destination)
+            logging.warning(f"ComfyUI video generation failed: {exc}")
+            # DO NOT fall back to HuggingFace SVD:
+            #  - HF SVD ignores the prompt and generates wrong subjects (man instead of girl)
+            #  - HF ZeroGPU quota exhausts quickly and blocks the pipeline for hours
+            #  - ComfyUI has built-in auto-start via _start_server() — if it's down, fix it
+            raise RuntimeError(
+                f"ComfyUI video generation failed and HuggingFace fallback is DISABLED "
+                f"to protect video quality and HF quota.\n"
+                f"Original error: {exc}\n"
+                f"Fix: Make sure ComfyUI is running at http://127.0.0.1:8188\n"
+                f"     Run: C:\\ComfyUI\\run_amd_gpu_enable_dynamic_vram.bat\n"
+                f"     Or use VS Code task: Start ComfyUI (25GB RAM cap)"
+            ) from exc
 
 
 def generate_motion_clips(plan: MotionPlan, settings: Settings, output_dir: Path) -> list[dict[str, str]]:
