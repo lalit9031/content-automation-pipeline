@@ -3,16 +3,77 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import re
 import urllib.request
 import urllib.error
 from typing import Any
 from content_pipeline.config import Settings
 
 # Moondream is a tiny 1.8B vision model — completely free, runs locally.
-# Uses only ~2GB VRAM. ComfyUI unloads models between jobs so no conflict.
+# Uses only ~1.7GB. ComfyUI unloads models between jobs so there is no conflict.
 # One-time setup: ollama pull moondream
 OLLAMA_MODEL = "moondream"
 OLLAMA_URL = "http://localhost:11434"
+
+# Keywords that indicate a FAIL in Moondream's natural language response
+_FAIL_SIGNALS = [
+    "man in", "man walking", "man wearing", "male", "businessman",
+    "indoor", "inside", "shopping mall", "mall", "ceiling",
+    "watermark", "text overlay", "logo",
+    "melted", "deformed", "broken face", "distorted face",
+]
+# Keywords that confirm a PASS
+_PASS_SIGNALS = [
+    "girl", "young girl", "little girl", "cartoon girl",
+    "rain", "umbrella", "outdoor", "outside", "river",
+    "no visible defects", "no defects", "no watermark",
+]
+
+
+def _parse_moondream_text(text: str, prompt: str) -> dict[str, Any]:
+    """
+    Parse Moondream's natural language response into a structured QA result.
+    Since Moondream (1.8B) rarely outputs valid JSON, we detect PASS/FAIL
+    from its description using keyword matching.
+    """
+    text_lower = text.lower()
+
+    # Check for explicit JSON first (lucky case)
+    json_match = re.search(r"\{.*?\}", text, re.DOTALL)
+    if json_match:
+        try:
+            return json.loads(json_match.group(0))
+        except json.JSONDecodeError:
+            pass
+
+    # Detect FAIL signals
+    for signal in _FAIL_SIGNALS:
+        if signal in text_lower:
+            return {
+                "status": "FAIL",
+                "reason": f"Moondream detected: '{signal}' — does not match prompt",
+                "defect_type": "wrong_subject" if "man" in signal or "mall" in signal else "visual_defect",
+                "bounding_box": None
+            }
+
+    # Detect PASS signals
+    pass_hits = sum(1 for s in _PASS_SIGNALS if s in text_lower)
+    if pass_hits >= 2:
+        return {
+            "status": "PASS",
+            "reason": None,
+            "defect_type": None,
+            "bounding_box": None
+        }
+
+    # Neutral / unclear — log it and default to PASS
+    logging.info(f"Moondream unclear response (defaulting PASS): {text[:120]}")
+    return {
+        "status": "PASS",
+        "reason": f"Moondream response unclear: {text[:80]}",
+        "defect_type": None,
+        "bounding_box": None
+    }
 
 
 class QAVisualAuditor:
@@ -26,28 +87,22 @@ class QAVisualAuditor:
     def audit_image(self, image_bytes: bytes, generation_prompt: str) -> dict[str, Any]:
         """
         Audits a generated image using local Moondream via Ollama.
-        Moondream is free, tiny (1.8B), and uses ~2GB VRAM.
+        Moondream describes the image in plain text; we parse keywords to PASS/FAIL.
         Falls back to PASS if Ollama is offline.
-        Returns a dict with 'status', 'reason', 'defect_type', 'bounding_box'.
         """
         img_b64 = base64.b64encode(image_bytes).decode("utf-8")
 
-        prompt = (
-            f"The image was generated from this prompt: '{generation_prompt}'. "
-            "Does the image match the prompt? Check: "
-            "1) Is the subject correct (girl not man, child not adult)? "
-            "2) Is the setting correct (outdoor rain/river, not indoor)? "
-            "3) Are there any broken or melted faces? "
-            "4) Any watermarks or text overlays? "
-            "Reply with ONLY a JSON object like this: "
-            '{"status": "PASS", "reason": null, "defect_type": null, "bounding_box": null} '
-            "or "
-            '{"status": "FAIL", "reason": "what is wrong", "defect_type": "wrong_subject", "bounding_box": null}'
+        # Simple, direct question — Moondream handles these better than JSON instructions
+        qa_prompt = (
+            f"Describe this image in detail. The image was supposed to show: {generation_prompt}. "
+            "Is the main subject a girl or a boy/man? "
+            "Is the setting outdoors in rain or indoors? "
+            "Are there any visible defects like broken face, extra limbs, or watermarks?"
         )
 
         payload = {
             "model": OLLAMA_MODEL,
-            "prompt": prompt,
+            "prompt": qa_prompt,
             "images": [img_b64],
             "stream": False,
         }
@@ -64,23 +119,10 @@ class QAVisualAuditor:
             with urllib.request.urlopen(req, timeout=60) as res:
                 response = json.loads(res.read().decode("utf-8"))
                 response_text = response.get("response", "").strip()
-                # Strip markdown fences if present
-                if response_text.startswith("```"):
-                    response_text = response_text.split("```")[1]
-                    if response_text.startswith("json"):
-                        response_text = response_text[4:]
-                try:
-                    result = json.loads(response_text)
-                    logging.info(f"Moondream QA result: {result}")
-                    return result
-                except json.JSONDecodeError:
-                    import re
-                    match = re.search(r"\{.*?\}", response_text, re.DOTALL)
-                    if match:
-                        return json.loads(match.group(0))
-                    # If can't parse JSON, treat as PASS with warning
-                    logging.warning(f"Could not parse QA JSON: {response_text[:100]}")
-                    return {"status": "PASS", "reason": "Parse error", "defect_type": None, "bounding_box": None}
+                logging.info(f"Moondream raw response: {response_text[:200]}")
+                result = _parse_moondream_text(response_text, generation_prompt)
+                logging.info(f"Moondream QA result: {result}")
+                return result
 
         except urllib.error.URLError as e:
             logging.warning(
