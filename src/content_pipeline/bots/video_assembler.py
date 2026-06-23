@@ -65,10 +65,18 @@ class VideoAssembler:
     - Uses ffmpeg concat demuxer for lossless stitch (fastest, no re-encode)
     - Optionally applies xfade crossfade transitions between clips
     - Output is H.264 MP4 at 1920x1080, ready for YouTube upload
+    - Optional YouTube compression pass: CRF 23 + H.264 High Profile
+      reduces 20MB clips to 3-6MB with no visible quality difference on YouTube
+      (YouTube re-encodes everything anyway — sending a smaller file is always fine)
 
     Audio:
     - Wired but PARKED — audio_path parameter is accepted but not active yet
     - Will be activated when audio pipeline is stable
+
+    File size guide (1920x1080, 24fps):
+      CRF 18 (archival)   ~15-25MB per 5s clip  → total 30s ≈ 100-150MB
+      CRF 23 (YouTube)    ~3-6MB per 5s clip    → total 30s ≈ 20-40MB  ← default
+      CRF 28 (web/mobile) ~1-2MB per 5s clip    → total 30s ≈ 8-15MB
     """
 
     def assemble(
@@ -78,26 +86,38 @@ class VideoAssembler:
         crossfade_seconds: float = 0.5,
         audio_path: Optional[Path] = None,   # PARKED — audio pipeline coming soon
         target_resolution: str = "1920x1080",
+        youtube_compress: bool = True,        # Apply YouTube-optimized compression
+        crf: int = 23,                        # 18=archival(huge), 23=YouTube(good), 28=web(small)
     ) -> Path:
         """
         Stitch multiple video clips into one output video.
 
         Args:
-            clip_paths:          List of .mp4 clip paths in order.
-            output_path:         Destination for the final assembled video.
-            crossfade_seconds:   Duration of crossfade between clips (0 = hard cut).
-            audio_path:          (PARKED) Future: path to narration/music audio.
-            target_resolution:   Output resolution (default 1920x1080).
+            clip_paths:         List of .mp4 clip paths in order.
+            output_path:        Destination for the final assembled video.
+            crossfade_seconds:  Duration of crossfade between clips (0 = hard cut).
+            audio_path:         (PARKED) Future: path to narration/music audio.
+            target_resolution:  Output resolution (default 1920x1080).
+            youtube_compress:   If True (default), apply YouTube-optimized CRF 23 encode.
+                                This reduces file size 50-70% with no visible quality loss.
+            crf:                Compression level. 18=large/archival, 23=YouTube, 28=web/mobile.
 
         Returns:
             Path to the assembled output video.
+
+        File size guide (1920x1080 @ 24fps per 5-second clip):
+            CRF 18: ~15-25 MB  (archival, huge files)
+            CRF 23: ~3-6 MB   (YouTube — same visual quality, YouTube re-encodes anyway)
+            CRF 28: ~1-2 MB   (web/mobile sharing)
         """
         if not clip_paths:
             raise ValueError("No clip paths provided to VideoAssembler.")
         if len(clip_paths) == 1:
-            # Nothing to stitch — just copy the single clip
-            logging.info("[VideoAssembler] Only 1 clip — copying directly to output.")
+            # Nothing to stitch — just compress the single clip directly
+            logging.info("[VideoAssembler] Only 1 clip — compressing to output.")
             output_path.parent.mkdir(parents=True, exist_ok=True)
+            if youtube_compress:
+                return self.compress_for_youtube(clip_paths[0], output_path, crf=crf, target_resolution=target_resolution)
             shutil.copy2(clip_paths[0], output_path)
             return output_path
 
@@ -106,15 +126,21 @@ class VideoAssembler:
 
         logging.info(
             f"[VideoAssembler] Assembling {len(clip_paths)} clips "
-            f"into {output_path.name} (crossfade={crossfade_seconds}s)"
+            f"into {output_path.name} (crossfade={crossfade_seconds}s, crf={crf})"
         )
 
         if crossfade_seconds > 0:
-            return self._assemble_with_crossfade(
-                ffmpeg, clip_paths, output_path, crossfade_seconds, target_resolution
+            assembled = self._assemble_with_crossfade(
+                ffmpeg, clip_paths, output_path, crossfade_seconds, target_resolution, crf
             )
         else:
-            return self._assemble_concat(ffmpeg, clip_paths, output_path, target_resolution)
+            assembled = self._assemble_concat(ffmpeg, clip_paths, output_path, target_resolution, crf)
+
+        # Report file size
+        size_mb = round(assembled.stat().st_size / (1024*1024), 1)
+        logging.info(f"[VideoAssembler] Final video: {assembled.name} ({size_mb} MB, CRF={crf})")
+        print(f"  Final video size: {size_mb} MB (CRF={crf} — YouTube ready)")
+        return assembled
 
     def _assemble_concat(
         self,
@@ -122,10 +148,11 @@ class VideoAssembler:
         clip_paths: list[Path],
         output_path: Path,
         target_resolution: str,
+        crf: int = 23,
     ) -> Path:
         """
         Fast hard-cut assembly using ffmpeg concat demuxer.
-        All clips must be the same resolution and codec.
+        CRF 23 = YouTube quality (3-6MB per 5s clip vs 15-25MB at CRF 18).
         """
         w, h = target_resolution.split("x")
 
@@ -144,13 +171,16 @@ class VideoAssembler:
                 "-i", str(concat_file),
                 "-vf", f"scale={w}:{h}:flags=lanczos",
                 "-c:v", "libx264",
-                "-preset", "slow",
-                "-crf", "18",
+                "-preset", "medium",   # medium = good speed/quality balance
+                "-crf", str(crf),       # 23 = YouTube quality, 18 = archival
+                "-profile:v", "high",  # H.264 High Profile = better compression
+                "-level", "4.1",       # YouTube compatible level
+                "-movflags", "+faststart",  # Web streaming optimization
                 "-pix_fmt", "yuv420p",
-                "-an",                          # No audio (parked)
+                "-an",                 # No audio (parked)
                 str(output_path),
             ]
-            logging.info(f"[VideoAssembler] Running concat: {' '.join(cmd[:6])}...")
+            logging.info(f"[VideoAssembler] concat encode: CRF={crf}, {w}x{h}")
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
             if result.returncode != 0:
                 raise RuntimeError(f"ffmpeg concat failed:\n{result.stderr[-1000:]}")
@@ -167,42 +197,31 @@ class VideoAssembler:
         output_path: Path,
         crossfade_seconds: float,
         target_resolution: str,
+        crf: int = 23,
     ) -> Path:
         """
         Smooth crossfade assembly using ffmpeg xfade filter.
-
-        Strategy: Build a filter_complex chain that crossfades each pair of clips.
-        For N clips: we need N-1 xfade transitions.
+        CRF 23 = YouTube quality. Falls back to concat if xfade fails.
         """
         w, h = target_resolution.split("x")
         n = len(clip_paths)
 
-        # Collect clip durations
         clip_durations = []
         for clip in clip_paths:
             dur = self._get_clip_duration(ffmpeg, clip)
             clip_durations.append(dur)
             logging.info(f"[VideoAssembler] Clip {clip.name}: {dur:.2f}s")
 
-        # Build ffmpeg command
         cmd = [ffmpeg, "-y"]
-
-        # Input files (each clip normalized to target resolution first)
         for clip in clip_paths:
             cmd += ["-i", str(clip)]
 
-        # Build filter_complex for xfade chain
-        # Each xfade needs: offset = sum of previous clip durations - crossfade overlap
         filter_parts = []
-        labels = []
-
-        # First: normalize all clips to the same resolution and fps
         for i in range(n):
             filter_parts.append(
                 f"[{i}:v]scale={w}:{h}:flags=lanczos,fps=24,format=yuv420p[v{i}]"
             )
 
-        # Then: chain xfade transitions
         cumulative_offset = 0.0
         prev_label = "v0"
         for i in range(1, n):
@@ -218,19 +237,21 @@ class VideoAssembler:
             prev_label = out_label
 
         filter_complex = ";".join(filter_parts)
-
         cmd += [
             "-filter_complex", filter_complex,
             "-map", "[vout]",
             "-c:v", "libx264",
-            "-preset", "slow",
-            "-crf", "18",
+            "-preset", "medium",
+            "-crf", str(crf),
+            "-profile:v", "high",
+            "-level", "4.1",
+            "-movflags", "+faststart",
             "-pix_fmt", "yuv420p",
-            "-an",          # No audio (parked)
+            "-an",
             str(output_path),
         ]
 
-        logging.info(f"[VideoAssembler] Running xfade assembly for {n} clips...")
+        logging.info(f"[VideoAssembler] xfade assembly: {n} clips, CRF={crf}")
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
             if result.returncode != 0:
@@ -238,12 +259,77 @@ class VideoAssembler:
                     f"[VideoAssembler] xfade failed, falling back to concat.\n"
                     f"Error: {result.stderr[-500:]}"
                 )
-                return self._assemble_concat(ffmpeg, clip_paths, output_path, target_resolution)
+                return self._assemble_concat(ffmpeg, clip_paths, output_path, target_resolution, crf)
         except subprocess.TimeoutExpired:
             logging.warning("[VideoAssembler] xfade timed out, falling back to concat.")
-            return self._assemble_concat(ffmpeg, clip_paths, output_path, target_resolution)
+            return self._assemble_concat(ffmpeg, clip_paths, output_path, target_resolution, crf)
 
-        logging.info(f"[VideoAssembler] Crossfade assembled video saved: {output_path}")
+        logging.info(f"[VideoAssembler] Crossfade assembled: {output_path}")
+        return output_path
+
+    def compress_for_youtube(
+        self,
+        input_path: Path,
+        output_path: Path,
+        crf: int = 23,
+        target_resolution: str = "1920x1080",
+        audio_path: Optional[Path] = None,
+    ) -> Path:
+        """
+        Standalone YouTube compression pass.
+        Takes any video file and outputs a YouTube-optimized H.264 MP4.
+
+        Args:
+            input_path:        Source video file.
+            output_path:       Destination for compressed video.
+            crf:               Quality level. 23=YouTube, 18=archival, 28=web.
+            target_resolution: Output resolution (default 1920x1080).
+            audio_path:        Optional audio track to mix in.
+
+        Returns:
+            Path to compressed output.
+
+        File size examples (1920x1080 @ 24fps):
+            5-second clip:  CRF 23 = ~3-6 MB  (vs ~15-20 MB at CRF 18)
+            30-second video: CRF 23 = ~20-40 MB (vs ~90-150 MB at CRF 18)
+        """
+        ffmpeg = _find_ffmpeg()
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        w, h = target_resolution.split("x")
+
+        cmd = [
+            ffmpeg, "-y",
+            "-i", str(input_path),
+        ]
+        if audio_path and audio_path.exists():
+            cmd += ["-i", str(audio_path), "-shortest"]
+
+        cmd += [
+            "-vf", f"scale={w}:{h}:flags=lanczos",
+            "-c:v", "libx264",
+            "-preset", "medium",
+            "-crf", str(crf),
+            "-profile:v", "high",
+            "-level", "4.1",
+            "-movflags", "+faststart",  # Enables streaming before full download
+            "-pix_fmt", "yuv420p",
+        ]
+        if audio_path and audio_path.exists():
+            cmd += ["-c:a", "aac", "-b:a", "192k"]
+        else:
+            cmd += ["-an"]
+        cmd.append(str(output_path))
+
+        logging.info(f"[VideoAssembler] YouTube compress: {input_path.name} -> CRF={crf} {w}x{h}")
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        if result.returncode != 0:
+            raise RuntimeError(f"YouTube compression failed:\n{result.stderr[-500:]}")
+
+        size_mb = round(output_path.stat().st_size / (1024*1024), 1)
+        orig_mb = round(input_path.stat().st_size / (1024*1024), 1)
+        saved_pct = round((1 - size_mb/orig_mb) * 100) if orig_mb > 0 else 0
+        logging.info(f"[VideoAssembler] Compressed: {orig_mb}MB -> {size_mb}MB (saved {saved_pct}%)")
+        print(f"  YouTube compression: {orig_mb} MB -> {size_mb} MB (saved {saved_pct}%, CRF={crf})")
         return output_path
 
     def _get_clip_duration(self, ffmpeg: str, clip_path: Path) -> float:
