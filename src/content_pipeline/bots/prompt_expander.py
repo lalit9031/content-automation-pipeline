@@ -40,13 +40,15 @@ _UNIVERSAL_NEGATIVE_ANCHORS = (
     "No distorted or melted limbs, no extra fingers, no fused hands. "
     "No deformed or blurry face, no shaking eyes, no flickering features. "
     "No motion blur on the face or subject. "
-    "No color banding, no pixelation, no visual artifacts."
+    "No color banding, no pixelation, no visual artifacts. "
+    "No subject too small or too distant — face must be clearly visible and sharp at all times."
 )
 
 _VIDEO_NEGATIVE_ANCHORS = (
     "No frame tearing, no ghosting, no motion blur on face. "
     "No floating feet, no sliding steps, no unnatural gait. "
     "No camera shake, no jitter, no abrupt cuts. "
+    "No wide establishing shots that make the subject tiny or faceless. "
     "Feet must stay firmly on the ground with each step."
 )
 
@@ -243,32 +245,33 @@ _MOTION_LIBRARY: dict[str, str] = {
 # Camera motion keyed by scene category
 _CAMERA_MOTION: dict[str, str] = {
     "nature": (
-        "stable wide shot at eye level, very slight natural sway as if handheld on a shoulder rig, "
-        "subject centered in frame with environmental context visible around them"
+        "medium shot at eye level, subject filling 60% of frame, face clearly visible and centered, "
+        "very slight natural sway as if handheld on a shoulder rig, "
+        "subject's face and upper body always sharp and in focus"
     ),
     "urban": (
-        "slow smooth dolly-forward, tracking the subject from behind at a 3-meter distance, "
-        "keeping the subject's full body in frame with the street visible ahead"
+        "medium tracking shot following the subject from 2 meters behind and slightly to the side, "
+        "subject's face and upper body visible, keeping the subject filling 50% of frame throughout"
     ),
     "office": (
         "slow gentle camera zoom-in toward the subject, starting from a medium wide shot "
-        "and ending on a medium close-up — subject centered throughout"
+        "and ending on a medium close-up — subject's face centered and sharp throughout"
     ),
     "studio": (
-        "perfectly static front-facing shot, subject centered and fully in frame, "
-        "no camera motion — clean and professional"
+        "perfectly static front-facing medium shot, subject's face centered and fully in frame, "
+        "no camera motion — clean and professional, face sharp"
     ),
     "home": (
-        "gentle slow pan following the subject's movement, "
-        "warm intimate framing with soft natural background visible"
+        "gentle slow pan following the subject's movement at medium distance, "
+        "face and upper body always in frame, warm intimate framing"
     ),
     "educational": (
-        "static medium wide shot, subject fully visible, slight tilt up as they stand, "
-        "background context of the room clearly visible"
+        "static medium shot, subject's face and upper body fully visible, "
+        "slight tilt to keep face centered, background context of the room visible"
     ),
     "default": (
-        "stable wide shot with subtle slow dolly-forward, subject in frame at all times, "
-        "smooth cinematic movement throughout the clip"
+        "medium shot with subtle slow dolly-forward, subject's face filling 50% of frame, "
+        "face sharp and centered at all times, smooth cinematic movement throughout"
     ),
 }
 
@@ -576,7 +579,8 @@ class SmartPromptExpander:
         # "full" — maximum quality specification
         return (
             "photorealistic, 4K ultra-high resolution, hyper-detailed textures on skin and clothing, "
-            "sharp focus on subject's face and eyes, clean composition, no compression artifacts, "
+            "razor-sharp focus on subject's face and eyes, face clearly visible and never blurry, "
+            "clean composition, no compression artifacts, "
             "cinematic color grading, film-grain free, professional grade output"
         )
 

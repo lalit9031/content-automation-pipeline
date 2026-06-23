@@ -71,7 +71,7 @@
         "77",
         2
       ],
-      "steps": 40,
+      "steps": 45,
       "max_shift": 2.05,
       "base_shift": 0.95,
       "stretch": true,
@@ -107,7 +107,7 @@
       ],
       "add_noise": true,
       "noise_seed": 712395695050634,
-      "cfg": 3
+      "cfg": 3.5
     }
   },
   "73": {
