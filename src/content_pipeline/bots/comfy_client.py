@@ -40,7 +40,7 @@ class ComfyUIClient:
         # Base command — always active flags
         cmd = [
             r"C:\ComfyUI\procgov.exe",
-            "--maxmem", "22G",  # Hard RAM cap: 22GB leaves ~8GB for Windows + pipeline Python
+            "--maxmem", "24G",  # Hard RAM cap: 24GB — 22G caused premature kill during model loading
             "--",
             r"C:\ComfyUI\python_embeded\python.exe",
             "-s",
