@@ -168,144 +168,190 @@ class LongFormOrchestrator:
         print(f"Output  : {job_dir}")
         print(f"{'=' * 70}\n")
 
-        # ---------------------------------------------------------------
-        # Step 1: Expand prompt into 7-dimension context
-        # ---------------------------------------------------------------
-        print("[Step 1] Expanding prompt with SmartPromptExpander...")
-        ctx = self.expander.extract_context(raw_prompt, detail_level=detail_level)
-        image_prompt = self.expander.build_image_prompt(ctx)
-        video_prompt_base = self.expander.build_video_prompt(ctx)
-        print(f"  Subject : {ctx.subject_age_desc}")
-        print(f"  Scene   : {ctx.scene_category} / {ctx.scene_type}")
-        print(f"  Motion  : {ctx.motion_description[:60]}...")
-        print(f"  Image prompt: {len(image_prompt)} chars")
-        print(f"  Video prompt: {len(video_prompt_base)} chars")
+        # Temporarily disable auto-release memory during the pipeline run so that
+        # the ComfyUI server stays running and warm between images/videos.
+        import os
+        orig_auto_release = os.environ.get("COMFYUI_AUTO_RELEASE_MEMORY")
+        os.environ["COMFYUI_AUTO_RELEASE_MEMORY"] = "false"
 
-        # ---------------------------------------------------------------
-        # Step 2: Build scene list with ScriptEngine
-        # ---------------------------------------------------------------
-        print(f"\n[Step 2] Building scene storyboard ({target_seconds}s)...")
-        scenes = self.script_engine.build_scene_list(raw_prompt, target_seconds=target_seconds)
-        print(self.script_engine.describe_plan(scenes))
-
-        # ---------------------------------------------------------------
-        # Step 3: Generate source image (Scene 1 start image)
-        # ---------------------------------------------------------------
-        print(f"\n[Step 3] Generating source image for Scene 1...")
-        start_image_path = job_dir / "scene_01_source_image.png"
-        image_ok = False
-
-        for img_attempt in range(1, self.MAX_IMAGE_ATTEMPTS + 1):
-            print(f"  Image generation attempt {img_attempt}/{self.MAX_IMAGE_ATTEMPTS}...")
-            try:
-                img_bytes = self._generate_image(image_prompt)
-                start_image_path.write_bytes(img_bytes)
-
-                # QA audit the image before using it
-                print(f"  Running QA audit on generated image...")
-                img_qa = self.qa_auditor.audit_image(img_bytes, raw_prompt)
-                print(f"  Image QA: {img_qa['status']}" + (f" — {img_qa.get('reason', '')}" if img_qa['status'] == 'FAIL' else ""))
-
-                if img_qa["status"] == "PASS":
-                    image_ok = True
-                    break
-                else:
-                    print(f"  Image QA failed: {img_qa.get('reason')}. Regenerating...")
-
-            except Exception as e:
-                print(f"  Image generation error (attempt {img_attempt}): {e}")
-                if img_attempt == self.MAX_IMAGE_ATTEMPTS:
-                    return self._fail_result(
-                        f"Image generation failed after {self.MAX_IMAGE_ATTEMPTS} attempts: {e}",
-                        time.time() - job_start
-                    )
-
-        if not image_ok:
-            print(f"  Warning: Image QA did not pass after {self.MAX_IMAGE_ATTEMPTS} attempts. Using last result.")
-
-        print(f"  Source image saved: {start_image_path}")
-
-        # ---------------------------------------------------------------
-        # Step 4: Generate each video clip
-        # ---------------------------------------------------------------
-        print(f"\n[Step 4] Generating {len(scenes)} video clip(s)...")
-        clip_results: list[ClipResult] = []
-        current_start_image = start_image_path
-
-        for scene in scenes:
-            clip_result = self._generate_clip(
-                scene=scene,
-                start_image_path=current_start_image,
-                base_video_prompt=video_prompt_base,
-                clips_dir=clips_dir,
-                frames_dir=frames_dir,
-                raw_prompt=raw_prompt,
-            )
-            clip_results.append(clip_result)
-
-            if clip_result.status == "SUCCESS" and clip_result.last_frame_path:
-                # Use this clip's last frame as the next clip's start image
-                current_start_image = clip_result.last_frame_path
-                print(f"  Scene {scene.scene_number}: SUCCESS → last frame extracted for Scene {scene.scene_number + 1}")
-            else:
-                print(f"  Scene {scene.scene_number}: {clip_result.status} — {clip_result.error or 'No error info'}")
-                if scene.is_last or clip_result.clip_path is None:
-                    break  # Can't continue without a clip
-
-        # ---------------------------------------------------------------
-        # Step 5: Assemble all clips into final video
-        # ---------------------------------------------------------------
-        successful_clips = [r.clip_path for r in clip_results if r.clip_path and r.clip_path.exists()]
-        print(f"\n[Step 5] Assembling {len(successful_clips)}/{len(scenes)} clips into final video...")
-
-        final_video_path = job_dir / f"{safe_name}_final.mp4"
-
-        if not successful_clips:
-            return self._fail_result("No clips were successfully generated.", time.time() - job_start)
+        server_proc = None
+        server_log = None
+        started_server = False
 
         try:
-            self.assembler.assemble(
-                clip_paths=successful_clips,
-                output_path=final_video_path,
-                crossfade_seconds=0.5 if len(successful_clips) > 1 else 0.0,
+            client = ComfyUIClient(
+                base_url=self.settings.comfyui_url,
+                timeout_seconds=self.settings.comfyui_timeout_seconds,
+                settings=self.settings,
             )
-        except Exception as e:
-            logging.error(f"[LongFormOrchestrator] Assembly failed: {e}")
-            return self._fail_result(f"Video assembly failed: {e}", time.time() - job_start)
+            if not client._is_listening():
+                print("[Auto-Memory] Starting ComfyUI server for long-form pipeline...")
+                server_proc, server_log = client._start_server()
+                started_server = True
+                if not client._wait_listening():
+                    if server_log:
+                        server_log.close()
+                    print("Failed to start ComfyUI server. Attempting to clean up...")
+                    if server_proc:
+                        server_proc.terminate()
+                    return self._fail_result("Failed to start ComfyUI server", time.time() - job_start)
 
-        total_time = time.time() - job_start
-        total_duration = sum(r.generation_time_seconds for r in clip_results)
+            # ---------------------------------------------------------------
+            # Step 1: Expand prompt into 7-dimension context
+            # ---------------------------------------------------------------
+            print("[Step 1] Expanding prompt with SmartPromptExpander...")
+            ctx = self.expander.extract_context(raw_prompt, detail_level=detail_level)
+            image_prompt = self.expander.build_image_prompt(ctx)
+            video_prompt_base = self.expander.build_video_prompt(ctx)
+            print(f"  Subject : {ctx.subject_age_desc}")
+            print(f"  Scene   : {ctx.scene_category} / {ctx.scene_type}")
+            print(f"  Motion  : {ctx.motion_description[:60]}...")
+            print(f"  Image prompt: {len(image_prompt)} chars")
+            print(f"  Video prompt: {len(video_prompt_base)} chars")
 
-        # ---------------------------------------------------------------
-        # Step 6: Build summary
-        # ---------------------------------------------------------------
-        summary = self._build_summary(
-            raw_prompt=raw_prompt,
-            clip_results=clip_results,
-            final_video_path=final_video_path,
-            source_image_path=start_image_path,
-            total_time=total_time,
-        )
-        print(f"\n{summary}")
+            # ---------------------------------------------------------------
+            # Step 2: Build scene list with ScriptEngine
+            # ---------------------------------------------------------------
+            print(f"\n[Step 2] Building scene storyboard ({target_seconds}s)...")
+            scenes = self.script_engine.build_scene_list(raw_prompt, target_seconds=target_seconds)
+            print(self.script_engine.describe_plan(scenes))
 
-        return {
-            "status": "SUCCESS",
-            "final_video_path": str(final_video_path),
-            "source_image_path": str(start_image_path),
-            "clips": [
-                {
-                    "scene": r.scene_number,
-                    "path": str(r.clip_path) if r.clip_path else None,
-                    "status": r.status,
-                    "attempts": r.attempts,
-                    "time_seconds": round(r.generation_time_seconds, 1),
-                    "qa": r.qa_result,
-                }
-                for r in clip_results
-            ],
-            "total_time_seconds": round(total_time, 1),
-            "summary": summary,
-        }
+            # ---------------------------------------------------------------
+            # Step 3: Generate source image (Scene 1 start image)
+            # ---------------------------------------------------------------
+            print(f"\n[Step 3] Generating source image for Scene 1...")
+            start_image_path = job_dir / "scene_01_source_image.png"
+            image_ok = False
+
+            for img_attempt in range(1, self.MAX_IMAGE_ATTEMPTS + 1):
+                print(f"  Image generation attempt {img_attempt}/{self.MAX_IMAGE_ATTEMPTS}...")
+                try:
+                    img_bytes = self._generate_image(image_prompt)
+                    start_image_path.write_bytes(img_bytes)
+
+                    # QA audit the image before using it
+                    print(f"  Running QA audit on generated image...")
+                    img_qa = self.qa_auditor.audit_image(img_bytes, raw_prompt)
+                    print(f"  Image QA: {img_qa['status']}" + (f" — {img_qa.get('reason', '')}" if img_qa['status'] == 'FAIL' else ""))
+
+                    if img_qa["status"] == "PASS":
+                        image_ok = True
+                        break
+                    else:
+                        print(f"  Image QA failed: {img_qa.get('reason')}. Regenerating...")
+
+                except Exception as e:
+                    print(f"  Image generation error (attempt {img_attempt}): {e}")
+                    if img_attempt == self.MAX_IMAGE_ATTEMPTS:
+                        return self._fail_result(
+                            f"Image generation failed after {self.MAX_IMAGE_ATTEMPTS} attempts: {e}",
+                            time.time() - job_start
+                        )
+
+            if not image_ok:
+                print(f"  Warning: Image QA did not pass after {self.MAX_IMAGE_ATTEMPTS} attempts. Using last result.")
+
+            print(f"  Source image saved: {start_image_path}")
+
+            # ---------------------------------------------------------------
+            # Step 4: Generate each video clip
+            # ---------------------------------------------------------------
+            print(f"\n[Step 4] Generating {len(scenes)} video clip(s)...")
+            clip_results: list[ClipResult] = []
+            current_start_image = start_image_path
+
+            for scene in scenes:
+                clip_result = self._generate_clip(
+                    scene=scene,
+                    start_image_path=current_start_image,
+                    base_video_prompt=video_prompt_base,
+                    clips_dir=clips_dir,
+                    frames_dir=frames_dir,
+                    raw_prompt=raw_prompt,
+                )
+                clip_results.append(clip_result)
+
+                if clip_result.status == "SUCCESS" and clip_result.last_frame_path:
+                    # Use this clip's last frame as the next clip's start image
+                    current_start_image = clip_result.last_frame_path
+                    print(f"  Scene {scene.scene_number}: SUCCESS → last frame extracted for Scene {scene.scene_number + 1}")
+                else:
+                    print(f"  Scene {scene.scene_number}: {clip_result.status} — {clip_result.error or 'No error info'}")
+                    if scene.is_last or clip_result.clip_path is None:
+                        break  # Can't continue without a clip
+
+            # ---------------------------------------------------------------
+            # Step 5: Assemble all clips into final video
+            # ---------------------------------------------------------------
+            successful_clips = [r.clip_path for r in clip_results if r.clip_path and r.clip_path.exists()]
+            print(f"\n[Step 5] Assembling {len(successful_clips)}/{len(scenes)} clips into final video...")
+
+            final_video_path = job_dir / f"{safe_name}_final.mp4"
+
+            if not successful_clips:
+                return self._fail_result("No clips were successfully generated.", time.time() - job_start)
+
+            try:
+                self.assembler.assemble(
+                    clip_paths=successful_clips,
+                    output_path=final_video_path,
+                    crossfade_seconds=0.5 if len(successful_clips) > 1 else 0.0,
+                )
+            except Exception as e:
+                logging.error(f"[LongFormOrchestrator] Assembly failed: {e}")
+                return self._fail_result(f"Video assembly failed: {e}", time.time() - job_start)
+
+            total_time = time.time() - job_start
+            total_duration = sum(r.generation_time_seconds for r in clip_results)
+
+            # ---------------------------------------------------------------
+            # Step 6: Build summary
+            # ---------------------------------------------------------------
+            summary = self._build_summary(
+                raw_prompt=raw_prompt,
+                clip_results=clip_results,
+                final_video_path=final_video_path,
+                source_image_path=start_image_path,
+                total_time=total_time,
+            )
+            print(f"\n{summary}")
+
+            return {
+                "status": "SUCCESS",
+                "final_video_path": str(final_video_path),
+                "source_image_path": str(start_image_path),
+                "clips": [
+                    {
+                        "scene": r.scene_number,
+                        "path": str(r.clip_path) if r.clip_path else None,
+                        "status": r.status,
+                        "attempts": r.attempts,
+                        "time_seconds": round(r.generation_time_seconds, 1),
+                        "qa": r.qa_result,
+                    }
+                    for r in clip_results
+                ],
+                "total_time_seconds": round(total_time, 1),
+                "summary": summary,
+            }
+        finally:
+            # Clean up ComfyUI server if we started it
+            if started_server and server_proc:
+                print("[Auto-Memory] Terminating long-form ComfyUI server to release RAM/VRAM...")
+                server_proc.terminate()
+                try:
+                    server_proc.wait(timeout=15)
+                except Exception:
+                    server_proc.kill()
+                    server_proc.wait()
+                if server_log:
+                    server_log.close()
+                print("[Auto-Memory] ComfyUI server terminated successfully.")
+
+            if orig_auto_release is not None:
+                os.environ["COMFYUI_AUTO_RELEASE_MEMORY"] = orig_auto_release
+            else:
+                os.environ.pop("COMFYUI_AUTO_RELEASE_MEMORY", None)
 
     # ------------------------------------------------------------------
     # Internal: Single clip generation with QA retry loop

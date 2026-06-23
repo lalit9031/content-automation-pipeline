@@ -51,17 +51,12 @@ class ComfyUIClient:
         if self.settings is not None:
             use_flash_attn = getattr(self.settings, "comfyui_use_flash_attention", True)
         if use_flash_attn:
-            cmd.append("--attention-pytorch")
-            logging.info("[Auto-Memory] Flash Attention enabled (--attention-pytorch). Saves ~2-4 GB VRAM.")
+            cmd.append("--use-flash-attention")
+            logging.info("[Auto-Memory] Flash Attention enabled (--use-flash-attention). Saves ~2-4 GB VRAM.")
 
-        # Optional: Tiled VAE decode — saves ~1-2 GB VRAM during decode step
-        # Controlled by COMFYUI_USE_TILED_VAE=true in .env
-        use_tiled_vae = True  # default on
-        if self.settings is not None:
-            use_tiled_vae = getattr(self.settings, "comfyui_use_tiled_vae", True)
-        if use_tiled_vae:
-            cmd.append("--tiled-vae")
-            logging.info("[Auto-Memory] Tiled VAE enabled (--tiled-vae). Saves ~1-2 GB VRAM during decode.")
+        # Note: Tiled VAE is handled at the workflow/node level in ComfyUI,
+        # so we do not pass --tiled-vae as a CLI flag.
+        logging.info("[Auto-Memory] Tiled VAE is active at the node workflow level.")
 
         log_path = Path("comfyui_server_runtime.log")
         log_file = open(log_path, "w", encoding="utf-8")
@@ -78,9 +73,11 @@ class ComfyUIClient:
         )
         return proc, log_file
 
-    def _wait_listening(self, timeout: int = 120) -> bool:
+    def _wait_listening(self, timeout: int = 360) -> bool:
+        # 14B model (LTXV/Wan) takes 3-5 minutes to fully load into VRAM.
+        # 360 seconds (6 min) gives enough headroom on slower systems.
         start_time = time.time()
-        logging.info("[Auto-Memory] Waiting for ComfyUI server to respond...")
+        logging.info("[Auto-Memory] Waiting for ComfyUI server to respond (up to 6 min for 14B model load)...")
         while time.time() - start_time < timeout:
             if self._is_listening():
                 logging.info("[Auto-Memory] ComfyUI server is online and ready.")
