@@ -3,8 +3,8 @@
     "class_type": "KSampler",
     "inputs": {
       "seed": 0,
-      "steps": 30,
-      "cfg": 3.5,
+      "steps": 25,
+      "cfg": 1.0,
       "sampler_name": "euler",
       "scheduler": "simple",
       "denoise": 1.0,
@@ -35,8 +35,8 @@
   "5": {
     "class_type": "EmptyLatentImage",
     "inputs": {
-      "width": 1024,
-      "height": 1024,
+      "width": 768,
+      "height": 512,
       "batch_size": 1
     }
   },

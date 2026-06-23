@@ -47,7 +47,8 @@ class ComfyUIClient:
             r"C:\ComfyUI\ComfyUI\main.py",
             "--windows-standalone-build",
             "--enable-dynamic-vram",
-            # --lowvram removed: 64GB RAM means offload buffer never exhausts
+            "--lowvram",               # Aggressively offloads models to system RAM to prevent GPU resets / black screen
+            "--cpu-vae",               # Run VAE decoding on the CPU to prevent VRAM overflow and GPU watchdog timeouts
             "--fp8_e4m3fn-unet",       # FP8 UNet: saves ~14 GB VRAM vs FP16 (keep always)
             "--fp8_e4m3fn-text-enc",   # FP8 text encoder: saves ~4 GB VRAM vs FP16 (keep always)
             # NOTE: Do NOT add --disable-smart-memory — it actually INCREASES RAM usage

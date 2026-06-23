@@ -51,19 +51,13 @@ SCENES = [
         "num": 1,
         "title": "Ring_a_Ring_Gathering",
         "prompt": (
-            "Flat color cartoon illustration, Disney animation style, "
-            "4 cute children ages 6-8 standing in a sunny green garden, "
-            "3 girls and 1 boy, "
-            "girl on left in bright pink dress, "
-            "girl in center-left in yellow dress, "
-            "girl in center-right in sky blue dress, "
-            "boy on right in red t-shirt and blue shorts, "
-            "all children reaching toward each other smiling, "
-            "big expressive cartoon eyes, rosy cheeks, cheerful happy faces, "
-            "detailed background: lush green grass ground, large colorful flower bushes left and right, "
-            "blue sky with white fluffy clouds, green trees behind, "
-            "warm sunny daylight, clean soft shadows, "
-            "crisp clean lines, sharp focus throughout, flat colors no gradients, "
+            "A high-angle shot looking down at 4 cute children standing in a perfect circular ring in a sunny garden. "
+            "They are standing in a round circle formation, smiling and reaching out their hands to hold hands. "
+            "We see: one girl in a pink dress, one girl in a yellow dress, one girl in a blue dress, and one boy in a red shirt. "
+            "Vibrant 2D vector cartoon style, flat clean vector lines, high-contrast flat colors. "
+            "Cheerful happy faces, big cartoon eyes, rosy cheeks. "
+            "Detailed background: sharp green grass ground, highly detailed flower garden with red, yellow, and purple flower bushes, clear blue sky, green trees. "
+            "Infinite focus, 100% sharp background, no depth of field, no blur, no soft focus, crisp clean details on every distant tree and leaf, flat cartoon colors without gradients, "
             f"negative: {NEGATIVE}"
         ),
     },
@@ -71,15 +65,14 @@ SCENES = [
         "num": 2,
         "title": "Pocket_Full_of_Posies",
         "prompt": (
-            "Flat color cartoon illustration, Disney animation style, "
-            "4 cute children ages 6-8 holding hands in a circle in a flower garden, "
-            "girl in pink dress, girl in yellow dress, girl in blue dress, boy in red shirt, "
-            "each child holding a small bunch of bright pink and yellow flowers in their free hand, "
-            "all faces visible, big smiles, laughing happily, "
-            "children slightly leaning outward as they dance in a circle, "
-            "detailed background: green grass, colorful flower garden with red yellow pink flowers, "
-            "blue sky, puffy white clouds, sunny day, "
-            "crisp clean outlines, sharp focus, flat cartoon colors, "
+            "A high-angle shot looking down at 4 cute children holding hands in a perfect circular ring, dancing in a circle in a flower garden. "
+            "They are arranged in a circular formation, holding hands to form a complete, unbroken closed round loop on the green grass. "
+            "We see: one girl in a pink dress, one girl in a yellow dress, one girl in a blue dress, and one boy in a red shirt. "
+            "They hold posy flowers in their hands. "
+            "Vibrant 2D vector cartoon style, flat clean vector lines, high-contrast flat colors. "
+            "All faces visible, laughing and smiling. "
+            "Detailed background: sharp green lawn, highly detailed flower garden with red, yellow, and purple flowers, clear blue sky, warm sunny day. "
+            "Infinite focus, 100% sharp background, no depth of field, no blur, no soft focus, crisp clean details on every distant tree and leaf, flat cartoon colors without gradients, "
             f"negative: {NEGATIVE}"
         ),
     },
@@ -87,14 +80,14 @@ SCENES = [
         "num": 3,
         "title": "Atishoo_Spinning_Fast",
         "prompt": (
-            "Flat color cartoon illustration, Disney animation style, "
-            "4 cute children ages 6-8 spinning fast holding hands in a circle, "
-            "girl in pink dress, girl in yellow dress, girl in blue dress, boy in red shirt, "
-            "dresses flaring outward from spinning motion, hair blowing sideways, "
-            "all laughing with wide open mouths, cartoon sneeze expression, "
-            "motion lines around the spinning ring to show speed, "
-            "detailed background: green lawn, flower garden, bright blue sky, sunny, "
-            "crisp clean cartoon lines, sharp focus, vibrant flat colors, "
+            "A high-angle shot looking down at 4 cute children spinning fast in a perfect circular ring, holding hands to form a complete closed circle. "
+            "The children are arranged in a circular formation, spinning in a round loop. "
+            "We see: one girl in a pink dress, one girl in a yellow dress, one girl in a blue dress, and one boy in a red shirt. "
+            "Their dresses flare outward from the spinning motion, hair blowing sideways, all laughing with wide open mouths, joyful expressions. "
+            "Vibrant 2D vector cartoon style, flat clean vector lines, high-contrast flat colors. "
+            "Motion lines around the spinning ring to show speed. "
+            "Detailed background: sharp green lawn, highly detailed flower garden with red, yellow, and purple flowers, clear blue sky, warm sunny day. "
+            "Infinite focus, 100% sharp background, no depth of field, no blur, no soft focus, crisp clean details on every distant tree and leaf, flat cartoon colors without gradients, "
             f"negative: {NEGATIVE}"
         ),
     },
@@ -102,14 +95,13 @@ SCENES = [
         "num": 4,
         "title": "We_All_Fall_Down",
         "prompt": (
-            "Flat color cartoon illustration, Disney animation style, "
-            "4 cute children ages 6-8 all falling down onto soft green grass simultaneously, "
-            "girl in pink dress, girl in yellow dress, girl in blue dress, boy in red shirt, "
-            "children in mid-fall, legs in air, arms out wide, "
-            "all laughing with huge open mouth smiles, pure delight on their faces, "
-            "colorful flowers scattered on the grass around them, "
-            "detailed background: bright green grass, flower garden, blue sky, sunny day, "
-            "crisp clean cartoon lines, sharp focus, vibrant flat colors, "
+            "A high-angle view looking down at 4 cute children falling down onto soft green grass, arranged in a perfect circle. "
+            "We see: one girl in a pink dress, one girl in a yellow dress, one girl in a blue dress, and one boy in a red shirt. "
+            "They are falling backward and sideways onto the ground in a circular formation, landing on the grass with legs and arms out, laughing with huge open mouth smiles. "
+            "Vibrant 2D vector cartoon style, flat clean vector lines, high-contrast flat colors. "
+            "Bright colorful flowers scattered on the grass around them. "
+            "Detailed background: sharp green grass ground, highly detailed flower garden, clear blue sky, warm sunny day. "
+            "Infinite focus, 100% sharp background, no depth of field, no blur, no soft focus, crisp clean details on every distant tree and leaf, flat cartoon colors without gradients, "
             f"negative: {NEGATIVE}"
         ),
     },
@@ -117,14 +109,12 @@ SCENES = [
         "num": 5,
         "title": "Getting_Up_Laughing",
         "prompt": (
-            "Flat color cartoon illustration, Disney animation style, "
-            "4 cute children ages 6-8 getting up from the grass, helping each other, "
-            "girl in pink dress, girl in yellow dress, girl in blue dress, boy in red shirt, "
-            "one girl brushing grass off her dress, boy extending hand to help a girl up, "
-            "all faces showing big happy laughing smiles, "
-            "colorful flowers and green grass around them, "
-            "detailed background: flower garden, green lawn, blue sky, warm sunlight, "
-            "crisp clean cartoon lines, sharp focus, vibrant flat colors, "
+            "A high-angle shot of 4 cute children getting up from the green grass, arranged in a perfect circle, helping each other. "
+            "We see: one girl in a pink dress, one girl in a yellow dress, one girl in a blue dress, and one boy in a red shirt. "
+            "They are in a circular formation on the lawn, one boy extending his hand to help a girl stand up, they are laughing and smiling. "
+            "Vibrant 2D vector cartoon style, flat clean vector lines, high-contrast flat colors. "
+            "Detailed background: sharp green grass ground, highly detailed flower garden with red, yellow, and purple flowers, clear blue sky, warm sunny day. "
+            "Infinite focus, 100% sharp background, no depth of field, no blur, no soft focus, crisp clean details on every distant tree and leaf, flat cartoon colors without gradients, "
             f"negative: {NEGATIVE}"
         ),
     },
@@ -132,14 +122,13 @@ SCENES = [
         "num": 6,
         "title": "Ring_Forms_Again",
         "prompt": (
-            "Flat color cartoon illustration, Disney animation style, "
-            "4 cute children ages 6-8 holding hands again in a ring, smiling at each other, "
-            "girl in pink dress, girl in yellow dress, girl in blue dress, boy in red shirt, "
-            "children looking at each other warmly with joyful expressions, "
-            "all faces clearly visible with big bright smiles, "
-            "detailed background: beautiful flower garden, green grass, tall colorful flowers, "
-            "golden late afternoon sunlight, blue sky, "
-            "crisp clean cartoon lines, sharp focus, vibrant flat colors, "
+            "A high-angle shot looking down at 4 cute children holding hands in a perfect circular ring, standing in a circle in a flower garden. "
+            "They are arranged in a circular formation, holding hands to form a complete, unbroken closed round loop. "
+            "We see: one girl in a pink dress, one girl in a yellow dress, one girl in a blue dress, and one boy in a red shirt. "
+            "Vibrant 2D vector cartoon style, flat clean vector lines, high-contrast flat colors. "
+            "All faces clearly visible, smiling warmly at each other with joyful expressions. "
+            "Detailed background: sharp green lawn, highly detailed flower garden with red, yellow, and purple flowers, clear blue sky, warm sunny day. "
+            "Infinite focus, 100% sharp background, no depth of field, no blur, no soft focus, crisp clean details on every distant tree and leaf, flat cartoon colors without gradients, "
             f"negative: {NEGATIVE}"
         ),
     },
@@ -151,63 +140,36 @@ def main():
     orch = LongFormOrchestrator(settings)
 
     print("\n" + "=" * 70)
-    print("Ring-a-Ring O'Roses  --  Keyframe Images  (FIXED)")
+    print("Ring-a-Ring O'Roses  --  Keyframe Images  (VECTORED & RE-SHARPENED)")
     print("=" * 70)
-    print(f"  Style    : Flat cartoon (Disney style, sharp, no blur)")
-    print(f"  Process  : Flux 1024x1024 -> crop -> 1280x720 + sharpen")
-    print(f"  Flux     : 30 steps, CFG 3.5 (was: 1.0 = too low)")
-    print(f"  Cache    : /free called between each image (no duplicates)")
+    print(f"  Style    : Vibrant 2D vector cartoon (100% sharp background, no blur)")
+    print(f"  Process  : Flux 1024x576 -> 1280x720 + sharpen")
+    print(f"  Flux     : 30 steps, CFG 3.5")
+    print(f"  Cache    : ComfyUI started & stopped fresh per-image to avoid VRAM context issues")
     print(f"  Output   : {OUTPUT_DIR}")
     print("=" * 70)
-
-    from content_pipeline.bots.comfy_client import ComfyUIClient
-    client = ComfyUIClient(settings=settings)
-    server_proc, server_log = None, None
-
-    if not client._is_listening():
-        print("\n[ComfyUI] Starting server...")
-        server_proc, server_log = client._start_server()
-        if not client._wait_listening():
-            print("ERROR: ComfyUI failed to start")
-            return
-        print("[ComfyUI] Ready!\n")
-    else:
-        print("[ComfyUI] Already running.\n")
 
     generated = []
     t_start = time.time()
 
-    try:
-        for scene in SCENES:
-            num = scene["num"]
-            title = scene["title"].replace("_", " ")
-            prompt = scene["prompt"]
+    for scene in SCENES:
+        num = scene["num"]
+        title = scene["title"].replace("_", " ")
+        prompt = scene["prompt"]
 
-            print(f"[Scene {num}/6]  {title}")
-            t_scene = time.time()
+        print(f"[Scene {num}/6]  {title}")
+        t_scene = time.time()
 
-            try:
-                img_bytes = orch._generate_image(prompt)
-                out_path = OUTPUT_DIR / f"scene_{num:02d}_{scene['title']}.png"
-                out_path.write_bytes(img_bytes)
-                elapsed = time.time() - t_scene
-                size_kb = len(img_bytes) // 1024
-                print(f"  Saved: {out_path.name}  ({size_kb}KB, {elapsed:.0f}s)\n")
-                generated.append(out_path)
-            except Exception as e:
-                print(f"  ERROR: {e}\n")
-
-    finally:
-        if server_proc:
-            print("[ComfyUI] Stopping server...")
-            server_proc.terminate()
-            try:
-                server_proc.wait(timeout=15)
-            except Exception:
-                server_proc.kill()
-                server_proc.wait()
-            if server_log:
-                server_log.close()
+        try:
+            img_bytes = orch._generate_image(prompt)
+            out_path = OUTPUT_DIR / f"scene_{num:02d}_{scene['title']}.png"
+            out_path.write_bytes(img_bytes)
+            elapsed = time.time() - t_scene
+            size_kb = len(img_bytes) // 1024
+            print(f"  Saved: {out_path.name}  ({size_kb}KB, {elapsed:.0f}s)\n")
+            generated.append(out_path)
+        except Exception as e:
+            print(f"  ERROR: {e}\n")
 
     total = time.time() - t_start
     print("=" * 70)
