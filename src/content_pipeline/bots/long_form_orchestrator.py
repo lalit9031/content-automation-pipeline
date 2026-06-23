@@ -214,7 +214,11 @@ class LongFormOrchestrator:
             # ---------------------------------------------------------------
             print(f"\n[Step 2] Building scene storyboard ({target_seconds}s)...")
             scenes = self.script_engine.build_scene_list(raw_prompt, target_seconds=target_seconds)
-            print(self.script_engine.describe_plan(scenes))
+            try:
+                print(self.script_engine.describe_plan(scenes))
+            except UnicodeEncodeError:
+                safe = self.script_engine.describe_plan(scenes).encode('ascii', errors='replace').decode('ascii')
+                print(safe)
 
             # ---------------------------------------------------------------
             # Step 3: Generate source image (Scene 1 start image)
