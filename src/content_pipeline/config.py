@@ -103,9 +103,8 @@ class Settings:
     comfyui_inpaint_workflow: str = "workflows/comfyui_inpaint_api.json"
     comfyui_model_name: str = "flux1-dev.safetensors"
     comfyui_timeout_seconds: int = 300
-    # --- VRAM Optimization Flags (Phase 1) ---
-    # Toggle Flash Attention on/off from .env: COMFYUI_USE_FLASH_ATTENTION=true
-    comfyui_use_flash_attention: bool = True
+    # Toggle Flash Attention on/off from .env: COMFYUI_USE_FLASH_ATTENTION=false
+    comfyui_use_flash_attention: bool = False
     # Toggle Tiled VAE on/off from .env: COMFYUI_USE_TILED_VAE=true
     comfyui_use_tiled_vae: bool = True
     # --- Smart Prompt Expansion Flags (Phase 3) ---
@@ -259,7 +258,7 @@ class Settings:
             comfyui_inpaint_workflow=os.getenv("COMFYUI_INPAINT_WORKFLOW", "workflows/comfyui_inpaint_api.json").strip(),
             comfyui_model_name=os.getenv("COMFYUI_MODEL_NAME", "flux1-dev.safetensors").strip(),
             comfyui_timeout_seconds=int(os.getenv("COMFYUI_TIMEOUT_SECONDS", "300")),
-            comfyui_use_flash_attention=_as_bool(os.getenv("COMFYUI_USE_FLASH_ATTENTION", "true")),
+            comfyui_use_flash_attention=_as_bool(os.getenv("COMFYUI_USE_FLASH_ATTENTION", "false")),
             comfyui_use_tiled_vae=_as_bool(os.getenv("COMFYUI_USE_TILED_VAE", "true")),
             prompt_expansion_enabled=_as_bool(os.getenv("PROMPT_EXPANSION_ENABLED", "true")),
             prompt_expansion_detail=os.getenv("PROMPT_EXPANSION_DETAIL", "full").strip().lower() or "full",
