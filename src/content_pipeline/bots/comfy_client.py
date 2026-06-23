@@ -47,9 +47,10 @@ class ComfyUIClient:
 
         # Optional: Flash Attention — saves ~2-4 GB VRAM during attention computation
         # Controlled by COMFYUI_USE_FLASH_ATTENTION=true in .env
-        use_flash_attn = True  # default on
+        # DEFAULT IS OFF — flash-attn package not installed on this system (AMD ROCm)
+        use_flash_attn = False  # default OFF
         if self.settings is not None:
-            use_flash_attn = getattr(self.settings, "comfyui_use_flash_attention", True)
+            use_flash_attn = getattr(self.settings, "comfyui_use_flash_attention", False)
         if use_flash_attn:
             cmd.append("--use-flash-attention")
             logging.info("[Auto-Memory] Flash Attention enabled (--use-flash-attention). Saves ~2-4 GB VRAM.")
@@ -57,6 +58,20 @@ class ComfyUIClient:
         # Note: Tiled VAE is handled at the workflow/node level in ComfyUI,
         # so we do not pass --tiled-vae as a CLI flag.
         logging.info("[Auto-Memory] Tiled VAE is active at the node workflow level.")
+
+        # Apply Windows TCP socket fix before starting ComfyUI:
+        # Long-running polling loops can exhaust TCP ephemeral ports (WinError 10055).
+        # Setting TcpTimedWaitDelay=30 recycles TIME_WAIT sockets faster (default is 240s).
+        if sys.platform == "win32":
+            try:
+                subprocess.run(
+                    ["reg", "add", r"HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters",
+                     "/v", "TcpTimedWaitDelay", "/t", "REG_DWORD", "/d", "30", "/f"],
+                    capture_output=True, timeout=5
+                )
+                logging.info("[Auto-Memory] Applied Windows TCP socket fix (TcpTimedWaitDelay=30).")
+            except Exception as tcp_fix_exc:
+                logging.warning(f"[Auto-Memory] Could not apply TCP socket fix: {tcp_fix_exc}")
 
         log_path = Path("comfyui_server_runtime.log")
         log_file = open(log_path, "w", encoding="utf-8")
@@ -172,24 +187,32 @@ class ComfyUIClient:
                 raise RuntimeError(f"ComfyUI response did not contain prompt_id: {response}")
 
             logging.info(f"Queued ComfyUI job {prompt_id}. Waiting for completion...")
-            
+
             # Poll history for completion
+            # Poll every 5 seconds (not 2s) to reduce TCP socket pressure.
+            # Windows WinError 10055 (socket buffer full) can occur with too-frequent polling.
             start_time = time.time()
             completed_data = None
-            
+            last_progress_log = start_time
+
             while time.time() - start_time < self.timeout_seconds:
+                elapsed = time.time() - start_time
+                # Log progress every 30 seconds so we can see it's alive
+                if elapsed - (last_progress_log - start_time) >= 30 or last_progress_log == start_time:
+                    logging.info(f"[ComfyUI] Still waiting for job {prompt_id[:8]}... ({elapsed:.0f}s elapsed)")
+                    last_progress_log = time.time()
                 try:
                     history = self._get(f"/history/{prompt_id}")
                     if isinstance(history, dict) and prompt_id in history:
                         completed_data = history[prompt_id]
                         break
-                except Exception:
-                    pass
-                time.sleep(2)
-                
+                except Exception as poll_exc:
+                    logging.debug(f"[ComfyUI] Poll error (will retry): {poll_exc}")
+                time.sleep(5)  # 5s gap between polls — much kinder to TCP sockets
+
             if not completed_data:
                 raise TimeoutError(f"ComfyUI job {prompt_id} timed out after {self.timeout_seconds} seconds.")
-                
+
             # Parse outputs (images, gifs, videos) and retrieve them
             media_bytes_list: list[bytes] = []
             outputs = completed_data.get("outputs", {})
@@ -202,13 +225,18 @@ class ComfyUIClient:
                             media_type = media_info.get("type", "output")
                             if filename:
                                 query = f"filename={filename}&subfolder={subfolder}&type={media_type}"
-                                try:
-                                    media_bytes = self._get(f"/view?{query}")
-                                    if isinstance(media_bytes, bytes):
-                                        media_bytes_list.append(media_bytes)
-                                except Exception as exc:
-                                    logging.warning(f"Failed to fetch {key[:-1]} {filename} from ComfyUI: {exc}")
-                                
+                                # Retry download up to 3 times with backoff (socket errors during download)
+                                for _retry in range(3):
+                                    try:
+                                        media_bytes = self._get(f"/view?{query}")
+                                        if isinstance(media_bytes, bytes):
+                                            media_bytes_list.append(media_bytes)
+                                        break
+                                    except Exception as exc:
+                                        logging.warning(f"Failed to fetch {key[:-1]} {filename} from ComfyUI (attempt {_retry+1}/3): {exc}")
+                                        if _retry < 2:
+                                            time.sleep(3)
+
             return media_bytes_list
         finally:
             if started_by_us and proc:

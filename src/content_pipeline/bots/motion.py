@@ -480,7 +480,8 @@ class ComfyUIMotionProvider:
         from content_pipeline.bots.comfy_client import ComfyUIClient
         self.client = ComfyUIClient(
             base_url=settings.comfyui_url,
-            timeout_seconds=settings.comfyui_timeout_seconds
+            timeout_seconds=settings.comfyui_timeout_seconds,
+            settings=settings,  # Pass settings so COMFYUI_AUTO_RELEASE_MEMORY and flash attention flags work
         )
         self.workflow_path = settings.comfyui_video_workflow
 
