@@ -28,30 +28,30 @@ class ComfyUIClient:
         import subprocess
         import sys
         import os
-        # --- RAM/VRAM Memory Controls ---
-        # max_split_size_mb: limits how large a single contiguous allocation can be.
-        # Smaller = more fragmented but prevents single huge allocations eating all RAM.
-        # 128MB is safer than 256MB for 30GB RAM systems running 14B models.
-        os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128,garbage_collection_threshold:0.8"
-        # Limit async offload pinned memory — this is what causes RAM to spike to max.
-        # ComfyUI logs show "Enabled pinned memory 12648.0" — we cap it lower.
-        os.environ["COMFYUI_PINNED_MEMORY_LIMIT_MB"] = "8192"  # 8GB max pinned (was ~12.6GB)
+        # --- RAM/VRAM Memory Controls (64GB RAM optimized) ---
+        # With 64GB RAM we have ample headroom. Settings are tuned for:
+        #   - Best quality (max resolution, max steps)
+        #   - Never hitting RAM max (hard cap at 48GB leaves 16GB free)
+        #   - Fast offloading (larger pinned buffer = faster VRAM<->RAM transfers)
+        os.environ["PYTORCH_ALLOC_CONF"] = "max_split_size_mb:512,garbage_collection_threshold:0.9"
+        # Allow up to 20GB pinned memory — 64GB system has plenty of headroom.
+        # Larger pinned buffer = faster async weight offloading = faster per-step time.
+        os.environ["COMFYUI_PINNED_MEMORY_LIMIT_MB"] = "20480"  # 20GB pinned (safe on 64GB)
 
-        # Base command — always active flags
+        # Base command — 64GB RAM optimized flags
         cmd = [
             r"C:\ComfyUI\procgov.exe",
-            "--maxmem", "24G",  # Hard RAM cap: 24GB — 22G caused premature kill during model loading
+            "--maxmem", "48G",  # Hard RAM cap: 48GB — leaves 16GB free for Windows + apps
             "--",
             r"C:\ComfyUI\python_embeded\python.exe",
             "-s",
             r"C:\ComfyUI\ComfyUI\main.py",
             "--windows-standalone-build",
             "--enable-dynamic-vram",
-            "--lowvram",
-            "--fp8_e4m3fn-unet",       # FP8 UNet: saves ~14 GB VRAM vs FP16
-            "--fp8_e4m3fn-text-enc",   # FP8 text encoder: saves ~4 GB VRAM vs FP16
+            # --lowvram removed: 64GB RAM means offload buffer never exhausts
+            "--fp8_e4m3fn-unet",       # FP8 UNet: saves ~14 GB VRAM vs FP16 (keep always)
+            "--fp8_e4m3fn-text-enc",   # FP8 text encoder: saves ~4 GB VRAM vs FP16 (keep always)
             # NOTE: Do NOT add --disable-smart-memory — it actually INCREASES RAM usage
-            # NOTE: Do NOT add --cpu-vae — it's slower and still uses RAM for VAE
         ]
 
         # Optional: Flash Attention — saves ~2-4 GB VRAM during attention computation

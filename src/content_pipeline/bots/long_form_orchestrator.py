@@ -430,7 +430,7 @@ class LongFormOrchestrator:
                     title="Long-form video",
                     provider="comfyui_local",
                     model="ltxv-13b-0.9.8-dev-fp8.safetensors",
-                    size="704x416",  # Reduced from 768x512 — saves ~17% VRAM per frame on 14B model
+                    size="768x512",  # Full quality resolution — safe on 64GB RAM system
                     clips=[motion_clip],
                     provider_rules=[],
                 )

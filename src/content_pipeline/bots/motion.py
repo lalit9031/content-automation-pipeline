@@ -557,11 +557,11 @@ class ComfyUIMotionProvider:
                             except Exception:
                                 pass
                         # Set frame count based on duration
-                        # LTXV requires frame_count = N*8 + 1 (e.g. 97=12*8+1, 73=9*8+1, 49=6*8+1)
-                        # Raw: 6s × 24fps = 145 frames — this exhausts VAE decode VRAM on 24GB cards.
-                        # Safe maximum at 768×512 on RX 7900 XTX is 97 frames (~4s at 24fps).
+                        # LTXV requires frame_count = N*8 + 1 (e.g. 97=12*8+1, 121=15*8+1, 145=18*8+1)
+                        # 64GB RAM budget: 121 frames (5s at 24fps) is safe.
+                        # 145 frames (6s) is possible but leaves less headroom — keep at 121 for stability.
                         raw_frames = int(clip.duration_seconds * fps) + 1
-                        MAX_LTXV_FRAMES = 97  # Hard cap — VAE decode OOMs above this at 768×512
+                        MAX_LTXV_FRAMES = 121  # 64GB RAM: safe for 768×512 VAE decode
                         capped = min(raw_frames, MAX_LTXV_FRAMES)
                         # Snap to nearest valid LTXV frame count: N*8+1
                         n = max(1, round((capped - 1) / 8))

@@ -30,10 +30,10 @@
         "44",
         2
       ],
-      "tile_size": 256,
-      "temporal_size": 32,
-      "temporal_overlap": 4,
-      "overlap": 32
+      "tile_size": 512,
+      "temporal_size": 64,
+      "temporal_overlap": 8,
+      "overlap": 64
     }
   },
   "38": {
@@ -71,7 +71,7 @@
         "77",
         2
       ],
-      "steps": 30,
+      "steps": 40,
       "max_shift": 2.05,
       "base_shift": 0.95,
       "stretch": true,
@@ -135,8 +135,8 @@
         "78",
         0
       ],
-      "width": 704,
-      "height": 416,
+      "width": 768,
+      "height": 512,
       "length": 97,
       "batch_size": 1,
       "strength": 1.0
