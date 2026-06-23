@@ -6,10 +6,9 @@ Test runner for the long-form video pipeline.
 Run from the project root:
     python generate_longform_video.py
 
-This script:
-    1. Runs a single 6-second clip test first
-    2. If it passes, runs the 30-second long-form test
-    3. Prints a full summary at the end
+Current test: Ring-a-Ring O'Roses — nursery rhyme for kids
+  6 scenes x 5s = 30-second video
+  Output: C:\\Users\\user\\Desktop\\Output file\\ring_a_ring_roses\\
 """
 
 import sys
@@ -22,13 +21,21 @@ from content_pipeline.config import Settings
 from content_pipeline.bots.long_form_orchestrator import LongFormOrchestrator
 
 # ---------------------------------------------------------------------------
-# CONFIG — change these to test different prompts
+# CONFIG
+# Ring-a-Ring O'Roses nursery rhyme for kids.
+# Bright, colourful, cheerful — children dancing in a circle.
 # ---------------------------------------------------------------------------
 
-RAW_PROMPT = "girl walking in rain forest toward a river"
-SINGLE_CLIP_SECONDS = 6     # First test: single clip
-LONG_FORM_SECONDS   = 30    # Second test: 30-second video
+RAW_PROMPT = (
+    "happy children playing Ring-a-Ring O Roses in a sunny garden, "
+    "holding hands in a circle, spinning and dancing, "
+    "bright colorful dresses, green grass, flowers all around, "
+    "joyful smiling faces, warm golden sunlight"
+)
+
+LONG_FORM_SECONDS = 30      # 6 scenes x 5s = 30 seconds
 OUTPUT_DIR = Path(r"C:\Users\user\Desktop\Output file")
+JOB_NAME   = "ring_a_ring_roses"
 
 # ---------------------------------------------------------------------------
 # RUN
@@ -39,56 +46,45 @@ def main():
     orch = LongFormOrchestrator(settings)
 
     print("\n" + "=" * 70)
-    print("TEST RUN 1: Single 6-second clip")
+    print("Ring-a-Ring O'Roses  --  Nursery Rhyme Video")
     print("=" * 70)
-    t1 = time.time()
-    result_single = orch.run(
-        raw_prompt=RAW_PROMPT,
-        target_seconds=SINGLE_CLIP_SECONDS,
-        output_dir=OUTPUT_DIR,
-        job_name="test_single_clip",
-    )
-    t1_elapsed = time.time() - t1
-    print(f"\nSingle clip result: {result_single['status']}")
-    if result_single["status"] == "FAIL":
-        print(f"Error: {result_single.get('error')}")
-        print("\nSingle clip test failed. Stopping before long-form test.")
-        return
-
-    print(f"\nSingle clip video: {result_single['final_video_path']}")
-    print(f"Time taken: {t1_elapsed/60:.1f} minutes")
-
-    # Ask before running 30s test
-    print("\n" + "=" * 70)
-    print("TEST RUN 2: 30-second long-form video")
+    print(f"  Prompt   : {RAW_PROMPT[:80]}...")
+    print(f"  Duration : {LONG_FORM_SECONDS}s  ({LONG_FORM_SECONDS // 5} scenes x 5s each)")
+    print(f"  Output   : {OUTPUT_DIR / JOB_NAME}")
+    print(f"  Quality  : 1280x720, CRF 18 (sharp), 45 steps, CFG 3.5")
     print("=" * 70)
-    print(f"This will generate 5 chained clips of 6 seconds each.")
-    print(f"Estimated time: {5 * t1_elapsed / 60:.0f}–{6 * t1_elapsed / 60:.0f} minutes")
-    print("Starting in 5 seconds... (Ctrl+C to cancel)")
-    time.sleep(5)
+    print("\nStarting in 3 seconds...  (Ctrl+C to cancel)")
+    time.sleep(3)
 
-    t2 = time.time()
-    result_long = orch.run(
+    t_start = time.time()
+    result = orch.run(
         raw_prompt=RAW_PROMPT,
         target_seconds=LONG_FORM_SECONDS,
         output_dir=OUTPUT_DIR,
-        job_name="test_30s_video",
+        job_name=JOB_NAME,
     )
-    t2_elapsed = time.time() - t2
+    elapsed = time.time() - t_start
 
-    print(f"\n30-second video result: {result_long['status']}")
-    if result_long["status"] == "SUCCESS":
-        print(f"Final video: {result_long['final_video_path']}")
-    print(f"Time taken: {t2_elapsed/60:.1f} minutes")
-
-    # Final summary
     print("\n" + "=" * 70)
-    print("FINAL SUMMARY")
+    print("RESULT")
     print("=" * 70)
-    print(f"Prompt       : {RAW_PROMPT}")
-    print(f"Single clip  : {result_single['status']} → {result_single.get('final_video_path', 'N/A')}")
-    print(f"30s video    : {result_long['status']} → {result_long.get('final_video_path', 'N/A')}")
-    print(f"Total time   : {(t1_elapsed + t2_elapsed)/60:.1f} minutes")
+    if result["status"] == "SUCCESS":
+        final_path = result.get("final_video_path", "N/A")
+        try:
+            size_mb = round(Path(str(final_path)).stat().st_size / (1024 * 1024), 1)
+        except Exception:
+            size_mb = "?"
+        print(f"  SUCCESS")
+        print(f"  Video  : {final_path}")
+        print(f"  Size   : {size_mb} MB")
+        print(f"  Time   : {elapsed / 60:.1f} minutes")
+    else:
+        print(f"  FAILED")
+        print(f"  Error  : {result.get('error', 'Unknown error')}")
+        print(f"  Time   : {elapsed / 60:.1f} minutes")
+
+    print("=" * 70)
+    print(f"\nOpen your video at: {OUTPUT_DIR / JOB_NAME}")
     print("=" * 70)
 
 
