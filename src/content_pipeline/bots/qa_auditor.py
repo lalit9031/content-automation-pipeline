@@ -11,6 +11,141 @@ from typing import Any
 from content_pipeline.config import Settings
 
 # ---------------------------------------------------------------------------
+# Layer 1: Pixel-Level QA (pure Python stdlib, zero AI, instant)
+# Catches: blurry frames, corrupt VAE decodes, black/flat frames, tiny files.
+# Runs BEFORE Moondream on every sampled frame.
+# ---------------------------------------------------------------------------
+
+def _compute_sharpness(png_bytes: bytes) -> float:
+    """Laplacian variance sharpness score. Score guide: below 30=blurry, 30-80=soft, above 80=sharp."""
+    import struct, zlib
+    try:
+        if len(png_bytes) < 100 or png_bytes[:8] != b"\x89PNG\r\n\x1a\n":
+            return 100.0
+        pos, width, height, idat = 8, 0, 0, b""
+        while pos + 12 <= len(png_bytes):
+            n = struct.unpack(">I", png_bytes[pos:pos+4])[0]
+            ct = png_bytes[pos+4:pos+8]
+            d = png_bytes[pos+8:pos+8+n]
+            if ct == b"IHDR" and len(d) >= 8:
+                width, height = struct.unpack(">II", d[:8])
+            elif ct == b"IDAT":
+                idat += d
+            elif ct == b"IEND":
+                break
+            pos += 12 + n
+        if not idat or not width:
+            return 100.0
+        raw = zlib.decompress(idat)
+        rs = width * 3 + 1
+        rows = []
+        for i in range(min(height, len(raw) // max(rs, 1))):
+            row = raw[i*rs+1:i*rs+rs]
+            rows.append([int(0.299*row[j]+0.587*row[j+1]+0.114*row[j+2]) for j in range(0, len(row)-2, 3)])
+        if len(rows) < 3:
+            return 100.0
+        s, c = 0.0, 0
+        for r in range(1, len(rows)-1, 4):
+            w = min(len(rows[r]), len(rows[r-1]), len(rows[r+1]))
+            for col in range(1, w-1, 4):
+                s += abs(4*rows[r][col]-rows[r-1][col]-rows[r+1][col]-rows[r][col-1]-rows[r][col+1])
+                c += 1
+        return (s / c) if c > 0 else 100.0
+    except Exception:
+        return 100.0
+
+
+def _brightness_stats(png_bytes: bytes):
+    """Returns (mean, std) brightness. Detects all-black or flat corrupt frames."""
+    import struct, zlib
+    try:
+        if len(png_bytes) < 100 or png_bytes[:8] != b"\x89PNG\r\n\x1a\n":
+            return 128.0, 50.0
+        pos, width, height, idat = 8, 0, 0, b""
+        while pos + 12 <= len(png_bytes):
+            n = struct.unpack(">I", png_bytes[pos:pos+4])[0]
+            ct = png_bytes[pos+4:pos+8]
+            d = png_bytes[pos+8:pos+8+n]
+            if ct == b"IHDR" and len(d) >= 8:
+                width, height = struct.unpack(">II", d[:8])
+            elif ct == b"IDAT":
+                idat += d
+            elif ct == b"IEND":
+                break
+            pos += 12 + n
+        if not idat or not width:
+            return 128.0, 50.0
+        raw = zlib.decompress(idat)
+        rs = width * 3 + 1
+        samp = []
+        for i in range(0, min(height, len(raw) // max(rs, 1)), 8):
+            row = raw[i*rs+1:i*rs+rs]
+            for j in range(0, len(row)-2, 12):
+                samp.append(int(0.299*row[j]+0.587*row[j+1]+0.114*row[j+2]))
+        if not samp:
+            return 128.0, 50.0
+        mean = sum(samp) / len(samp)
+        std = (sum((x-mean)**2 for x in samp) / len(samp)) ** 0.5
+        return mean, std
+    except Exception:
+        return 128.0, 50.0
+
+
+def pixel_qa_check(image_bytes: bytes, label: str = "frame") -> dict:
+    """
+    Instant pixel-level QA on a single PNG frame. No AI required.
+    Returns PASS/FAIL with exact numeric sharpness, brightness, std scores.
+
+    Failure thresholds:
+      sharpness below 30  -> FAIL (very blurry)
+      brightness below 8  -> FAIL (all-black = corrupt VAE decode)
+      brightness above 248 -> FAIL (all-white = corrupt)
+      std_dev below 5     -> FAIL (flat/uniform = no image content)
+    """
+    import logging
+    sharp = _compute_sharpness(image_bytes)
+    mean_b, std_b = _brightness_stats(image_bytes)
+    issues = []
+    if sharp < 30:
+        issues.append("very blurry (sharpness={:.1f}, threshold=30)".format(sharp))
+    if mean_b < 8:
+        issues.append("all-black corrupt frame (brightness={:.1f})".format(mean_b))
+    elif mean_b > 248:
+        issues.append("all-white corrupt frame (brightness={:.1f})".format(mean_b))
+    if std_b < 5:
+        issues.append("flat/uniform frame, no image content (std={:.1f})".format(std_b))
+    scores = {"sharpness": round(sharp, 1), "brightness": round(mean_b, 1), "std": round(std_b, 1)}
+    logging.info("[PixelQA] {}: {}{}".format(label, scores, " FAIL={}".format(issues) if issues else " PASS"))
+    if issues:
+        defect = "corrupt_frame" if any(w in issues[0] for w in ["black","white","flat","uniform"]) else "blurry_frame"
+        return {"status": "FAIL", "reason": "Pixel QA [{}]: {}".format(label, issues[0]),
+                "defect_type": defect, "bounding_box": None, "pixel_scores": scores}
+    return {"status": "PASS", "reason": None, "defect_type": None, "bounding_box": None, "pixel_scores": scores}
+
+
+def check_video_file_sanity(video_path) -> dict:
+    """
+    File-level sanity check BEFORE opening the video.
+    Catches OOM-crashed renders immediately from file size.
+    A valid 4-second LTXV clip should be 4-16 MB.
+    Below 0.5 MB = VAE decode crashed mid-render.
+    """
+    import logging
+    from pathlib import Path as _Path
+    video_path = _Path(video_path)
+    if not video_path.exists():
+        return {"status": "FAIL", "reason": "File missing: {}".format(video_path.name),
+                "defect_type": "missing_file"}
+    size_mb = round(video_path.stat().st_size / (1024*1024), 2)
+    if size_mb < 0.5:
+        return {"status": "FAIL",
+                "reason": "File only {}MB — VAE decode crashed (expected 4-16 MB)".format(size_mb),
+                "defect_type": "corrupt_file", "size_mb": size_mb}
+    logging.info("[FileQA] {}: {}MB OK".format(video_path.name, size_mb))
+    return {"status": "PASS", "reason": None, "defect_type": None, "size_mb": size_mb}
+
+
+# ---------------------------------------------------------------------------
 # Moondream — tiny 1.8B vision model, completely free, runs via Ollama locally
 # Uses ~1.7 GB disk, ~1.5 GB VRAM (ComfyUI frees VRAM between jobs — no conflict)
 # One-time setup:  ollama pull moondream
@@ -380,16 +515,27 @@ class QAVisualAuditor:
         Returns:
             dict with keys: status, reason, defect_type, bounding_box
         """
+        # ---- Layer 1: Pixel QA (instant, no AI needed) ----
+        # Detects: blurry frames (sharpness), corrupt decodes (black/white/flat frames)
+        # Fails immediately without needing Ollama/Moondream to be running.
+        pixel_result = pixel_qa_check(image_bytes, label="audit_frame")
+        if pixel_result["status"] == "FAIL":
+            logging.warning("[QA] Layer 1 Pixel FAIL: %s", pixel_result["reason"])
+            return pixel_result
+
+        # ---- Layer 3: Moondream AI QA ----
+        # Checks: subject gender, scene, face clarity, eyes, artifacts, overlays
         if not self._is_ollama_alive():
             logging.warning(
-                "Ollama server is offline. Run 'ollama serve' then 'ollama pull moondream'. "
-                "Defaulting to PASS."
+                "Ollama offline. Pixel QA passed - defaulting to PASS. "
+                "Run 'ollama serve' then 'ollama pull moondream' to enable Moondream QA."
             )
             return {
                 "status": "PASS",
-                "reason": "Ollama offline — visual QA skipped",
+                "reason": "Ollama offline - Moondream skipped (Pixel QA passed)",
                 "defect_type": None,
                 "bounding_box": None,
+                "pixel_scores": pixel_result.get("pixel_scores"),
             }
 
         img_b64 = base64.b64encode(image_bytes).decode("utf-8")
