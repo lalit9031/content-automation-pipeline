@@ -214,6 +214,9 @@ class ComfyUIClient:
                 raise TimeoutError(f"ComfyUI job {prompt_id} timed out after {self.timeout_seconds} seconds.")
 
             # Parse outputs (images, gifs, videos) and retrieve them
+            # Strategy: try HTTP /view first; on ANY failure fall back to direct disk read.
+            # This bypasses WinError 10055 (TCP socket exhaustion) which occurs during long VAE decodes.
+            COMFYUI_OUTPUT_DIR = Path(r"C:\ComfyUI\ComfyUI\output")
             media_bytes_list: list[bytes] = []
             outputs = completed_data.get("outputs", {})
             for node_id, node_output in outputs.items():
@@ -223,19 +226,40 @@ class ComfyUIClient:
                             filename = media_info.get("filename")
                             subfolder = media_info.get("subfolder", "")
                             media_type = media_info.get("type", "output")
-                            if filename:
-                                query = f"filename={filename}&subfolder={subfolder}&type={media_type}"
-                                # Retry download up to 3 times with backoff (socket errors during download)
-                                for _retry in range(3):
-                                    try:
-                                        media_bytes = self._get(f"/view?{query}")
-                                        if isinstance(media_bytes, bytes):
-                                            media_bytes_list.append(media_bytes)
+                            if not filename:
+                                continue
+
+                            media_bytes = None
+
+                            # 1st attempt: HTTP download (fast, no disk access needed)
+                            query = f"filename={filename}&subfolder={subfolder}&type={media_type}"
+                            try:
+                                result = self._get(f"/view?{query}")
+                                if isinstance(result, bytes) and len(result) > 1024:
+                                    media_bytes = result
+                                    logging.info(f"[ComfyUI] Downloaded {filename} via HTTP ({len(result):,} bytes)")
+                                else:
+                                    logging.warning(f"[ComfyUI] HTTP returned too-small response for {filename} ({len(result) if isinstance(result, bytes) else 'non-bytes'}), trying disk fallback...")
+                            except Exception as http_exc:
+                                logging.warning(f"[ComfyUI] HTTP download failed for {filename}: {http_exc}. Trying direct disk read...")
+
+                            # 2nd attempt: Direct disk read from ComfyUI output folder (bypasses TCP entirely)
+                            if media_bytes is None:
+                                # Try subfolder path first, then root output dir
+                                candidates = []
+                                if subfolder:
+                                    candidates.append(COMFYUI_OUTPUT_DIR / subfolder / filename)
+                                candidates.append(COMFYUI_OUTPUT_DIR / filename)
+                                for disk_path in candidates:
+                                    if disk_path.exists() and disk_path.stat().st_size > 1024:
+                                        media_bytes = disk_path.read_bytes()
+                                        logging.info(f"[ComfyUI] Read {filename} directly from disk: {disk_path} ({len(media_bytes):,} bytes)")
                                         break
-                                    except Exception as exc:
-                                        logging.warning(f"Failed to fetch {key[:-1]} {filename} from ComfyUI (attempt {_retry+1}/3): {exc}")
-                                        if _retry < 2:
-                                            time.sleep(3)
+                                if media_bytes is None:
+                                    logging.error(f"[ComfyUI] Could not retrieve {filename} via HTTP or disk. Skipping.")
+
+                            if media_bytes:
+                                media_bytes_list.append(media_bytes)
 
             return media_bytes_list
         finally:
