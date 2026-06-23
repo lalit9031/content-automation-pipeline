@@ -702,22 +702,73 @@ class LongFormOrchestrator:
     # ------------------------------------------------------------------
 
     def _generate_image(self, image_prompt: str) -> bytes:
-        """Generate a source image using ComfyUI."""
+        """
+        Generate a source image using Flux at 1024x1024 (native best quality),
+        then center-crop and resize to 1280x720 with lanczos + unsharp sharpening.
+
+        Why 1024x1024 then resize?
+          Flux produces stacking/banding artifacts at 1280x720 (unusual aspect ratio).
+          1024x1024 is Flux native resolution = clean sharp output every time.
+          We center-crop to 16:9 (1024x576) then resize to 1280x720.
+
+        Cache fix:
+          POST /free before each call to clear ComfyUI execution cache.
+          Without this, ComfyUI returns stale cached outputs for calls 2-N
+          (all look like the first image with rainbow banding).
+        """
+        import urllib.request as _req
+        import json as _json
+        import io
+
         client = ComfyUIClient(
             base_url=self.settings.comfyui_url,
             timeout_seconds=self.settings.comfyui_timeout_seconds,
             settings=self.settings,
         )
+
+        # Clear ComfyUI execution cache before each generation
+        try:
+            free_data = _json.dumps({"unload_models": False, "free_memory": False}).encode()
+            free_request = _req.Request(
+                f"{self.settings.comfyui_url}/free",
+                data=free_data,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            _req.urlopen(free_request, timeout=10)
+            logging.info("[Image] ComfyUI execution cache cleared.")
+        except Exception as e:
+            logging.debug(f"[Image] /free cache clear skipped: {e}")
+
         workflow = load_workflow_json(self.settings.comfyui_image_workflow)
         if not workflow:
             raise RuntimeError(
                 f"Image workflow not found: {self.settings.comfyui_image_workflow}"
             )
-        customized = customize_txt2img_workflow(workflow, image_prompt, width=1280, height=720)  # 1280x720: matches final output, no upscaling needed
+
+        # Generate at 1024x1024 - Flux native resolution, no stacking artifacts
+        customized = customize_txt2img_workflow(workflow, image_prompt, width=1024, height=1024)
         results = client.generate(customized)
         if not results:
             raise RuntimeError("ComfyUI returned no image.")
-        return results[0]
+
+        # Resize 1024x1024 -> 1280x720:
+        #   Step 1: Center-crop to 16:9 (1024x576 from the 1024x1024 square)
+        #   Step 2: Resize 1024x576 -> 1280x720 with high-quality lanczos
+        #   Step 3: Apply unsharp mask to recover sharpness lost in resize
+        from PIL import Image as _Img, ImageFilter as _ImgF
+        img = _Img.open(io.BytesIO(results[0])).convert("RGB")
+        orig_w, orig_h = img.size
+        target_h_crop = int(orig_w * 9 / 16)   # 576 from 1024
+        top = (orig_h - target_h_crop) // 2      # 224 pixels from top
+        img_cropped = img.crop((0, top, orig_w, top + target_h_crop))
+        img_resized = img_cropped.resize((1280, 720), _Img.LANCZOS)
+        img_sharp = img_resized.filter(_ImgF.UnsharpMask(radius=1.5, percent=120, threshold=3))
+
+        buf = io.BytesIO()
+        img_sharp.save(buf, format="PNG", optimize=False)
+        logging.info(f"[Image] Generated 1024x1024, cropped+resized to 1280x720, sharpened.")
+        return buf.getvalue()
 
     # ------------------------------------------------------------------
     # Internal: Summary builder
