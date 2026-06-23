@@ -4,32 +4,63 @@ import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 # ==========================================
 # MASTER CONFIGS & TEMPLATES
 # ==========================================
 
+# ---------------------------------------------------------------------------
+# Dimension 6: Quality Modifiers — used in all 3 prompt types
+# ---------------------------------------------------------------------------
 MASTER_IMAGE_TEMPLATE = (
-    "Professional high-resolution portrait of a focused {subject}, "
-    "wearing {clothing}, holding {object}, modern high-tech office environment, "
-    "soft professional studio lighting, depth of field, sharp focus on subject, "
-    "shot on 35mm lens, f/8, photorealistic, 8k, extremely detailed, clean composition, "
-    "neutral color palette."
+    "Photorealistic digital photograph. "
+    "Subject: a professional {subject}, wearing {clothing}, holding {object}, "
+    "with a natural, confident expression. "
+    "Setting: modern high-tech office environment with glass partitions and clean white desks. "
+    "Lighting: soft professional studio lighting supplemented by natural window light, "
+    "neutral daylight color temperature. "
+    "Shot on a full-frame digital cinema camera, shallow depth of field (f/2.8), "
+    "sharp focus on subject's face and clothing details. "
+    "Quality: photorealistic, 8K, hyper-detailed textures on skin and fabric, "
+    "clean composition, cinematic color grading. "
+    "No watermarks, no text overlays, no distorted limbs, no blurry face, no artifacts."
 )
 
 MASTER_VIDEO_TEMPLATE = (
-    "Cinematic, stable 4-second video. A professional {subject} standing in a clean, "
-    "brightly lit modern office. The subject is {action}. The only movement is a slow, "
-    "smooth camera zoom-in toward the subject. Glowing data visualizations on the screen "
-    "are subtly pulsing. Photorealistic, high fidelity, 4k, no motion blur, consistent "
-    "lighting, smooth frame transitions, stable focus."
+    "Cinematic video clip shot on a digital cinema camera. "
+    "Subject: a professional {subject} in a clean, brightly lit modern office. "
+    "The subject is {action}. "
+    "Motion: full body visible, posture natural and upright, feet firmly on the floor, "
+    "arms moving with natural weight and momentum. "
+    "Camera: slow gentle zoom-in toward the subject, starting from a medium wide shot. "
+    "Lighting: soft professional studio lighting, even and consistent throughout the clip, "
+    "no flickering, no shadow changes. "
+    "Quality: photorealistic, 4K, sharp focus on subject's face and eyes at all times, "
+    "smooth 24fps, cinematic color grading, no motion blur on the face. "
+    "No watermarks, no text overlays, no distorted limbs, no floating feet, "
+    "no sliding steps, no shaking camera, no jitter, no frame tearing."
 )
 
+# ---------------------------------------------------------------------------
+# Dimension 7: Negative Anchors (expanded with motion-physics constraints)
+# ---------------------------------------------------------------------------
 QUALITY_CONTROL_NEGATIVE_PROMPT = (
-    "blurry, low resolution, pixelated, distorted face, morphed anatomy, shaky camera, "
-    "motion blur, flickering, grain, noise, watermark, cartoonish, low quality, "
-    "deformed hands, oversaturated, contrast issues, artifacts, jittery."
+    # Visual quality
+    "blurry, low resolution, pixelated, oversaturated, contrast issues, "
+    "watermark, text overlay, logo, "
+    # Face & anatomy
+    "distorted face, morphed anatomy, deformed hands, extra fingers, fused hands, "
+    "blurry face, melted face, broken face, warped face, "
+    # Motion & camera
+    "shaky camera, motion blur on face, flickering, jitter, frame tearing, ghosting, "
+    # Feet & limbs (critical for walking scenes)
+    "floating feet, sliding feet, unnatural gait, deformed shoes, melted shoes, "
+    "broken legs, extra legs, fused legs, "
+    # Eye stability (critical for close-ups)
+    "shaking eyes, jittery eyes, flickering eyes, "
+    # Technical
+    "grain, noise, artifacts, cartoonish, low quality, deformed."
 )
 
 # Pre-defined library modules for LEGO-style composition
@@ -172,14 +203,15 @@ class QualityRefiner:
         """
         Decision Tree checking if the prompt has active actions.
         Routes to Standard Image or Image-to-Video generation pipeline.
+        Note: Every video starts with an image — this routes to video when action detected.
         """
-        action_pattern = r"\b(walk|run|smil|turn|hold|point|talk|speak|spok|mov|wav|gestur|look|typ|gaz|writ|present)\w*"
+        action_pattern = r"\b(walk|run|smil|turn|hold|point|talk|speak|spok|mov|wav|gestur|look|typ|gaz|writ|present|danc|jump|play|sit|stand)\w*"
         has_action = bool(re.search(action_pattern, prompt_text.lower()))
-        
+
         return {
             "has_action": has_action,
             "recommended_mode": "video" if has_action else "image",
-            "reason": "Action detected in user input." if has_action else "Static representation."
+            "reason": "Action detected — image will be generated first, then video." if has_action else "Static subject — image only."
         }
 
     def refine_image_prompt(
@@ -191,14 +223,26 @@ class QualityRefiner:
         light_key: str = "studio",
         camera_key: str = "standard",
         quality_key: str = "standard",
-        style_key: str = "neutral"
+        style_key: str = "neutral",
+        expanded_context: Optional[Any] = None,
     ) -> str:
         """
-        Uses template token-swapping if basic elements are supplied,
-        otherwise falls back to structured LEGO construction.
+        Builds a rich image prompt.
+        If expanded_context (PromptContext) is provided, uses the 7-dimension
+        system from SmartPromptExpander for maximum detail and consistency.
+        Falls back to template token-swapping when no context is given.
         """
+        # If a SmartPromptExpander context is available, use it (highest quality path)
+        if expanded_context is not None:
+            try:
+                from content_pipeline.bots.prompt_expander import SmartPromptExpander
+                expander = SmartPromptExpander()
+                return expander.build_image_prompt(expanded_context)
+            except Exception:
+                pass  # Fallback to template below
+
         subject = self._verify_detail(subject)
-        
+
         # If clothing and obj are provided, we use the MASTER_IMAGE_TEMPLATE
         if clothing or obj:
             return MASTER_IMAGE_TEMPLATE.format(
@@ -206,14 +250,14 @@ class QualityRefiner:
                 clothing=clothing,
                 object=obj
             )
-        
+
         # Otherwise, fall back to Lego-style assembly using keys
         env = self.image_lib["environments"].get(env_key, self.image_lib["environments"]["office"])
         light = self.image_lib["lightings"].get(light_key, self.image_lib["lightings"]["studio"])
         cam = self.image_lib["cameras"].get(camera_key, self.image_lib["cameras"]["standard"])
         qual = self.image_lib["quality_levers"].get(quality_key, self.image_lib["quality_levers"]["standard"])
         sty = self.image_lib["styles"].get(style_key, self.image_lib["styles"]["neutral"])
-        
+
         blueprint = ImagePromptBlueprint(
             core_subject=subject,
             environment=env,
@@ -228,11 +272,24 @@ class QualityRefiner:
         self,
         subject: str,
         action: str = "holding a digital tablet showing glowing visualizations",
-        env: str = "clean, brightly lit modern office"
+        env: str = "clean, brightly lit modern office",
+        expanded_context: Optional[Any] = None,
     ) -> str:
         """
-        Anchors the motion to prevent flickering and applies Master Video Prompt.
+        Builds a rich video prompt anchored for motion stability.
+        If expanded_context (PromptContext) is provided, uses the full 7-dimension
+        system from SmartPromptExpander — the highest quality path.
+        Falls back to MASTER_VIDEO_TEMPLATE for backward compatibility.
         """
+        # Highest quality path: use SmartPromptExpander context if available
+        if expanded_context is not None:
+            try:
+                from content_pipeline.bots.prompt_expander import SmartPromptExpander
+                expander = SmartPromptExpander()
+                return expander.build_video_prompt(expanded_context)
+            except Exception:
+                pass  # Fallback to template below
+
         subject = self._verify_detail(subject)
         return MASTER_VIDEO_TEMPLATE.format(
             subject=subject,
@@ -245,17 +302,30 @@ class QualityRefiner:
         persona_override: str = "",
         pitch_key: str = "stable",
         pacing_key: str = "calm",
-        pron_key: str = "precise"
+        pron_key: str = "precise",
+        expanded_context: Optional[Any] = None,
     ) -> str:
         """
         Builds standardized voice constraints using modular blocks.
+        If expanded_context (PromptContext) is provided, uses the full
+        voice profile from SmartPromptExpander for maximum character consistency.
+        Falls back to audio library presets for backward compatibility.
         """
+        # Highest quality path: use SmartPromptExpander context if available
+        if expanded_context is not None:
+            try:
+                from content_pipeline.bots.prompt_expander import SmartPromptExpander
+                expander = SmartPromptExpander()
+                return expander.build_audio_prompt(expanded_context)
+            except Exception:
+                pass  # Fallback to presets below
+
         persona = persona_override if persona_override else self.audio_lib["personas"].get(preset_key, self.audio_lib["personas"]["corporate_male"])
         pitch = self.audio_lib["pitch_prosody"].get(pitch_key, self.audio_lib["pitch_prosody"]["stable"])
         pacing = self.audio_lib["pacing_rules"].get(pacing_key, self.audio_lib["pacing_rules"]["calm"])
         pron = self.audio_lib["pronunciation_rules"].get(pron_key, self.audio_lib["pronunciation_rules"]["precise"])
         cleaning = self.audio_lib["output_cleaning"]["studio"]
-        
+
         blueprint = AudioPromptBlueprint(
             persona=persona,
             pitch_prosody=pitch,

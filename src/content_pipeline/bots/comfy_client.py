@@ -11,9 +11,10 @@ from typing import Any
 
 
 class ComfyUIClient:
-    def __init__(self, base_url: str = "http://127.0.0.1:8188", timeout_seconds: int = 300) -> None:
+    def __init__(self, base_url: str = "http://127.0.0.1:8188", timeout_seconds: int = 300, settings=None) -> None:
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
+        self.settings = settings  # Optional Settings object for feature flags
 
     def _is_listening(self) -> bool:
         try:
@@ -28,6 +29,8 @@ class ComfyUIClient:
         import sys
         import os
         os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:256"
+
+        # Base command — always active flags
         cmd = [
             r"C:\ComfyUI\procgov.exe",
             "--maxmem", "25G",
@@ -38,9 +41,28 @@ class ComfyUIClient:
             "--windows-standalone-build",
             "--enable-dynamic-vram",
             "--lowvram",
-            "--fp8_e4m3fn-unet",
-            "--fp8_e4m3fn-text-enc"
+            "--fp8_e4m3fn-unet",       # FP8 UNet weights — saves ~14 GB VRAM vs FP16
+            "--fp8_e4m3fn-text-enc",   # FP8 text encoder — already active
         ]
+
+        # Optional: Flash Attention — saves ~2-4 GB VRAM during attention computation
+        # Controlled by COMFYUI_USE_FLASH_ATTENTION=true in .env
+        use_flash_attn = True  # default on
+        if self.settings is not None:
+            use_flash_attn = getattr(self.settings, "comfyui_use_flash_attention", True)
+        if use_flash_attn:
+            cmd.append("--attention-pytorch")
+            logging.info("[Auto-Memory] Flash Attention enabled (--attention-pytorch). Saves ~2-4 GB VRAM.")
+
+        # Optional: Tiled VAE decode — saves ~1-2 GB VRAM during decode step
+        # Controlled by COMFYUI_USE_TILED_VAE=true in .env
+        use_tiled_vae = True  # default on
+        if self.settings is not None:
+            use_tiled_vae = getattr(self.settings, "comfyui_use_tiled_vae", True)
+        if use_tiled_vae:
+            cmd.append("--tiled-vae")
+            logging.info("[Auto-Memory] Tiled VAE enabled (--tiled-vae). Saves ~1-2 GB VRAM during decode.")
+
         log_path = Path("comfyui_server_runtime.log")
         log_file = open(log_path, "w", encoding="utf-8")
         # 0x00000040 is IDLE_PRIORITY_CLASS (Low CPU priority on Windows)

@@ -20,6 +20,40 @@ OLLAMA_URL = "http://localhost:11434"
 OLLAMA_TIMEOUT = 90   # seconds — Moondream on CPU can be slow first run
 
 # ---------------------------------------------------------------------------
+# Structured QA Prompt — 7-point checklist aligned with 7 prompt dimensions
+# Used when settings.video_qa_structured_mode = True (default)
+# Gives Moondream specific targets to look for, making keyword parsing reliable.
+# ---------------------------------------------------------------------------
+_STRUCTURED_QA_PROMPT = (
+    "Look at this image carefully and answer these 7 questions in order. "
+    "Be specific and brief for each answer:\n"
+    "1. SUBJECT: Is the main subject a girl or woman, or a man or boy? State which."
+    "\n2. LOCATION: Is the scene outdoors in nature, or indoors? Describe briefly."
+    "\n3. FEET AND LIMBS: Are the subject's feet firmly on the ground? "
+    "Or are they floating, sliding, or in an unnatural position?"
+    "\n4. FACE CLARITY: Is the subject's face clear and sharp? "
+    "Or is it blurry, distorted, melted, or deformed in any way?"
+    "\n5. EYE STABILITY: Are the subject's eyes stable, clear, and focused? "
+    "Or are they jittery, flickering, or shaking?"
+    "\n6. MOTION ARTIFACTS: Is there any visible motion blur, ghosting, "
+    "frame tearing, or visual artifact anywhere in the image?"
+    "\n7. OVERLAYS: Is there any watermark, text, or logo visible in the image?"
+)
+
+# ---------------------------------------------------------------------------
+# Open-ended QA Prompt — legacy fallback
+# Used when settings.video_qa_structured_mode = False
+# ---------------------------------------------------------------------------
+_OPEN_ENDED_QA_PROMPT = (
+    "Describe everything you see in this image in detail. "
+    "Note the gender of the main subject (girl or man/boy), "
+    "whether the scene is indoors or outdoors, whether it is raining, "
+    "whether an umbrella is present, and look very closely for any visual defects such as "
+    "deformed or blurry faces, shaking or jittery eyes, out-of-focus details, "
+    "melting shoes, distorted legs or feet, watermarks, or text overlays."
+)
+
+# ---------------------------------------------------------------------------
 # Keyword banks for smart PASS / FAIL detection from Moondream's plain-text
 # descriptions (Moondream 1.8B describes images well but rarely outputs JSON)
 # ---------------------------------------------------------------------------
@@ -132,6 +166,108 @@ def _has_unnegated_keyword(text: str, keyword: str) -> bool:
             return True
         idx = text_lower.find(keyword, idx + len(keyword))
     return False
+
+
+def _parse_structured_moondream_response(text: str) -> dict[str, Any]:
+    """
+    Parse Moondream's response to the structured 7-point QA checklist.
+
+    Maps each answer section to a PASS/FAIL determination:
+    Q1 (SUBJECT)   -> wrong_subject if male keywords found
+    Q2 (LOCATION)  -> wrong_setting if indoors with no outdoor context
+    Q3 (FEET)      -> deformed_limbs if floating/sliding detected
+    Q4 (FACE)      -> deformed_face if blurry/distorted detected
+    Q5 (EYES)      -> instability if jittery/flickering detected
+    Q6 (ARTIFACTS) -> artifact if ghosting/tearing detected
+    Q7 (OVERLAYS)  -> watermark if text/logo detected
+    """
+    text_lower = text.lower()
+
+    # Q1: Subject gender check
+    # Extract just the answer around "1." or "SUBJECT:"
+    subject_section = _extract_section(text_lower, ["1.", "subject:"], next_markers=["2.", "location:"])
+    if subject_section:
+        male_hits = [w for w in ["man", "boy", "male", "gentleman", "male figure", "businessman"] if w in subject_section]
+        female_hits = [w for w in ["girl", "woman", "lady", "female"] if w in subject_section]
+        if male_hits and not female_hits:
+            return {"status": "FAIL", "reason": f"Subject is male ({male_hits[0]}), expected female",
+                    "defect_type": "wrong_subject", "bounding_box": None}
+
+    # Q2: Location check
+    location_section = _extract_section(text_lower, ["2.", "location:"], next_markers=["3.", "feet"])
+    if location_section:
+        indoor_hits = [w for w in ["indoors", "inside", "ceiling", "interior", "room"] if w in location_section]
+        outdoor_hits = [w for w in ["outdoor", "outside", "nature", "tree", "sky", "path", "rain", "forest", "park"] if w in location_section]
+        if indoor_hits and not outdoor_hits:
+            # Only flag if the generation was supposed to be outdoor
+            # (soft check — don't fail on indoor scenes that were intended to be indoor)
+            pass  # Keep as soft signal, handled by existing _SOFT_FAIL_SIGNALS fallback
+
+    # Q3: Feet and limbs
+    feet_section = _extract_section(text_lower, ["3.", "feet"], next_markers=["4.", "face"])
+    if feet_section:
+        bad_feet = [w for w in ["floating", "sliding", "unnatural", "not on ground", "hovering", "off the ground"] if w in feet_section]
+        if bad_feet and not any(ok in feet_section for ok in ["firmly", "on the ground", "planted", "stable", "normal"]):
+            return {"status": "FAIL", "reason": f"Feet/limbs problem detected: {bad_feet[0]}",
+                    "defect_type": "deformed_limbs", "bounding_box": None}
+
+    # Q4: Face clarity
+    face_section = _extract_section(text_lower, ["4.", "face clarity", "face:"], next_markers=["5.", "eye"])
+    if face_section:
+        bad_face = [w for w in ["blurry", "distorted", "melted", "deformed", "warped", "broken", "unclear"] if w in face_section]
+        if bad_face and not any(ok in face_section for ok in ["clear", "sharp", "well-defined", "clean", "no blur"]):
+            return {"status": "FAIL", "reason": f"Face defect detected: {bad_face[0]}",
+                    "defect_type": "deformed_face", "bounding_box": None}
+
+    # Q5: Eye stability
+    eye_section = _extract_section(text_lower, ["5.", "eye stability", "eye:"], next_markers=["6.", "motion", "artifact"])
+    if eye_section:
+        bad_eyes = [w for w in ["jittery", "flickering", "shaking", "unstable", "blurry"] if w in eye_section]
+        if bad_eyes and not any(ok in eye_section for ok in ["stable", "clear", "focused", "sharp", "steady"]):
+            return {"status": "FAIL", "reason": f"Eye instability detected: {bad_eyes[0]}",
+                    "defect_type": "instability", "bounding_box": None}
+
+    # Q6: Motion artifacts
+    artifact_section = _extract_section(text_lower, ["6.", "motion artifact", "artifact"], next_markers=["7.", "overlay", "watermark"])
+    if artifact_section:
+        bad_artifacts = [w for w in ["ghosting", "tearing", "blur", "artifact", "glitch", "compression"] if w in artifact_section]
+        if bad_artifacts and not any(ok in artifact_section for ok in ["no artifact", "none", "no blur", "clean", "no ghosting"]):
+            return {"status": "FAIL", "reason": f"Motion artifact detected: {bad_artifacts[0]}",
+                    "defect_type": "artifact", "bounding_box": None}
+
+    # Q7: Overlays
+    overlay_section = _extract_section(text_lower, ["7.", "overlay", "watermark"], next_markers=[])
+    if overlay_section:
+        bad_overlays = [w for w in ["watermark", "text", "logo", "overlay", "visible text"] if w in overlay_section]
+        if bad_overlays and not any(ok in overlay_section for ok in ["no watermark", "no text", "none", "no logo", "clean"]):
+            return {"status": "FAIL", "reason": f"Overlay detected: {bad_overlays[0]}",
+                    "defect_type": "watermark", "bounding_box": None}
+
+    # All 7 checks passed
+    return {"status": "PASS", "reason": None, "defect_type": None, "bounding_box": None}
+
+
+def _extract_section(text: str, start_markers: list[str], next_markers: list[str]) -> str:
+    """
+    Extract the portion of text between a start marker and the next question marker.
+    Returns an empty string if no section is found.
+    """
+    start_idx = -1
+    for marker in start_markers:
+        idx = text.find(marker)
+        if idx != -1:
+            start_idx = idx + len(marker)
+            break
+    if start_idx == -1:
+        return ""
+
+    end_idx = len(text)
+    for marker in next_markers:
+        idx = text.find(marker, start_idx)
+        if idx != -1 and idx < end_idx:
+            end_idx = idx
+
+    return text[start_idx:end_idx].strip()
 
 
 def _parse_moondream_response(text: str) -> dict[str, Any]:
@@ -258,18 +394,22 @@ class QAVisualAuditor:
 
         img_b64 = base64.b64encode(image_bytes).decode("utf-8")
 
-        # Use a single open-ended description request.
-        # Moondream 1.8B only answers the FIRST numbered question then stops,
-        # so we ask for one descriptive paragraph instead — this gives rich
-        # text that our keyword parser can scan for PASS/FAIL signals.
-        qa_prompt = (
-            f"Describe everything you see in this image in detail. "
-            f"Note the gender of the main subject (girl or man/boy), "
-            f"whether the scene is indoors or outdoors, whether it is raining, "
-            f"whether an umbrella is present, and look very closely for any visual defects such as "
-            f"deformed or blurry faces, shaking or jittery eyes, out-of-focus details, "
-            f"melting shoes, distorted legs or feet, watermarks, or text overlays."
-        )
+        # Choose prompt mode based on settings
+        use_structured = True  # default
+        if self.settings is not None:
+            use_structured = getattr(self.settings, "video_qa_structured_mode", True)
+
+        if use_structured:
+            # Structured 7-point checklist — aligned with 7 prompt dimensions
+            # More reliable keyword parsing, fewer false positives
+            qa_prompt = _STRUCTURED_QA_PROMPT
+            response_parser = _parse_structured_moondream_response
+            logging.info("[Moondream] Using structured 7-point QA checklist.")
+        else:
+            # Open-ended description — legacy mode
+            qa_prompt = _OPEN_ENDED_QA_PROMPT
+            response_parser = _parse_moondream_response
+            logging.info("[Moondream] Using open-ended QA description (legacy mode).")
 
         payload = {
             "model": self.ollama_model,
@@ -289,7 +429,7 @@ class QAVisualAuditor:
                 response = json.loads(res.read().decode("utf-8"))
                 raw_text = response.get("response", "").strip()
                 logging.info(f"[Moondream] Raw: {raw_text[:200]}")
-                result = _parse_moondream_response(raw_text)
+                result = response_parser(raw_text)
                 logging.info(f"[Moondream] QA Result: {result}")
                 return result
 

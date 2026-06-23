@@ -103,6 +103,18 @@ class Settings:
     comfyui_inpaint_workflow: str = "workflows/comfyui_inpaint_api.json"
     comfyui_model_name: str = "flux1-dev.safetensors"
     comfyui_timeout_seconds: int = 300
+    # --- VRAM Optimization Flags (Phase 1) ---
+    # Toggle Flash Attention on/off from .env: COMFYUI_USE_FLASH_ATTENTION=true
+    comfyui_use_flash_attention: bool = True
+    # Toggle Tiled VAE on/off from .env: COMFYUI_USE_TILED_VAE=true
+    comfyui_use_tiled_vae: bool = True
+    # --- Smart Prompt Expansion Flags (Phase 3) ---
+    # Toggle 7-dimension prompt expansion: PROMPT_EXPANSION_ENABLED=true
+    prompt_expansion_enabled: bool = True
+    # Detail level for prompt expansion: "minimal" | "standard" | "full"
+    prompt_expansion_detail: str = "full"
+    # Use structured 7-point Moondream QA checklist: VIDEO_QA_STRUCTURED_MODE=true
+    video_qa_structured_mode: bool = True
     video_freeze_threshold: float = 0.05
     video_stutter_threshold: float = 4.0
     ollama_model: str = "moondream"
@@ -247,6 +259,11 @@ class Settings:
             comfyui_inpaint_workflow=os.getenv("COMFYUI_INPAINT_WORKFLOW", "workflows/comfyui_inpaint_api.json").strip(),
             comfyui_model_name=os.getenv("COMFYUI_MODEL_NAME", "flux1-dev.safetensors").strip(),
             comfyui_timeout_seconds=int(os.getenv("COMFYUI_TIMEOUT_SECONDS", "300")),
+            comfyui_use_flash_attention=_as_bool(os.getenv("COMFYUI_USE_FLASH_ATTENTION", "true")),
+            comfyui_use_tiled_vae=_as_bool(os.getenv("COMFYUI_USE_TILED_VAE", "true")),
+            prompt_expansion_enabled=_as_bool(os.getenv("PROMPT_EXPANSION_ENABLED", "true")),
+            prompt_expansion_detail=os.getenv("PROMPT_EXPANSION_DETAIL", "full").strip().lower() or "full",
+            video_qa_structured_mode=_as_bool(os.getenv("VIDEO_QA_STRUCTURED_MODE", "true")),
             image_quality=os.getenv("IMAGE_QUALITY", "high").strip().lower(),
             image_seed=int(os.getenv("IMAGE_SEED", "0")),
             image_guidance_scale=float(os.getenv("IMAGE_GUIDANCE_SCALE", "7.5")),
