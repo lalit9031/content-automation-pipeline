@@ -557,11 +557,17 @@ class ComfyUIMotionProvider:
                             except Exception:
                                 pass
                         # Set frame count based on duration
-                        create_vid_nodes = find_nodes("CreateVideo")
-                        if create_vid_nodes and "inputs" in create_vid_nodes[0][1]:
-                            fps = int(create_vid_nodes[0][1]["inputs"].get("fps", 24))
-                        num_frames = int(clip.duration_seconds * fps) + 1
+                        # LTXV requires frame_count = N*8 + 1 (e.g. 97=12*8+1, 73=9*8+1, 49=6*8+1)
+                        # Raw: 6s × 24fps = 145 frames — this exhausts VAE decode VRAM on 24GB cards.
+                        # Safe maximum at 768×512 on RX 7900 XTX is 97 frames (~4s at 24fps).
+                        raw_frames = int(clip.duration_seconds * fps) + 1
+                        MAX_LTXV_FRAMES = 97  # Hard cap — VAE decode OOMs above this at 768×512
+                        capped = min(raw_frames, MAX_LTXV_FRAMES)
+                        # Snap to nearest valid LTXV frame count: N*8+1
+                        n = max(1, round((capped - 1) / 8))
+                        num_frames = n * 8 + 1
                         ltxv_node["inputs"]["length"] = num_frames
+                        print(f"[LTXV] Frame count: {raw_frames} raw → capped to {capped} → snapped to {num_frames} (N={n}, valid LTXV multiple)")
 
                         # Find positive prompt node by tracing the "positive" link
                         positive_link = ltxv_node["inputs"].get("positive")
