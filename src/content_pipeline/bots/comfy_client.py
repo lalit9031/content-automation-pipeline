@@ -28,12 +28,19 @@ class ComfyUIClient:
         import subprocess
         import sys
         import os
-        os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:256"
+        # --- RAM/VRAM Memory Controls ---
+        # max_split_size_mb: limits how large a single contiguous allocation can be.
+        # Smaller = more fragmented but prevents single huge allocations eating all RAM.
+        # 128MB is safer than 256MB for 30GB RAM systems running 14B models.
+        os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128,garbage_collection_threshold:0.8"
+        # Limit async offload pinned memory — this is what causes RAM to spike to max.
+        # ComfyUI logs show "Enabled pinned memory 12648.0" — we cap it lower.
+        os.environ["COMFYUI_PINNED_MEMORY_LIMIT_MB"] = "8192"  # 8GB max pinned (was ~12.6GB)
 
         # Base command — always active flags
         cmd = [
             r"C:\ComfyUI\procgov.exe",
-            "--maxmem", "25G",
+            "--maxmem", "22G",  # Hard RAM cap: 22GB leaves ~8GB for Windows + pipeline Python
             "--",
             r"C:\ComfyUI\python_embeded\python.exe",
             "-s",
@@ -41,8 +48,10 @@ class ComfyUIClient:
             "--windows-standalone-build",
             "--enable-dynamic-vram",
             "--lowvram",
-            "--fp8_e4m3fn-unet",       # FP8 UNet weights — saves ~14 GB VRAM vs FP16
-            "--fp8_e4m3fn-text-enc",   # FP8 text encoder — already active
+            "--fp8_e4m3fn-unet",       # FP8 UNet: saves ~14 GB VRAM vs FP16
+            "--fp8_e4m3fn-text-enc",   # FP8 text encoder: saves ~4 GB VRAM vs FP16
+            # NOTE: Do NOT add --disable-smart-memory — it actually INCREASES RAM usage
+            # NOTE: Do NOT add --cpu-vae — it's slower and still uses RAM for VAE
         ]
 
         # Optional: Flash Attention — saves ~2-4 GB VRAM during attention computation
