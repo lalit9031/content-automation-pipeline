@@ -31,17 +31,16 @@ class ComfyUIClient:
         # --- RAM/VRAM Memory Controls (64GB RAM optimized) ---
         # With 64GB RAM we have ample headroom. Settings are tuned for:
         #   - Best quality (max resolution, max steps)
-        #   - Never hitting RAM max (hard cap at 48GB leaves 16GB free)
-        #   - Fast offloading (larger pinned buffer = faster VRAM<->RAM transfers)
-        os.environ["PYTORCH_ALLOC_CONF"] = "max_split_size_mb:512,garbage_collection_threshold:0.9"
-        # Allow up to 20GB pinned memory — 64GB system has plenty of headroom.
-        # Larger pinned buffer = faster async weight offloading = faster per-step time.
-        os.environ["COMFYUI_PINNED_MEMORY_LIMIT_MB"] = "20480"  # 20GB pinned (safe on 64GB)
+        #   - Never hitting RAM max (hard cap at 40GB leaves 24GB free for OS/GPU/apps)
+        #   - 48GB was too close — OS+GPU+Chrome peaked to 16GB causing 100% RAM freeze
+        os.environ["PYTORCH_ALLOC_CONF"] = "max_split_size_mb:256,garbage_collection_threshold:0.8"
+        # 12GB pinned memory — conservative, leaves maximum headroom for OS + GPU drivers
+        os.environ["COMFYUI_PINNED_MEMORY_LIMIT_MB"] = "12288"  # 12GB pinned
 
-        # Base command — 64GB RAM optimized flags
+        # Base command — 40GB hard cap (64GB - 40GB = 24GB free for Windows/GPU/apps)
         cmd = [
             r"C:\ComfyUI\procgov.exe",
-            "--maxmem", "48G",  # Hard RAM cap: 48GB — leaves 16GB free for Windows + apps
+            "--maxmem", "40G",  # 40GB cap: prevents 100% RAM freeze, leaves 24GB for OS
             "--",
             r"C:\ComfyUI\python_embeded\python.exe",
             "-s",

@@ -126,6 +126,220 @@ class LongFormOrchestrator:
     # Public API
     # ------------------------------------------------------------------
 
+
+    def run_poem(
+        self,
+        poem_scenes: list[dict],
+        output_dir=None,
+        job_name: str = "poem_video",
+    ) -> dict:
+        """
+        Run the poem video pipeline.
+
+        Unlike run(), this method:
+          1. Accepts explicit per-scene image + video prompts (no ScriptEngine).
+          2. Generates a fresh Flux keyframe image for EVERY scene.
+          3. Each scene: Flux image -> ComfyUI restart -> LTXV animate.
+          4. This gives each verse of the poem a proper illustration.
+
+        Args:
+            poem_scenes: List of dicts, each with:
+                - image_prompt: Flux prompt for the scene keyframe image
+                - video_prompt: LTXV prompt for animating the keyframe
+                - title: Human-readable scene name
+            output_dir: Where to save outputs
+            job_name: Output folder name
+
+        Returns:
+            dict with status, final_video_path, etc.
+        """
+        import os
+        import time as _time
+
+        job_start = _time.time()
+        out_dir = output_dir or Path("output/videos")
+        out_dir = Path(out_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        job_dir = out_dir / job_name
+        job_dir.mkdir(parents=True, exist_ok=True)
+        clips_dir = job_dir / "clips"
+        clips_dir.mkdir(parents=True, exist_ok=True)
+        frames_dir = job_dir / "frames"
+        frames_dir.mkdir(parents=True, exist_ok=True)
+        images_dir = job_dir / "keyframes"
+        images_dir.mkdir(parents=True, exist_ok=True)
+
+        print("\n" + "=" * 70)
+        print("POEM VIDEO PIPELINE  (per-scene Flux keyframes)")
+        print("=" * 70)
+        print(f"Scenes   : {len(poem_scenes)}")
+        print(f"Output   : {job_dir}")
+        print("=" * 70)
+
+        from content_pipeline.bots.comfy_client import ComfyUIClient
+        client = ComfyUIClient(settings=self.settings)
+
+        clip_paths = []
+        clip_results_info = []
+
+        for scene_dict in poem_scenes:
+            scene_idx = scene_dict["scene"]
+            title = scene_dict.get("title", f"Scene {scene_idx}")
+            image_prompt = scene_dict["image_prompt"]
+            video_prompt = scene_dict["video_prompt"]
+
+            print(f"\n--- Scene {scene_idx}/{len(poem_scenes)}: {title} ---")
+
+            # ----------------------------------------------------------------
+            # Phase A: Flux image generation
+            # ----------------------------------------------------------------
+            print(f"  [Flux] Generating keyframe image for scene {scene_idx}...")
+            keyframe_path = images_dir / f"scene_{scene_idx:02d}_keyframe.png"
+            server_proc, server_log = None, None
+            started_server = False
+
+            try:
+                if not client._is_listening():
+                    print("  [Auto-Memory] Starting ComfyUI (Flux phase)...")
+                    server_proc, server_log = client._start_server()
+                    started_server = True
+                    if not client._wait_listening():
+                        print(f"  ERROR: ComfyUI failed to start for scene {scene_idx} Flux phase")
+                        clip_results_info.append({"scene": scene_idx, "status": "FAIL", "error": "ComfyUI start failed"})
+                        continue
+
+                img_bytes = self._generate_image(image_prompt)
+                keyframe_path.write_bytes(img_bytes)
+                print(f"  [Flux] Keyframe saved: {keyframe_path.name} ({len(img_bytes)//1024}KB)")
+
+            except Exception as e:
+                print(f"  [Flux] Image generation failed: {e}")
+                clip_results_info.append({"scene": scene_idx, "status": "FAIL", "error": str(e)})
+                continue
+
+            finally:
+                # Always restart ComfyUI after Flux to flush Flux weights before LTXV
+                if server_proc:
+                    print("  [RAM] Restarting ComfyUI — flushing Flux before LTXV...")
+                    server_proc.terminate()
+                    try:
+                        server_proc.wait(timeout=20)
+                    except Exception:
+                        server_proc.kill()
+                        server_proc.wait()
+                    if server_log:
+                        server_log.close()
+                    _time.sleep(4)
+                    print("  [RAM] Flux cleared. Starting LTXV phase...")
+                    server_proc, server_log = client._start_server()
+                    started_server = True
+                    if not client._wait_listening():
+                        print(f"  ERROR: ComfyUI failed to restart for scene {scene_idx} LTXV phase")
+                        clip_results_info.append({"scene": scene_idx, "status": "FAIL", "error": "LTXV start failed"})
+                        continue
+
+            # ----------------------------------------------------------------
+            # Phase B: LTXV video generation from keyframe
+            # ----------------------------------------------------------------
+            print(f"  [LTXV] Animating keyframe -> video clip...")
+            clip_path = clips_dir / f"clip_{scene_idx:02d}.mp4"
+            scene_start = _time.time()
+
+            try:
+                # Build a minimal SceneDescription for _generate_clip
+                from content_pipeline.bots.script_engine import SceneDescription
+                scene_obj = SceneDescription(
+                    scene_number=scene_idx,
+                    total_scenes=len(poem_scenes),
+                    raw_prompt=video_prompt,
+                    duration_seconds=4,
+                    action_modifier="",
+                    camera_modifier="medium shot, face visible and sharp",
+                    environment_detail="",
+                    narrative_note=title,
+                    is_first=(scene_idx == 1),
+                    is_last=(scene_idx == len(poem_scenes)),
+                )
+                clip_result = self._generate_clip(
+                    scene=scene_obj,
+                    start_image_path=keyframe_path,
+                    base_video_prompt=video_prompt,
+                    clips_dir=clips_dir,
+                    frames_dir=frames_dir,
+                    raw_prompt=video_prompt,
+                )
+                scene_time = _time.time() - scene_start
+
+                if clip_result.status == "SUCCESS" and clip_result.clip_path:
+                    clip_paths.append(clip_result.clip_path)
+                    size_mb = round(clip_result.clip_path.stat().st_size / (1024*1024), 1)
+                    print(f"  [OK] Scene {scene_idx} done in {scene_time:.0f}s — {size_mb}MB")
+                    clip_results_info.append({"scene": scene_idx, "status": "SUCCESS", "time": scene_time, "size_mb": size_mb})
+                else:
+                    print(f"  [FAIL] Scene {scene_idx}: {clip_result.error}")
+                    clip_results_info.append({"scene": scene_idx, "status": "FAIL", "error": clip_result.error})
+
+            except Exception as e:
+                print(f"  [LTXV] Video generation failed: {e}")
+                clip_results_info.append({"scene": scene_idx, "status": "FAIL", "error": str(e)})
+
+            finally:
+                # Stop ComfyUI after each scene to free RAM completely
+                if server_proc:
+                    print(f"  [RAM] Stopping ComfyUI after scene {scene_idx} to free RAM...")
+                    server_proc.terminate()
+                    try:
+                        server_proc.wait(timeout=15)
+                    except Exception:
+                        server_proc.kill()
+                        server_proc.wait()
+                    if server_log:
+                        server_log.close()
+                    _time.sleep(3)
+
+        # ----------------------------------------------------------------
+        # Assemble all clips
+        # ----------------------------------------------------------------
+        print(f"\n[Assembly] Joining {len(clip_paths)}/{len(poem_scenes)} clips...")
+        if not clip_paths:
+            return {"status": "FAIL", "error": "No clips generated", "final_video_path": None}
+
+        final_path = job_dir / f"{job_name}_final.mp4"
+        try:
+            self.assembler.assemble(
+                clip_paths=clip_paths,
+                output_path=final_path,
+                crossfade_seconds=0.5 if len(clip_paths) > 1 else 0.0,
+                crf=18,
+            )
+        except Exception as e:
+            return {"status": "FAIL", "error": f"Assembly failed: {e}", "final_video_path": None}
+
+        total_time = _time.time() - job_start
+
+        print("\n" + "=" * 70)
+        print("POEM VIDEO SUMMARY")
+        print("=" * 70)
+        for info in clip_results_info:
+            status = info["status"]
+            sc = info["scene"]
+            if status == "SUCCESS":
+                print(f"  Scene {sc:02d}: SUCCESS  {info.get('time',0):.0f}s  {info.get('size_mb','?')}MB")
+            else:
+                print(f"  Scene {sc:02d}: FAIL     {info.get('error','')}")
+        print(f"Total time  : {total_time/60:.1f} minutes")
+        print(f"Final video : {final_path}")
+        size_mb = round(final_path.stat().st_size / (1024*1024), 1) if final_path.exists() else "?"
+        print(f"Size        : {size_mb} MB")
+        print("=" * 70)
+
+        return {
+            "status": "SUCCESS",
+            "final_video_path": str(final_path),
+            "total_time_seconds": round(total_time, 1),
+            "scenes": clip_results_info,
+        }
+
     def run(
         self,
         raw_prompt: str,
@@ -499,7 +713,7 @@ class LongFormOrchestrator:
             raise RuntimeError(
                 f"Image workflow not found: {self.settings.comfyui_image_workflow}"
             )
-        customized = customize_txt2img_workflow(workflow, image_prompt, width=768, height=512)
+        customized = customize_txt2img_workflow(workflow, image_prompt, width=1280, height=720)  # 1280x720: matches final output, no upscaling needed
         results = client.generate(customized)
         if not results:
             raise RuntimeError("ComfyUI returned no image.")
