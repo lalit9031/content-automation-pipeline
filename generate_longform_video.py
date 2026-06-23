@@ -28,7 +28,7 @@ from content_pipeline.bots.long_form_orchestrator import LongFormOrchestrator
 RAW_PROMPT = "girl walking in rain forest toward a river"
 SINGLE_CLIP_SECONDS = 6     # First test: single clip
 LONG_FORM_SECONDS   = 30    # Second test: 30-second video
-OUTPUT_DIR = Path("output/videos/longform_test")
+OUTPUT_DIR = Path(r"C:\Users\user\Desktop\Output file")
 
 # ---------------------------------------------------------------------------
 # RUN
