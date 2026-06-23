@@ -665,12 +665,24 @@ class ComfyUIMotionProvider:
 
             if ffmpeg_exe:
                 is_high_fps = bool(find_nodes("LTXVImgToVideo") or find_nodes("WanImageToVideo"))
+
+                # ── Scale + Sharpen ─────────────────────────────────────────────────────
+                # LTXV native resolution: 768×512
+                # Target: 1280×720  →  1.67× upscale  (was 1920×1080 = 2.5× = blurry)
+                # Smaller upscale ratio = naturally sharper output.
+                # unsharp=5:5:1.2:5:5:0.3  recovers edge detail lost during upscaling:
+                #   5:5 = 5×5 luma matrix, 1.2 = luma sharpen amount
+                #   5:5 = 5×5 chroma matrix, 0.3 = chroma sharpen (subtle, avoids colour fringing)
+                # ────────────────────────────────────────────────────────────────────────
+                SCALE_TARGET = "1280:720"
+                SHARPEN = "unsharp=5:5:1.2:5:5:0.3"
+
                 if is_high_fps:
-                    print(f"Native high-FPS video detected (LTXV/Wan). Scaling to 1920x1080 without interpolation using {ffmpeg_exe} to prevent motion tearing...")
-                    filter_str = "scale=1920:1080:flags=lanczos"
+                    print(f"Native high-FPS video (LTXV). Scaling to 1280x720 + sharpening using {ffmpeg_exe}...")
+                    filter_str = f"scale={SCALE_TARGET}:flags=lanczos,{SHARPEN}"
                 else:
-                    print(f"Low-FPS video detected (SVD). Interpolating frame rate from 5 FPS to 25 FPS using {ffmpeg_exe}...")
-                    filter_str = "scale=1920:1080:flags=lanczos,minterpolate=fps=25:mi_mode=mci"
+                    print(f"Low-FPS video (SVD). Interpolating to 25fps + scaling to 1280x720 + sharpening...")
+                    filter_str = f"scale={SCALE_TARGET}:flags=lanczos,{SHARPEN},minterpolate=fps=25:mi_mode=mci"
 
                 temp_output = destination.with_name(f"temp_interp_{destination.name}")
                 try:
@@ -678,18 +690,12 @@ class ComfyUIMotionProvider:
                         [
                             ffmpeg_exe,
                             "-y",
-                            "-i",
-                            str(destination),
-                            "-vf",
-                            filter_str,
-                            "-c:v",
-                            "libx264",
-                            "-preset",
-                            "slow",
-                            "-crf",
-                            "10",
-                            "-pix_fmt",
-                            "yuv420p",
+                            "-i", str(destination),
+                            "-vf", filter_str,
+                            "-c:v", "libx264",
+                            "-preset", "medium",  # medium = fast encode, same visual quality at this stage
+                            "-crf", "15",          # 15 = very high quality intermediate (not archival 10, not lossy 23)
+                            "-pix_fmt", "yuv420p",
                             str(temp_output)
                         ],
                         check=True,
@@ -699,11 +705,11 @@ class ComfyUIMotionProvider:
                     if temp_output.exists():
                         shutil.move(str(temp_output), str(destination))
                         if is_high_fps:
-                            print(f"Successfully scaled video to 1920x1080: {destination}")
+                            print(f"Successfully scaled to 1280x720 + sharpened: {destination}")
                         else:
-                            print(f"Successfully interpolated video to 25 FPS: {destination}")
+                            print(f"Successfully interpolated + scaled to 1280x720 + sharpened: {destination}")
                 except Exception as interp_exc:
-                    print(f"Warning: video frame rate interpolation failed: {interp_exc}")
+                    print(f"Warning: video scaling/sharpening failed: {interp_exc}")
                     if temp_output.exists():
                         temp_output.unlink()
 

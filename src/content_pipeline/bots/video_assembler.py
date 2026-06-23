@@ -85,9 +85,9 @@ class VideoAssembler:
         output_path: Path,
         crossfade_seconds: float = 0.5,
         audio_path: Optional[Path] = None,   # PARKED — audio pipeline coming soon
-        target_resolution: str = "1920x1080",
+        target_resolution: str = "1280x720",   # 720p: matches motion.py output, 1.67x upscale from LTXV 768x512
         youtube_compress: bool = True,        # Apply YouTube-optimized compression
-        crf: int = 23,                        # 18=archival(huge), 23=YouTube(good), 28=web(small)
+        crf: int = 18,                        # 18=sharp quality, 23=smaller file, 28=web
     ) -> Path:
         """
         Stitch multiple video clips into one output video.
@@ -97,18 +97,15 @@ class VideoAssembler:
             output_path:        Destination for the final assembled video.
             crossfade_seconds:  Duration of crossfade between clips (0 = hard cut).
             audio_path:         (PARKED) Future: path to narration/music audio.
-            target_resolution:  Output resolution (default 1920x1080).
-            youtube_compress:   If True (default), apply YouTube-optimized CRF 23 encode.
-                                This reduces file size 50-70% with no visible quality loss.
-            crf:                Compression level. 18=large/archival, 23=YouTube, 28=web/mobile.
+            target_resolution:  Output resolution (default 1280x720).
+                                Clips from motion.py are already 1280x720 + sharpened.
+            youtube_compress:   Apply quality encode on final output.
+            crf:                18=sharp/quality (default), 23=YouTube-small, 28=web/mobile.
 
-        Returns:
-            Path to the assembled output video.
-
-        File size guide (1920x1080 @ 24fps per 5-second clip):
-            CRF 18: ~15-25 MB  (archival, huge files)
-            CRF 23: ~3-6 MB   (YouTube — same visual quality, YouTube re-encodes anyway)
-            CRF 28: ~1-2 MB   (web/mobile sharing)
+        File size guide (1280x720 @ 24fps per 5-second clip):
+            CRF 18: ~3-6 MB   (sharp, recommended for best quality)
+            CRF 23: ~1-3 MB   (good quality, smaller upload)
+            CRF 28: ~0.5-1 MB (web/mobile, slightly soft)
         """
         if not clip_paths:
             raise ValueError("No clip paths provided to VideoAssembler.")
