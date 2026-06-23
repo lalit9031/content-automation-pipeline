@@ -254,6 +254,33 @@ class LongFormOrchestrator:
             print(f"  Source image saved: {start_image_path}")
 
             # ---------------------------------------------------------------
+            # MEMORY CHECKPOINT: Restart ComfyUI between image and video
+            # ---------------------------------------------------------------
+            # Flux image model uses ~11GB VRAM + ~4GB RAM offload.
+            # LTXV video model uses ~12.4GB VRAM + ~6GB RAM offload.
+            # Running both in the same ComfyUI session means they compete for
+            # the same 24GB VRAM pool — causing RAM overflow as the offload
+            # buffer fills up.
+            # Solution: restart ComfyUI between phases to flush Flux completely.
+            if started_server and server_proc:
+                print("\n[RAM Checkpoint] Restarting ComfyUI to flush Flux model from VRAM before video generation...")
+                server_proc.terminate()
+                try:
+                    server_proc.wait(timeout=20)
+                except Exception:
+                    server_proc.kill()
+                    server_proc.wait()
+                if server_log:
+                    server_log.close()
+                print("[RAM Checkpoint] Flux model cleared from VRAM. Starting fresh for LTXV video generation...")
+                import time as _time
+                _time.sleep(3)  # Brief pause to let OS reclaim memory
+                server_proc, server_log = client._start_server()
+                if not client._wait_listening():
+                    return self._fail_result("Failed to restart ComfyUI for video phase", time.time() - job_start)
+                print("[RAM Checkpoint] ComfyUI restarted clean. LTXV will now have full VRAM budget.\n")
+
+            # ---------------------------------------------------------------
             # Step 4: Generate each video clip
             # ---------------------------------------------------------------
             print(f"\n[Step 4] Generating {len(scenes)} video clip(s)...")
@@ -403,7 +430,7 @@ class LongFormOrchestrator:
                     title="Long-form video",
                     provider="comfyui_local",
                     model="ltxv-13b-0.9.8-dev-fp8.safetensors",
-                    size="768x512",
+                    size="704x416",  # Reduced from 768x512 — saves ~17% VRAM per frame on 14B model
                     clips=[motion_clip],
                     provider_rules=[],
                 )
@@ -488,7 +515,7 @@ class LongFormOrchestrator:
     ) -> str:
         successful = [r for r in clip_results if r.status == "SUCCESS"]
         failed = [r for r in clip_results if r.status == "FAIL"]
-        total_duration = len(successful) * ScriptEngine.CLIP_DURATION_SECONDS
+        total_duration = len(successful) * 5
 
         lines = [
             f"{'=' * 70}",

@@ -147,7 +147,7 @@ class ScriptEngine:
         # Returns 5 scenes of 6 seconds each
     """
 
-    CLIP_DURATION_SECONDS: int = 6  # Sweet spot: good quality, fits in VRAM
+    CLIP_DURATION_SECONDS: int = 5  # 5s → capped at 97 frames by motion.py limiter. Less VRAM than 6s.
 
     def build_scene_list(
         self,

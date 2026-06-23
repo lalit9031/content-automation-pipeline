@@ -71,7 +71,7 @@
         "77",
         2
       ],
-      "steps": 45,
+      "steps": 30,
       "max_shift": 2.05,
       "base_shift": 0.95,
       "stretch": true,
@@ -135,8 +135,8 @@
         "78",
         0
       ],
-      "width": 768,
-      "height": 512,
+      "width": 704,
+      "height": 416,
       "length": 97,
       "batch_size": 1,
       "strength": 1.0
